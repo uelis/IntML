@@ -42,7 +42,6 @@ let type_var (a : string) : Type.t =
 let clear_type_vars () = Hashtbl.clear type_vars  
 
 %}
-/*  declarations */
 
 %token TokLBrace
 %token TokRBrace

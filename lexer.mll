@@ -15,7 +15,6 @@ let incr_linenum lexbuf =
       Lexing.pos_lnum = pos.Lexing.pos_lnum + 1;
       Lexing.pos_bol = pos.Lexing.pos_cnum;
     }
-  ;;
 
 let error lexbuf msg =
        let pos = lexbuf.Lexing.lex_curr_p in
