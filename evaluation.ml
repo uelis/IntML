@@ -1,3 +1,6 @@
+(** Evaluation of working class terms.
+  * @author schoepp
+  *)
 open Term
 
 (* evaluation of closed terms *)  

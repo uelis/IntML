@@ -1,7 +1,5 @@
-(**
-  * Type inference
-  *
-  *)
+(** Type inference
+*)
 open Term
 open Term.Location
 open Type
