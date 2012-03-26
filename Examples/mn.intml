@@ -1,0 +1,284 @@
+letw return = fun x -> inl(x)
+letw continue = fun x -> inr(x)
+
+letw pi1 = fun x -> let <x1, x2> = x in x1
+letw pi2 = fun x -> let <x1, x2> = x in x2
+
+letw true : 2 = inl(<>)
+letw false : 2 = inr(<>)
+letw not : 2 -> 2 =
+  fun x -> if x then false else true
+letw and : 2 -> 2 -> 2 = 
+  fun x -> fun y ->
+    if x then (if y then true else false) else false
+letw or = fun (x : 2) -> fun (y : 2) ->
+  if x then true else y
+letw pi1 = fun x -> let <x1, x2> = x in x1
+letw pi2 = fun x -> let <x1, x2> = x in x2
+
+(* A-level maximum *)
+letw max : 'a =
+ let z = min
+ loop 
+   if succ z = z then return(z) else continue(succ z)
+
+(* working class predecessor *)
+letw pred : 'a -> 'a = 
+  fun (x : 'a) -> 
+     if x = (min : 'a) then (min : 'a)
+     else let y = min 
+          loop if succ y = x then return y else continue (succ y)
+
+(* working class addition *)
+letw add : 'a -> 'b -> 'a = 
+  fun x -> fun y ->
+    let z = <x, y> 
+    loop
+      let <x1, y1> = z in
+      if or (y1 = (min : 'b)) (succ x1 = x1) then return(x1)
+                 else continue(<succ x1, pred y1>)
+
+(* working class subtraction *)
+letw sub : 'a -> 'b -> 'a = 
+  fun x -> fun y ->
+    let z = <x, y> 
+    loop
+      let <x1, y1> = z in
+      if y1 = (min : 'b) then return(x1)
+                 else continue(<pred x1, pred y1>)
+
+letw leq : 'a -> 'b -> 2 =
+  fun x -> fun y ->
+    let z = <x, y>
+    loop
+      let <x', y'> = z in
+      if y' = min then
+         if x' = min then return true else return false
+      else 
+         if x = min then return true else continue <pred x', pred y'>
+
+letw divmod : 'a -> 'b -> 'a * 'a = 
+  fun x -> fun y ->
+    let z = <x, (min : 'a)>
+    loop
+      let <x', d> = z in
+      if leq x' y then 
+         if leq y x' then return <succ d, min> else return <d, x'>
+      else continue <sub x' y, succ d>
+
+(* Print values of 'a as decimal numbers.
+ * (uses function types!) *)
+letw print_dec : 'a -> 1 =
+   let ten = (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ min))))))))) : 11) in
+   let print_upto10 =
+      fun (x : 'a) ->
+        let y = min in
+        if x = y then print "0" 
+        else let y = succ y in if x = y then print "1" 
+        else let y = succ y in if x = y then print "2" 
+        else let y = succ y in if x = y then print "3" 
+        else let y = succ y in if x = y then print "4" 
+        else let y = succ y in if x = y then print "5" 
+        else let y = succ y in if x = y then print "6" 
+        else let y = succ y in if x = y then print "7" 
+        else let y = succ y in if x = y then print "8" 
+        else print "9" in
+   fun x -> 
+      let p = <x, fun u -> u>
+      loop 
+         let <z, f> = p in
+         let <d, m> = divmod z ten in
+         let f' = fun u -> print_upto10 m; f u in
+           if d = min then 
+             f' <>; return <>
+           else 
+             continue <d, f'>
+
+
+letu uloop = hack fun x ->
+  case x of 
+    inl(y) ->
+      let <store, stepq> = y in
+        case stepq of
+          inl(argq) -> 
+           let <argstore, unit> = argq in
+             inl(<store, inl(<argstore, store>)>)
+        | inr(continueOrStop) -> 
+           case continueOrStop of 
+             inl(stop) -> inr(inr(stop))
+           | inr(continue) -> inl(<continue, inr(<>)>)
+  | inr(z) -> 
+    case z of 
+      inl(basea) ->
+          let <junk, basea> = basea in
+            inl(<basea, inr(<>)>)
+    | inr(initialq) ->
+        inr(inl(<<>, <>>))
+ as {'a}({'c}['a] --o ['b + 'a]) --o ({'d}['a] --o ['b])
+(* right means continue with the loop, left means stop with this value *)
+
+letu callcc = hack fun x -> 
+  case x of 
+    inl(y) ->
+      let <ys, yv> = y in
+        case yv of
+          inl(z) -> 
+            let <zs, zv> = z in
+              case zv of
+                inl(u) -> 
+                  let <us, uv> = u in
+                    inr(uv)
+              | inr(v) ->
+                    inl(<ys, inl(<zs, inl(<<>, <>>)>)>)
+        | inr(a) -> inr(a)
+  | inr(q) -> inl(<<>, inr(<>)>)
+  as {'e}({'c}({'f}['a] --o ['d]) --o ['a]) --o ['a]
+
+letw blank : 3 = inr(<>)
+letw zero : 3 = inl(inl(<>))
+letw one : 3 = inl(inr(<>))
+
+letu if3 : [3] --> ['a] --> ['a] --> ['a] --> ['a] = 
+  fun x ->
+   fun mblank -> fun mzero -> fun mone -> 
+     let [xc] = x in 
+       case xc of
+         inl(value) ->
+           case value of
+             inl(zero) -> mzero
+           | inr(one) -> mone
+       | inr(blank) -> mblank
+
+
+(******************************************
+ * Safe recursion by computational amnesia
+ ******************************************)
+
+letw debug = true
+
+(* State in safe recursion is a 5-tuple with the following components:
+ * (<<resultdepth, resultres>, resultbit>, <goalbit, goaldepth>)
+ * These can be used conveniently using the following abbreviations.
+ *)
+letw goal : ('a * 3 * 'a) * ('a * 'a) -> 'a * 'a = pi2
+letw goalbit = fun statec -> pi1 (goal statec)
+letw goaldepth = fun statec -> pi2 (goal statec)
+letw result : ('a * 3 * 'a) * ('a * 'a) -> ('a * 3 * 'a) = pi1
+letw resultdepth = fun statec -> pi1 (pi1 (result statec))
+letw resultres = fun statec -> pi2 (pi1 (result statec))
+letw resultbit = fun statec -> pi2 (result statec)
+letw print_state = fun state ->
+  let u = print "State:" in
+  let u = print " goalbit=" in
+  let u = print_dec (goalbit state) in
+  let u = print " goaldepth=" in
+  let u = print_dec (goaldepth state) in
+  let u = print " resultdepth=" in
+  let u = print_dec (resultdepth state) in
+  let u = print " resultbit=" in
+  let u = print_dec (resultbit state) in
+  let u = print " resultval=" in
+  let u = print_dec (resultres state) in
+    print "\n"
+
+letu recursiveCall =
+  fun k -> fun state -> fun x -> 
+    let [xc] = x in
+    let [statec] = state in
+    case and (succ (goaldepth statec) = (resultdepth statec)) (xc = (resultbit statec)) 
+    of 
+      inl(true) -> [resultres statec] 
+    | inr(false) -> k [continue(<result statec, <xc, succ (goaldepth statec)>>)]
+
+letu shiftarg = fun x -> fun shift ->
+  fun i ->
+    let [ic] = i in 
+    let [shiftc] = shift in 
+      x [add ic shiftc]
+
+letu innerloopbody = 
+  fun (g : ['a] --> [3]) -> 
+  fun (h0 : (['a] --> [3]) --> (['a] --> [3]) --> (['a] --> [3])) -> 
+  fun (h1 : (['a] --> [3]) --> (['a] --> [3]) --> (['a] --> [3])) -> 
+  fun (x : ['a] --> [3]) -> 
+  fun state -> 
+  fun k ->
+    copy x as x1, x23 in
+    copy x23 as x2, x3 in
+    copy k as k1, k2 in
+      let [statec] = state in 
+      let [u] = [if debug then print_state statec else <>] in
+      let [res] = if3 (x1 [goaldepth statec]) 
+                      (g [goalbit statec]) 
+                      (h0 (shiftarg x2 [goaldepth statec]) (recursiveCall k1 [statec]) [goalbit statec]) 
+                      (h1 (shiftarg x3 [goaldepth statec]) (recursiveCall k2 [statec]) [goalbit statec])
+        in [return(<<<goaldepth statec, res>, goalbit statec>, goal statec>)]
+
+letu innerloop =
+fun g -> fun h0 -> fun h1 -> fun x1 -> fun bit ->
+fun res ->
+    let [resc] = res in
+    let [bitc] = bit in
+    let [finalstate] = 
+          uloop (fun state -> callcc (fun k -> innerloopbody g h0 h1 x1 state k))
+             [<resc, <bitc, min> (*goal*)>] in
+      [if (resultdepth finalstate) = min then 
+        return(result finalstate) 
+       else continue(result finalstate)]
+
+letu saferec =
+fun g -> fun h0 -> fun h1 -> fun x1 -> fun (bit : ['a]) ->
+  let [u] = [if debug then print "\nComputation trace (turn off by setting debug to false):\n" else <>] in
+  let [res] = uloop (innerloop g h0 h1 x1 bit) [<<(max : 'a), zero>, (min : 'a)>]  
+  in [pi2 (pi1 (res : ('a * 3) * 'a))]
+
+(******************************************
+ * Other combinators from BC-
+ ******************************************)
+
+letu empty : ['a] --> [3] = fun i -> [blank]
+
+(* fragile, depends on inl(<>) being less than inr(...) *)
+letu succ0 : (['a] --> [3]) --> ([1 + 'a] --> [3]) = 
+  fun w -> 
+   fun i ->
+     let [ic] = i in 
+       case ic of
+         inl(u) -> [zero]
+       | inr(x) -> w [x]
+
+letu succ1 : (['a] --> [3]) --> ([1 + 'a] --> [3]) = 
+  fun w -> 
+   fun i ->
+     let [ic] = i in 
+       case ic of
+         inl(u) -> [one]
+       | inr(x) -> w [x]
+
+(* BC- case distinction *)
+letu cse = fun x -> fun y1 -> fun y2 ->
+   fun i ->
+   let [xc] = x [min] in
+    case xc of
+      inl(c) -> 
+       case c of 
+         inl(zero) -> y2 i
+       | inr(one) -> y1 i
+    | inr(blank) -> y2 i
+
+(******************************************
+ * Example: parity with saferec
+ ******************************************)
+letu parityg = succ0 empty
+letu parityh0 = fun x -> fun r -> cse r (succ1 empty) (succ0 empty)
+letu parityh1 = fun x -> fun r -> cse r (succ0 empty) (succ1 empty)
+letu parity = saferec parityg parityh0 parityh1
+ 
+letw paritytest0 = 
+  let [x] = 
+    parity (succ1 (succ0 (succ1 (succ0 (succ1 (empty : [1] --> [3])))))) [min]
+  in x
+letw paritytest1 = 
+  let [x] = 
+    parity (succ1 (succ0 (succ1 (succ1 (succ1 (empty : [1] --> [3])))))) [min]
+  in x

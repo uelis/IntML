@@ -1,0 +1,371 @@
+(*****************************
+ *     GRAPH ALGORITHMS      *
+ *****************************)
+
+letw return = fun x -> inl(x)
+letw continue = fun x -> inr(x)
+
+letw pi1 = fun x -> let <x1, x2> = x in x1
+letw pi2 = fun x -> let <x1, x2> = x in x2
+
+letw true : 2 = inl(<>)
+letw false : 2 = inr(<>)
+letw not : 2 -> 2 =
+  fun x -> if x then false else true
+letw and : 2 -> 2 -> 2 = 
+  fun x -> fun y ->
+    if x then (if y then true else false) else false
+letw or = fun (x : 2) -> fun (y : 2) ->
+  if x then true else y
+
+letw ismax : 'a -> 2 = 
+   fun x -> succ x = x
+letw cysucc = fun x -> if ismax x then min else succ x
+
+(* working class predecessor *)
+letw pred : 'a -> 'a = 
+  fun (x : 'a) -> 
+     if x = (min : 'a) then (min : 'a)
+     else let y = min 
+          loop if succ y = x then return y else continue (succ y)
+
+(* working class addition *)
+letw add : 'a -> 'b -> 'a = 
+  fun x -> fun y ->
+    let z = <x, y> 
+    loop
+      let <x1, y1> = z in
+      if or (y1 = (min : 'b)) (succ x1 = x1) then return(x1)
+                 else continue(<succ x1, pred y1>)
+
+(* working class subtraction *)
+letw sub : 'a -> 'b -> 'a = 
+  fun x -> fun y ->
+    let z = <x, y> 
+    loop
+      let <x1, y1> = z in
+      if y1 = (min : 'b) then return(x1)
+                 else continue(<pred x1, pred y1>)
+
+letw leq : 'a -> 'b -> 2 =
+  fun x -> fun y ->
+    let z = <x, y>
+    loop
+      let <x', y'> = z in
+      if y' = min then
+         if x' = min then return true else return false
+      else 
+         if x = min then return true else continue <pred x', pred y'>
+
+letw divmod : 'a -> 'b -> 'a * 'a = 
+  fun x -> fun y ->
+    let z = <x, (min : 'a)>
+    loop
+      let <x', d> = z in
+      if leq x' y then 
+         if leq y x' then return <succ d, min> else return <d, x'>
+      else continue <sub x' y, succ d>
+
+(* Print values of 'a as decimal numbers.
+ * (uses function types!) *)
+letw print_dec : 'a -> 1 =
+   let ten = (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ min))))))))) : 11) in
+   let print_upto10 =
+      fun (x : 'a) ->
+        let y = min in
+        if x = y then print "0" 
+        else let y = succ y in if x = y then print "1" 
+        else let y = succ y in if x = y then print "2" 
+        else let y = succ y in if x = y then print "3" 
+        else let y = succ y in if x = y then print "4" 
+        else let y = succ y in if x = y then print "5" 
+        else let y = succ y in if x = y then print "6" 
+        else let y = succ y in if x = y then print "7" 
+        else let y = succ y in if x = y then print "8" 
+        else print "9" in
+   fun x -> 
+      let p = <x, fun u -> u>
+      loop 
+         let <z, f> = p in
+         let <d, m> = divmod z ten in
+         let f' = fun u -> print_upto10 m; f u in
+           if d = min then 
+             f' <>; return <>
+           else 
+             continue <d, f'>
+
+letu uloop = hack fun x ->
+  case x of 
+    inl(y) ->
+      let <store, stepq> = y in
+        case stepq of
+          inl(argq) -> 
+           let <argstore, unit> = argq in
+             inl(<store, inl(<argstore, store>)>)
+        | inr(continueOrStop) -> 
+           case continueOrStop of 
+             inl(stop) -> inr(inr(stop))
+           | inr(continue) -> inl(<continue, inr(<>)>)
+  | inr(z) -> 
+    case z of 
+      inl(basea) ->
+          let <junk, basea> = basea in
+            inl(<basea, inr(<>)>)
+    | inr(initialq) ->
+        inr(inl(<<>, <>>))
+ as {'a}({'c}['a] --o ['b + 'a]) --o ({'d}['a] --o ['b])
+(* right means continue with the loop, left means stop with this value *)
+
+letu ifu : [2] --> ['a] --> ['a] --> ['a] = 
+ fun x -> fun y -> fun z ->
+  let [c] = x in
+    if c then y else z
+
+letu pr1 : 'a * 'b --> 'a = 
+   fun x -> let <x1, x2> = x in x1
+letu pr2 = fun x -> let <x1, x2> = x  in x2
+
+letu Band = fun x -> fun y -> let [c] = x in let [d] = y in [and c d]
+letu Bor = fun x -> fun y -> let [c] = x in let [d] = y in [or c d]
+
+
+(* A graph is a pair <node, edge> of predicates 
+ * ([alpha]--o[2]) * ([alpha * alpha] --o [2]).
+ * 
+ * We assume that the egde returns true only for pairs <n, m>
+ * such that node also returns true for n and m.
+ *)
+
+letu fold : (['a] --> ['b]) --> (['b] --> ['b] --> ['b]) --> ['b] =
+  fun x -> 
+  fun y -> (* aggregator function *)
+      copy x as x1,x2 in
+         (uloop (fun w -> let [e] = w in
+                    ifu [ismax (pi2 e)]
+                        [return(pi1 e)]
+                        (let [f] = y (x1 [succ (pi2 e)]) [pi1 e] in
+                                     [continue(<f,succ (pi2 e)>)]))
+                        (let [d] = x2 [min] in [<d,min>])) 
+
+letu print_graph : (['a] --> [2]) * (['a * 'a] --> [2]) --> [1]  =
+  fun graph -> 
+    let <node, edge> = graph in
+      let [u] = [print "nodes: "] in
+      let [u] = fold (fun (x : ['a]) -> 
+                       let [n] = x in
+                       let [b] = node [n] in 
+                       [ if b then print_dec n; print " " else <> ])
+                     (fun x -> fun y -> let [u] = x in let [v] = y in [<>]) in
+      let [u] = [print "\nedges: "] in
+      let [u] = fold (fun (x : ['a * 'a])  -> 
+                       let [e] = x in
+                       let [b] = edge [e] in 
+                       [ let <m, n> = e in
+                           if b then 
+                             print_dec m;
+                             print "---";
+                             print_dec n;
+                             if not (ismax e) then print ", " else <>
+                           else <> ])
+                     (fun x -> fun y -> let [u] = x in let [v] = y in [<>]) in
+      let [u] = [print "\n"] in
+        [<>]
+
+
+(* To count the elements in a graph with vertices from 'a, we use
+ * the type 'a+1, since we start counting with 0.
+ * The return values
+ * inl(min), inl(succ(min)), ..., inl(max), inr(<>)
+ * stand for
+ * 0, 1, ..., |'a| *)
+letu countstep : (['a] --> [2]) * (['a * 'a] --> [2]) --> ['a] --> ['a + 1] =
+  fun graph -> (* input graph *)
+    let <node, edge> = graph in
+    fun x -> (* input node *)
+      ifu (node x) [succ min] [min]
+         
+letu countagg : ['a] --> ['a] --> ['a] =
+  fun x -> 
+  fun y ->
+     let [c] = x in
+     let [d] = y in
+              [add c d]
+
+letu countvertex : (['a] --> [2]) * (['a * 'a] --> [2]) --> ['a + 1] =
+ fun graph -> fold (countstep graph) countagg 
+
+(* Source and dstination of an edge *)
+letw src = fun edge -> pi1 edge
+letw dst = fun edge -> pi2 edge
+
+letu nextEdge : (['a] --> [2]) * (['a * 'a] --> [2]) --> ['a * 'a] --> ['a * 'a] =
+   fun graph ->
+     let <node, edge> = graph in
+     fun inputedge ->
+     let [e] = inputedge in
+       (uloop (fun v -> let [x] = v in
+                          ifu (edge [x])
+                              [return(x)]
+                              [continue(<src x, cysucc (dst x)>)]))
+              [<src e, cysucc (dst e)>]
+
+letu checkpathM : (['a] --> [2]) * (['a * 'a] --> [2]) --> ['a * 'a] --> [2] =
+   fun graph -> (* input graph *)
+   fun ie -> (* input edge *)
+       copy graph as graph1, graph2 in
+       let <node, edge> = graph1 in 
+       let [e] = ie in
+       ifu (edge [e])
+           (uloop (fun w -> let [p] = w in
+                  ifu [(dst p) = (src e)]
+                      (ifu [(src p) = (dst e)] 
+                           [return(true)]  (* we arrive through the edge by which we have left *)
+                           [return(false)]) (* we arrive through some other edge *)
+                      (let [d] = nextEdge graph2 [<dst p, src p>] in
+                         [continue(d)])
+                  ) [e])
+           [true] 
+
+letu checkcycleM : (['a] --> [2]) * (['a * 'a] --> [2]) --> [2] =
+   fun graph -> fold (checkpathM graph) Band
+
+letu squaregraph : ((['a] --> [2]) * (['a * 'a] --> [2])) --> 
+                   ((['a] --> [2]) * (['a * 'a] --> [2])) =
+    fun graph -> (* input graph *)
+       let <node, edge> = graph in 
+       copy edge as edge1, edge2 in
+         < node, 
+           fun edge_m_n ->
+             let [pair_m_n] = edge_m_n in 
+             fold (fun (middle_node : ['a]) ->
+                         let [p] = middle_node in
+                         Band (edge1 [<pi1 pair_m_n, p>])
+                              (edge2 [<p, pi2 pair_m_n>])) 
+                  Bor >
+            
+(* TODO: update old example *)            
+letu examplegraph1M =
+  <fun (x : [2])  ->
+     let [c] = x in
+              case c of
+              inl(d) -> [true]
+             |inr(d) -> [false],
+   fun (e : [2 * 2]) ->
+     let [c] = e in
+              [let <c1,c2> = c in
+              case c1 of
+                         inl(d) ->
+                             (case c2 of
+                               inl(e) -> true
+                             | inr(e) -> true)
+                   |inr (d) ->
+                             (case c2 of
+                               inl(e) -> true
+                             | inr(e) -> true)]>
+
+(* not acyclic *)
+letu examplegraph2M : ([4] --> [2]) * ([4 * 4] --> [2]) =
+  <fun v -> [true],
+   fun e ->
+     let [c] = e in
+       [ let <c12,c34> = c in
+         let <c1,c2> = c12 in
+         let <c3,c4> = c34 in 
+           or (eq c1 c3) (eq c2 c4)]>
+
+(* acyclic *)
+letu examplegraph3M : ([4] --> [2]) * ([4 * 4] --> [2]) =
+  <fun v -> 
+     let [c] = v in [not (c = <inl(<>), inl(<>)>)],
+   fun e ->
+     let [c] = e in
+       [ let <c12,c34> = c in
+         let <c1,c2> = c12 in
+         let <c3,c4> = c34 in 
+           and (not (c12 = <inl(<>), inl(<>)>)) 
+               (and (not (c34 = <inl(<>), inl(<>)>)) 
+                    (or (c1 = c3) (c2 = c4)))]>
+
+
+letu mattolist :  (['a] --> [2]) * (['a * 'a] --> [2]) --> 
+   (['a] --> [2]) * ((['a] --> ['a + 1]) * (['a * 'a] --> ['a + 1])) =
+  fun x ->
+    let <node, edge> = x in    
+    copy node as node1, node23 in
+    copy node23 as node2, node3 in
+    copy edge as edge1, edge2 in
+      < node1,
+        <fun node_n ->
+          let [n] = node_n in
+          ifu (node2 [n])
+              (uloop (fun node_m ->
+                        let [m] = node_m in
+                        let [edge_n_m] = edge1 [<n, m>] in 
+                          [ if edge_n_m then return(inl(m)) 
+                            else if ismax m then return(inr(<>))
+                            else continue(succ m) ])
+                     [min])
+              [inr(<>)],
+         fun edge_e -> 
+           let [e] = edge_e in
+           ifu (Band (node3 [src e]) [not (ismax (dst e))])
+               (uloop (fun node_m -> 
+                         let [m] = node_m in
+                         let [edge_n_m] = edge2 [<src e, m>] in 
+                           [ if edge_n_m then return(inl(m))
+                             else if ismax m then return(inr(<>))
+                             else continue(succ m) ])
+                      [ succ (dst e) ])
+               [inr(<>)]
+         >
+      >
+
+letu listtomat : (['a] --> [2]) * ((['a] --> ['a + 1]) * (['a * 'a] --> ['a + 1])) --> 
+    (['a] --> [2]) * (['a * 'a] --> [2])  =
+  fun x ->
+     let <node, x1> = x in
+     let <first_ngbr, next_ngbr> = x1 in
+     copy node as node1, node2 in
+      < node1,
+        fun e ->
+          let [h] = e in
+          ifu (node2 [src h])
+              (let [d] = first_ngbr [src h] in
+                 case d of
+                   inl(d) ->
+                     uloop (fun z -> 
+                              let [f] = z in
+                              ifu [f = (dst h)]
+                                  [return(true)]
+                                  (let [p] = next_ngbr [<src h, f>] in
+                                     case p of
+                                       inl(f') -> [continue(f')]
+                                     | inr(u) -> [return(false)]))
+                           [d]
+                 | inr(u) -> [false])
+              [false]
+      >
+
+letu check1 = (pr1(mattolist (examplegraph1M)))([inl(<>)])
+letu check2 = (pr1(mattolist (examplegraph1M)))([inr(<>)])
+letu check3 = (pr1(pr2(mattolist (examplegraph1M))))([inl(<>)])
+letu check4 = (pr1(pr2(mattolist (examplegraph1M))))([inr(<>)])
+letu check5 = (pr2(pr2(mattolist (examplegraph1M))))([<inl(<>),inr(<>)>])
+letu check6 = (pr2(pr2(mattolist (examplegraph1M))))([<inr(<>),inl(<>)>])
+letu check7 = countvertex examplegraph1M
+letu check8 = checkcycleM examplegraph1M
+letu check9 = checkcycleM examplegraph2M  (* expected: false, encoded as inr(<>)*)
+letu check10 = countvertex examplegraph2M  (* expected: 4, encoded as inr(<>) *)
+letu check11 = checkcycleM examplegraph3M  (* expected: true, encoded as inl(<>)*)
+letu check12 = countvertex examplegraph3M  (* expected: 3, encoded as inl(max) *)
+letu check13 = checkcycleM (squaregraph examplegraph2M)  (* expected: false (loops!), encoded as inr(<>)*)
+letu check14 = checkcycleM (squaregraph examplegraph3M)  (* expected: false, encoded as inl(<>)*)
+
+letw main = 
+  print "\n\nExample graph 1:\n";
+  let [u] = print_graph examplegraph2M in  
+  print "\nExample graph 2:\n";
+  let [u] = (print_graph examplegraph3M) in 
+  print "\nSquare of example graph 2:\n";
+  let [u] = print_graph (squaregraph examplegraph3M) in <>
+

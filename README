@@ -1,0 +1,103 @@
+1. Basic Usage
+---------------
+
+ An intml-file consists of definition of the form:
+ 
+   letw f = working_class_term
+   letw g = upper_class_terms
+ 
+ See the files in directory Examples/ for syntax and format.
+ 
+ A file containing such definitions can be type-checked using
+ 
+   ./intml.native file.intml
+ 
+ The intml-interpreter is then in interactive mode and can be 
+ used to evaluate terms.
+
+
+2. Interactive Mode
+--------------------
+
+2.1. Working Class Terms
+-------------------------
+
+ Working class terms can be evaluated directly.
+
+  # inl(<>)
+  : 1 + 'a
+ 
+  = inl(<>)
+
+ They can be defined using letw.
+
+  # letw pi1 = fun x -> let <x1,x2>=x in x1
+  pi1 :w 'a * 'b -> 'a
+  
+  # pi1 <inl(<>),inr(<>)>
+  : 1 + 'a
+  
+  = inl(<>)
+  
+2.2. Upper Class Terms
+-----------------------
+
+ Upper class terms can be defined using letu.
+
+  # letu d = fun f -> fun x -> let [v]=x in f [v] [v]
+  d :u (['a] --> ['a] --> ['b]) --> ['a] --o ['b]
+
+ However, they cannot be evaluated directly, as can working 
+ class terms.
+
+ For the evaluation of upper class terms one has the following 
+ options:
+
+ * Terms f of type [A] can be evaluated using the working-class 
+   construct let [x] = f in x.
+
+    # let [x] = d (fun x -> fun y -> x) [inl(<>)] in x
+    : 1 + 'a
+ 
+    = inl(<>)
+ 
+ * The toplevel gives access to the circuit corresponding to any
+   working class term. This is available using the #circuit 
+   directive.
+
+   The directive "#circuit (upper class term)" displays the 
+   type of the circuit for the upper class term.
+   
+   The directive
+   "#circuit (upper class term) (working class term)"
+   feeds the given working class term to the circuit for the
+   upper class term and computes the output from the circuit.
+
+   Example:
+
+    # #circuit d
+    : 'a * 1 * ('b * 1 + ('c * 1 + 'd)) + (1 * 'a + 1) -> 'a * 1 * ('b
+    * 'a + ('c * 'a + 1)) + (1 * 1 + 'd)
+
+    = functional value
+
+   The circuit may thus be sent messages of type 
+   'a * 1 * ('b * 1 + ('c * 1 + 'd)) + (1 * 'a + 1)
+   and it may answer with messages of type
+   'a * 1 * ('b  * 'a + ('c * 'a + 1)) + (1 * 1 + 'd)
+
+   For example, the circuit for d answers the query inr(inr(<>)) 
+   with inr(inl(<<>, <>>)).
+
+    # #circuit d inr(inr(<>))
+    : 'a * 1 * ('b * 'a + ('c * 'a + 1)) + (1 * 1 + 'd)
+ 
+    = inr(inl(<<>, <>>))
+   
+   In the #circuit directive it is also possible to use 
+   complex upper class terms
+
+    # #circuit (fun x->let <y,z> = x in let [v]=y in [<v,v>])
+    : 1 * 1 * ('a + 'b) + 1 -> 1 * 1 * (1 + 'c) + 'a * 'a
+ 
+    = functional value
