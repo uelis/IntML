@@ -65,11 +65,12 @@
    working class term. This is available using the #circuit 
    directive.
 
-   The directive "#circuit (upper class term)" displays the 
-   type of the circuit for the upper class term.
+   The directive 
+     #circuit (upper class term)
+   displays the type of the circuit for the upper class term.
    
    The directive
-   "#circuit (upper class term) (working class term)"
+     #circuit (upper class term) (working class term)
    feeds the given working class term to the circuit for the
    upper class term and computes the output from the circuit.
 
