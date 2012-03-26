@@ -1,7 +1,6 @@
-(*
- *  printing.ml
- *
- * TODO: 
+(** Printing of terms and types *)
+
+(* TODO: 
  *  - printing of upper class terms
  *)
 

@@ -1,5 +1,4 @@
 (** Evaluation of working class terms.
-  * @author schoepp
   *)
 open Term
 

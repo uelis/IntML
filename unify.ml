@@ -1,9 +1,11 @@
-(* The unification algorithm loosely follows the
- * description in Section 1.4 of the following article:
- *   Didier Rémy. Using, Understanding, and Unraveling
- *   The OCaml Language. LNCS 2395. Springer-Verlag 2002
- *   http://pauillac.inria.fr/~remy/cours/appsem/
- *)
+(** Unification
+  *
+  * The unification algorithm loosely follows the
+  * description in Section 1.4 of the following article:
+  *   Didier Rémy. Using, Understanding, and Unraveling
+  *   The OCaml Language. LNCS 2395. Springer-Verlag 2002
+  *   http://pauillac.inria.fr/~remy/cours/appsem/
+  *)
 
 module type S = sig
 

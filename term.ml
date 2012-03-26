@@ -1,10 +1,7 @@
-(*
- *  terms.ml
- *
- *  I've read the implementation of John Harrion's HOL light
- *  and the sources of the OCaml compiler when writing this file.
- *
- *)
+(** Term representation *)
+
+(*  I've read the implementation of John Harrion's HOL light
+ *  and the sources of the OCaml compiler when writing this file. *)
 
 type var = string
 

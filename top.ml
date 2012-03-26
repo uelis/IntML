@@ -73,8 +73,6 @@ let rec new_decl (ds : typed_decls) (d : decl) : typed_decls =
 let rec exec_query (ds: typed_decls) (q: query) : typed_decls =
   Printing.reset_names ();
   match q with
-(*    | Dir("explore") ->
-        Printf.printf "#explore expects as arguments a term.\n"; *)
     | Dir("eval") ->
         Printf.printf "#eval expects as arguments a term that should be evaluated.\n";
         ds

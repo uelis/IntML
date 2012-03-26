@@ -6,14 +6,10 @@ open Term.Location
 open Printing
 open Compile 
 
-(* Error reporting *)                               
-  
 let parse_error_loc lexbuf =
   let start_pos = lexbuf.lex_start_p in
     Printf.sprintf "line %i, character %i:"
       (start_pos.pos_lnum) (start_pos.pos_cnum - start_pos.pos_bol + 1)
-
-(* Parsing *)
 
 let parse (s: string) : decls =
   let lexbuf = Lexing.from_string s in
