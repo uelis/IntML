@@ -1,3 +1,5 @@
+(** Declarations used in toplevel.
+*)
 
 type decl = 
   | TermDeclW of Term.var * Term.t

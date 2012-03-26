@@ -1,3 +1,5 @@
+(** Compilation to circuits
+*)
 open Term
 open Unify
 open Typing
