@@ -1,0 +1,25 @@
+(* Kierstead terms *)
+letu t1 = fun f -> copy f as f1, f2 in f1 (fun x -> f2 (fun y -> y))
+letu t2 = fun f -> copy f as f1, f2 in f1 (fun x -> f2 (fun y -> x))
+
+(* We define an argument that distinguishes t1 and t2. *)
+letw true : 2 = inl(<>)
+letw false : 2 = inr(<>)
+
+letu nor : [2] --> [2] --> [2] =
+  fun x -> fun y -> 
+    let [c] = x in        
+    let [d] = y in
+      [if c then false else if d then false else true]
+
+letu tester =
+  fun g -> copy g as g1, g2 in 
+   nor (g1 [false]) (g2 [true])
+
+(* The terms (t1 tester) and (t2 tester) give different results. *)
+
+letw test1 = 
+   let [r] = t1 tester in r
+
+letw test2 = 
+   let [r] = t2 tester in r
