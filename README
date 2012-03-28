@@ -1,5 +1,5 @@
-1. Basic Usage
----------------
+Basic Usage
+===========
 
  An intml-file consists of definition of the form:
  
@@ -16,11 +16,11 @@
  used to evaluate terms.
 
 
-2. Interactive Mode
---------------------
+Interactive Mode
+----------------
 
-2.1. Working Class Terms
--------------------------
+Working Class Terms
+-------------------
 
  Working class terms can be evaluated directly.
 
@@ -39,8 +39,8 @@
   
   = inl(<>)
   
-2.2. Upper Class Terms
------------------------
+Upper Class Terms
+-----------------
 
  Upper class terms can be defined using letu.
 
