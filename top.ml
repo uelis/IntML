@@ -94,7 +94,7 @@ let rec exec_query (ds: typed_decls) (q: query) : typed_decls =
         ds
     | DirDecl("decl", d) ->
         let substituted_decl = 
-          List.fold_left (fun td d -> subst_typed_decl_in_decl d td) d ds in
+          List.fold_right subst_typed_decl_in_decl ds d in
         new_decl ds substituted_decl
     | Dir("simlength") ->
         Printf.printf "The current value of #simstep is %i.\n" !sim_length;
