@@ -85,6 +85,12 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
       let listalpha = newty (Type.ListW alpha) in
       let b = newty (FunW(alpha, newty (FunW(listalpha, listalpha)))) in
         b, []
+  | ConstW(a, Clistcase) ->
+      let alpha = newty Type.Var in        
+      let one = newty OneW in
+      let listalpha = newty (Type.ListW alpha) in
+      let b = newty (FunW(listalpha, newty (SumW[one; newty (TensorW(alpha, listalpha))]))) in
+        b, []
   | ConstW(a, Cmin) ->
       begin match a with
         | Some a' -> a', []

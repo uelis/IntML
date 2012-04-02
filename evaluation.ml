@@ -8,6 +8,7 @@ type env = (var * value) list
 and value =
   | NilV 
   | ConsV of (value option) * (value option)
+  | MatchV
   | UnitV 
   | SuccV of Type.t
   | EqV of Type.t * value option
@@ -80,6 +81,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
         UnitV
     | ConstW(Some a, Cnil) -> NilV
     | ConstW(Some a, Ccons) -> ConsV(None, None)
+    | ConstW(Some a, Clistcase) -> MatchV
     | ConstW(Some a, Cmin) -> min a
     | ConstW(Some a, Csucc) -> 
         begin 
@@ -147,6 +149,13 @@ and appV (v1: value) (v2: value) : value =
                    | Succ(v2') -> v2')
     | ConsV(None, None) -> ConsV(Some v2, None)
     | ConsV(Some v3, None) -> ConsV(Some v3, Some v2)
+    | MatchV -> 
+        begin
+          match v2 with
+            | NilV -> InV(2, 0, UnitV)
+            | ConsV(Some v3, Some v4) -> InV(2, 1, PairV(v3, v4))
+            | _ -> failwith "Internal: wrong application of match"
+        end
     | EqV(a, None) -> EqV(a, Some v2)
     | EqV(a, Some v3) -> if eq a v2 v3 then InV(2, 0, UnitV) else InV(2, 1, UnitV)
     | _ -> failwith "Internal: Cannot apply non-functional value."

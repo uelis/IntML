@@ -25,6 +25,7 @@ type term_const =
   | Cbot
   | Cnil
   | Ccons
+  | Clistcase
 
 type t = { desc: t_desc;      
            loc: Location.t }

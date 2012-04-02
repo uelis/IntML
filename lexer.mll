@@ -54,6 +54,7 @@ rule main = parse
   | "list"     { TokList }
   | "nil"      { TokKwNil }
   | "cons"     { TokKwCons  }
+  | "match"    { TokKwMatch  }
   | "if"       { TokKwIf }
   | "then"     { TokKwThen }
   | "else"     { TokKwElse }

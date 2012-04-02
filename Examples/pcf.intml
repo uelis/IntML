@@ -1,0 +1,119 @@
+
+letw return = fun x -> inl(x)
+letw continue = fun x -> inr(x)
+
+letw pi1 = fun x -> let <x1, x2> = x in x1
+letw pi2 = fun x -> let <x1, x2> = x in x2
+
+letw true : 2 = inl(<>)
+letw false : 2 = inr(<>)
+letw not : 2 -> 2 =
+  fun x -> if x then false else true
+letw and : 2 -> 2 -> 2 = 
+  fun x -> fun y ->
+    if x then (if y then true else false) else false
+letw or = fun (x : 2) -> fun (y : 2) ->
+  if x then true else y
+letw pi1 = fun x -> let <x1, x2> = x in x1
+letw pi2 = fun x -> let <x1, x2> = x in x2
+
+(* A-level maximum *)
+letw max : 'a =
+ let z = min
+ loop 
+   if succ z = z then return(z) else continue(succ z)
+
+(* working class predecessor *)
+letw pred : 'a -> 'a = 
+  fun (x : 'a) -> 
+     if x = (min : 'a) then (min : 'a)
+     else let y = min 
+          loop if succ y = x then return y else continue (succ y)
+
+(* working class addition *)
+letw add : 'a -> 'b -> 'a = 
+  fun x -> fun y ->
+    let z = <x, y> 
+    loop
+      let <x1, y1> = z in
+      if or (y1 = (min : 'b)) (succ x1 = x1) then return(x1)
+                 else continue(<succ x1, pred y1>)
+
+(* working class subtraction *)
+letw sub : 'a -> 'b -> 'a = 
+  fun x -> fun y ->
+    let z = <x, y> 
+    loop
+      let <x1, y1> = z in
+      if y1 = (min : 'b) then return(x1)
+                 else continue(<pred x1, pred y1>)
+
+letw leq : 'a -> 'b -> 2 =
+  fun x -> fun y ->
+    let z = <x, y>
+    loop
+      let <x', y'> = z in
+      if y' = min then
+         if x' = min then return true else return false
+      else 
+         if x = min then return true else continue <pred x', pred y'>
+
+letw divmod : 'a -> 'b -> 'a * 'a = 
+  fun x -> fun y ->
+    let z = <x, (min : 'a)>
+    loop
+      let <x', d> = z in
+      if leq x' y then 
+         if leq y x' then return <succ d, min> else return <d, x'>
+      else continue <sub x' y, succ d>
+
+(* Print values of 'a as decimal numbers.
+ * (uses function types!) *)
+letw print_dec : 'a -> 1 =
+   let ten = (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ min))))))))) : 11) in
+   let print_upto10 =
+      fun (x : 'a) ->
+        let y = min in
+        if x = y then print "0" 
+        else let y = succ y in if x = y then print "1" 
+        else let y = succ y in if x = y then print "2" 
+        else let y = succ y in if x = y then print "3" 
+        else let y = succ y in if x = y then print "4" 
+        else let y = succ y in if x = y then print "5" 
+        else let y = succ y in if x = y then print "6" 
+        else let y = succ y in if x = y then print "7" 
+        else let y = succ y in if x = y then print "8" 
+        else print "9" in
+   fun x -> 
+      let p = <x, fun u -> u>
+      loop 
+         let <z, f> = p in
+         let <d, m> = divmod z ten in
+         let f' = fun u -> print_upto10 m; f u in
+           if d = min then 
+             f' <>; return <>
+           else 
+             continue <d, f'>
+
+letw fixw = fun x ->
+  case x of 
+    inl(lx) -> 
+      let <l,x> = lx in
+        case x of
+          inl(bq) ->
+            let <b,q> = bq in
+              inl(<cons b l, inr(q)>)
+        | inr(a) ->
+            case match l of
+              inl(nl) -> 
+                 inr(a)
+            | inr(cns) ->
+               let <hd, tl> = cns in
+                 inl(<tl, inl(<hd, a>)>)
+  | inr(q) -> 
+     inl(<nil, inr(q)>)
+
+letu fix = hack fixw
+ as {list<'b>}({'b}'a --o 'a) --o 'a
+(* right means continue with the loop, left means stop with this value *)
+

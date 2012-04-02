@@ -218,6 +218,7 @@ let string_of_term_const (c: term_const) : string =
   | Cbot -> "bot"
   | Cnil -> "nil"
   | Ccons -> "cons"
+  | Clistcase -> "match"
 
 let string_of_termW (term: Term.t): string =
   let buf = Buffer.create 80 in

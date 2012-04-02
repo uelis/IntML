@@ -52,6 +52,8 @@ let rec equals (u: t) (v: t) : bool =
         | TensorW(u1, u2), TensorW(v1, v2) | TensorU(u1, u2), TensorU(v1, v2) 
         | FunW(u1, u2), FunW(v1, v2) | BoxU(u1, u2), BoxU(v1, v2) ->
             (equals u1 v1) && (equals u2 v2)
+        | ListW(u1), ListW(v1) ->
+            (equals u1 v1)
         | FunU(u1, u2, u3), FunU(v1, v2, v3) ->
             (equals u1 v1) && (equals u2 v2) && (equals u3 v3)
         | SumW(lu), SumW(lv) ->            
@@ -79,6 +81,7 @@ let rec rename (f: t -> t) : t -> t =
       | TensorW(b1, b2) -> newty(TensorW(ren b1, ren b2))
       | SumW(bs) -> newty(SumW(List.map ren bs))
       | FunW(b1, b2) -> newty(FunW(ren b1, ren b2))
+      | ListW(a1) -> newty(ListW(ren a1))
       | BoxU(a1, a2) -> newty(BoxU(ren a1, ren a2))
       | TensorU(b1, b2) -> newty(TensorU(ren b1, ren b2))
       | FunU(a1, b1, b2) -> newty(FunU(ren a1, ren b1, ren b2))
@@ -103,6 +106,7 @@ let rec freshen_index_types (a: t) : t =
       | TensorW(b1, b2) -> newty(TensorW(freshen_index_types b1, freshen_index_types b2))
       | SumW(bs) -> newty(SumW(List.map freshen_index_types bs))
       | FunW(b1, b2) -> newty(FunW(freshen_index_types b1, freshen_index_types b2))
+      | ListW(a1) -> newty(ListW(freshen_index_types a1))
       | BoxU(a1, a2) -> newty(BoxU(freshen_index_types a1, freshen_index_types a2))
       | TensorU(b1, b2) -> newty(TensorU(freshen_index_types b1, freshen_index_types b2))
       | FunU(a1, b1, b2) -> newty(FunU(newty Var, freshen_index_types b1, freshen_index_types b2))
