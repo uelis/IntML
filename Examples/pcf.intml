@@ -115,5 +115,28 @@ letw fixw = fun x ->
 
 letu fix = hack fixw
  as {list<'b>}({'b}'a --o 'a) --o 'a
+
+letu f : (['a] --> ['a]) --> ['a] --> ['a] = 
+  fun f -> fun x ->
+    let [v] = x in
+      case leq v (succ (min:100)) of 
+        inl(true) ->
+          [succ min]
+      | inr(false) ->
+          copy f as f1, f2 in
+          let [w1] = f1 [pred v] in
+          let [w2] = f2 [pred (pred v)] in
+            [add w1 w2]
+
+letu fib : [100] --> [100] = fix f
+
+letw t1 = let [x] = fib [min] in print " "; print_dec x
+letw t2 = let [x] = fib [succ min] in print " "; print_dec x
+letw t2 = let [x] = fib [succ (succ min)] in print " "; print_dec x
+letw t2 = let [x] = fib [succ (succ (succ min))] in print " "; print_dec x
+letw t2 = let [x] = fib [succ (succ (succ (succ min)))] in print " "; print_dec x
+letw t2 = let [x] = fib [succ (succ (succ (succ (succ min))))] in print " "; print_dec x
+letw t2 = let [x] = fib [succ (succ (succ (succ (succ (succ min)))))] in print " "; print_dec x
+letw t2 = let [x] = fib [succ (succ (succ (succ (succ (succ (succ min))))))] in print " "; print_dec x
 (* right means continue with the loop, left means stop with this value *)
 
