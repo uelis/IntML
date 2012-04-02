@@ -102,3 +102,19 @@ Upper Class Terms
     : 1 * 1 * ('a + 'b) + 1 -> 1 * 1 * (1 + 'c) + 'a * 'a
  
     = functional value
+
+ * Animations for circuit computation can be generated using
+   the #sim directive. This generates a pdf file with an animation
+   of circuit computation. It needs graphviz (dot) and pdftk.
+
+   For example 
+     
+     # #sim d inr(inr(<>)) 
+
+   generates a file circuit.sim.pdf in the current directory, which
+   shows the first 10 steps of the computation of cirucit d with input
+   inr(inr(<>)). 
+
+   The number of steps can be changed as follows:
+    
+    # #simlenght 20
