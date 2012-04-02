@@ -21,6 +21,7 @@ and desc =
   | TensorW of t * t
   | SumW of t list
   | FunW of t * t
+  | ListW of t
   | BoxU of t * t
   | TensorU of t * t
   | FunU of t * t * t

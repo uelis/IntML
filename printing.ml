@@ -98,6 +98,10 @@ let string_of_type (ty: Type.t): string =
           Buffer.add_string buf (name_of_typevar t)
       | Type.ZeroW -> Buffer.add_char buf '0'
       | Type.OneW -> Buffer.add_char buf '1'
+      | Type.ListW a -> 
+          Buffer.add_string buf "list<";
+          s_typeW a;
+          Buffer.add_char buf '>'
       | Type.FunW _ | Type.SumW _ | Type.TensorW _ ->
           Buffer.add_char buf '(';
           s_typeW t;
@@ -146,7 +150,7 @@ let string_of_type (ty: Type.t): string =
           s_typeW t2;
           Buffer.add_char buf ']'
       | Type.ZeroW | Type.OneW | Type.FunW _
-      | Type.SumW _ | Type.TensorW _ ->
+      | Type.SumW _ | Type.TensorW _ | Type.ListW _ ->
           s_typeW t
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -195,7 +199,7 @@ let abstract_string_of_typeU (ty: Type.t): string =
           Buffer.add_string buf (string_of_type t2);
           Buffer.add_char buf ']'
       | Type.ZeroW | Type.OneW | Type.FunW _
-      | Type.SumW _ | Type.TensorW _ ->
+      | Type.SumW _ | Type.TensorW _ | Type.ListW _ ->
           Buffer.add_string buf (string_of_type t);
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -212,6 +216,8 @@ let string_of_term_const (c: term_const) : string =
   | Csucc -> "succ"
   | Ceq -> "eq"
   | Cbot -> "bot"
+  | Cnil -> "nil"
+  | Ccons -> "cons"
 
 let string_of_termW (term: Term.t): string =
   let buf = Buffer.create 80 in

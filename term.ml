@@ -20,6 +20,8 @@ type term_const =
   | Csucc
   | Ceq
   | Cbot
+  | Cnil
+  | Ccons
 
 type t =
     { desc: t_desc;      

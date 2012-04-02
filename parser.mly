@@ -60,6 +60,9 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokColon
 %token TokSemicolon
 %token TokSharp
+%token TokList
+%token TokKwNil
+%token TokKwCons
 %token TokEquals
 %token TokKwIf
 %token TokKwThen
@@ -185,6 +188,10 @@ termW_atom:
        { mkTerm (ConstW(None, Cmin)) } 
     | TokKwSucc
        { mkTerm (ConstW(None, Csucc)) }
+    | TokKwNil
+       { mkTerm (ConstW(None, Cnil)) } 
+    | TokKwCons
+       { mkTerm (ConstW(None, Ccons)) }
     | TokKwEq
        { mkTerm (ConstW(None, Ceq)) }
     | TokLParen termW TokColon typeW TokRParen

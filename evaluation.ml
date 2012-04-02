@@ -6,6 +6,8 @@ open Term
 
 type env = (var * value) list
 and value =
+  | NilV 
+  | ConsV of (value option) * (value option)
   | UnitV 
   | SuccV of Type.t
   | EqV of Type.t * value option
@@ -24,7 +26,7 @@ let rec min (ty: Type.t) =
   | Type.TensorW(a, b) -> PairV(min a, min b)
   | Type.SumW(a :: l) -> InV(1 + (List.length l), 0, min a)
   | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
-  | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _->
+  | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _ | Type.ListW _ ->
       failwith "internal: min" 
 
 type succOrMin =
@@ -76,6 +78,8 @@ let rec eval (t: Term.t) (sigma : env) : value =
         print_string s;
         flush stdout;
         UnitV
+    | ConstW(Some a, Cnil) -> NilV
+    | ConstW(Some a, Ccons) -> ConsV(None, None)
     | ConstW(Some a, Cmin) -> min a
     | ConstW(Some a, Csucc) -> 
         begin 
@@ -141,6 +145,8 @@ and appV (v1: value) (v2: value) : value =
     | SuccV(a) -> (match succmin a v2 with
                    | Min(_) -> v2
                    | Succ(v2') -> v2')
+    | ConsV(None, None) -> ConsV(Some v2, None)
+    | ConsV(Some v3, None) -> ConsV(Some v3, Some v2)
     | EqV(a, None) -> EqV(a, Some v2)
     | EqV(a, Some v3) -> if eq a v2 v3 then InV(2, 0, UnitV) else InV(2, 1, UnitV)
     | _ -> failwith "Internal: Cannot apply non-functional value."
@@ -151,6 +157,9 @@ let eval_closed (t: Term.t) : Term.t option =
   let rec cv2termW (v: value) =
     match v with 
       | UnitV -> mkUnitW 
+      | NilV -> mkConstW None Cnil
+      | ConsV(Some v1, Some v2) -> 
+          mkAppW (mkAppW (mkConstW None Ccons) (cv2termW v1)) (cv2termW v2)
       | InV(n, i, v1) -> mkInW n i (cv2termW v1)
       | PairV(v1, v2) -> mkPairW (cv2termW v1) (cv2termW v2)
       | _ -> raise FunctionalValue in

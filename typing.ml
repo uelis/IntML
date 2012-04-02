@@ -77,6 +77,14 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
       end
   | ConstW(a, Cprint s) ->
       newty OneW, []
+  | ConstW(a, Cnil) ->
+      let alpha = newty Type.Var in        
+        newty (Type.ListW alpha), []
+  | ConstW(a, Ccons) ->
+      let alpha = newty Type.Var in        
+      let listalpha = newty (Type.ListW alpha) in
+      let b = newty (FunW(alpha, newty (FunW(listalpha, listalpha)))) in
+        b, []
   | ConstW(a, Cmin) ->
       begin match a with
         | Some a' -> a', []

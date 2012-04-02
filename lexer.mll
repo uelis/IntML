@@ -51,6 +51,9 @@ rule main = parse
   | ';'        { TokSemicolon }
   | '#'        { TokSharp }
   | '='        { TokEquals }
+  | "list"     { TokList }
+  | "nil"      { TokKwNil }
+  | "cons"     { TokKwCons  }
   | "if"       { TokKwIf }
   | "then"     { TokKwThen }
   | "else"     { TokKwElse }
