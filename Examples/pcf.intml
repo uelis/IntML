@@ -39,6 +39,14 @@ letw add : 'a -> 'b -> 'a =
       if or (y1 = (min : 'b)) (succ x1 = x1) then return(x1)
                  else continue(<succ x1, pred y1>)
 
+letw mul : 'a -> 'b -> 'a = 
+  fun x -> fun y ->
+    let z = <(min:'a), y> 
+    loop
+      let <x1, y1> = z in
+      if y1 = (min : 'b) then return(x1)
+                 else continue(<add x x1, pred y1>)
+
 (* working class subtraction *)
 letw sub : 'a -> 'b -> 'a = 
   fun x -> fun y ->
@@ -130,13 +138,42 @@ letu f : (['a] --> ['a]) --> ['a] --> ['a] =
 
 letu fib : [100] --> [100] = fix f
 
-letw t1 = let [x] = fib [min] in print " "; print_dec x
-letw t2 = let [x] = fib [succ min] in print " "; print_dec x
-letw t2 = let [x] = fib [succ (succ min)] in print " "; print_dec x
-letw t2 = let [x] = fib [succ (succ (succ min))] in print " "; print_dec x
-letw t2 = let [x] = fib [succ (succ (succ (succ min)))] in print " "; print_dec x
-letw t2 = let [x] = fib [succ (succ (succ (succ (succ min))))] in print " "; print_dec x
-letw t2 = let [x] = fib [succ (succ (succ (succ (succ (succ min)))))] in print " "; print_dec x
-letw t2 = let [x] = fib [succ (succ (succ (succ (succ (succ (succ min))))))] in print " "; print_dec x
-(* right means continue with the loop, left means stop with this value *)
+letu g : (['a] --> ['a]) --> ['a] --> ['a] = 
+  fun f -> fun x ->
+    let [v] = x in
+      case v = min of 
+        inl(true) ->
+          [succ min]
+      | inr(false) ->
+          let [w1] = f [pred v] in
+            [mul v w1]
+
+letu fact : [1000] --> [1000] = fix g            
+
+letu g_tr : (['a] --> ['a] --> ['a]) --> ['a] --> ['a] --> ['a] = 
+  fun f -> fun x -> fun accu ->
+    let [v] = x in
+    let [acc] = accu in
+      case v = min of 
+        inl(true) ->
+          [acc]
+      | inr(false) ->
+          f [pred v] [mul v acc]
+
+letw t = let [x] = fib [min] in print " "; print_dec x
+letw t = let [x] = fib [succ min] in print " "; print_dec x
+letw t = let [x] = fib [succ (succ min)] in print " "; print_dec x
+letw t = let [x] = fib [succ (succ (succ min))] in print " "; print_dec x
+letw t = let [x] = fib [succ (succ (succ (succ min)))] in print " "; print_dec x
+letw t = let [x] = fib [succ (succ (succ (succ (succ min))))] in print " "; print_dec x
+letw t = let [x] = fib [succ (succ (succ (succ (succ (succ min)))))] in print " "; print_dec x
+letw t = let [x] = fib [succ (succ (succ (succ (succ (succ (succ min))))))] in print " "; print_dec x
+
+letw t = let [x] = fact [min] in print " "; print_dec x
+letw t = let [x] = fact [succ min] in print " "; print_dec x
+letw t = let [x] = fact [succ (succ min)] in print " "; print_dec x
+letw t = let [x] = fact [succ (succ (succ min))] in print " "; print_dec x
+letw t = let [x] = fact [succ (succ (succ (succ min)))] in print " "; print_dec x
+letw t = let [x] = fact [succ (succ (succ (succ (succ min))))] in print " "; print_dec x
+letw t = let [x] = fact [succ (succ (succ (succ (succ (succ min)))))] in print " "; print_dec x
 
