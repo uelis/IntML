@@ -52,7 +52,7 @@ let rec print_compiled_terms (d: typed_decls) : unit =
         let (ct, ty) = compile_termU t in
           flush stdout;
           let oc = open_out (Printf.sprintf "%s.wc" f) in 
-            Printf.fprintf oc "%s\n" (Printing.string_of_termW ct);
+            Printf.fprintf oc "%s\n" (prg_termU t);
             close_out oc;
             print_compiled_terms r
 

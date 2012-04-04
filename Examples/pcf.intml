@@ -175,5 +175,4 @@ letw t = let [x] = fact [succ (succ min)] in print " "; print_dec x
 letw t = let [x] = fact [succ (succ (succ min))] in print " "; print_dec x
 letw t = let [x] = fact [succ (succ (succ (succ min)))] in print " "; print_dec x
 letw t = let [x] = fact [succ (succ (succ (succ (succ min))))] in print " "; print_dec x
-letw t = let [x] = fact [succ (succ (succ (succ (succ (succ min)))))] in print " "; print_dec x
 

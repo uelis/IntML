@@ -224,24 +224,17 @@ let string_of_termW (term: Term.t): string =
   let buf = Buffer.create 80 in
   let rec s_termW (t: Term.t): unit =
     match t.desc with
-      | LambdaW((x, None), t1) ->
+      | LambdaW((x, _), t1) ->
           Buffer.add_string buf "fun ";
           Buffer.add_string buf x;
           Buffer.add_string buf " -> ";
           s_termW t1
-      | LambdaW((x, Some a), t1) ->
-          Buffer.add_string buf "fun (";
-          Buffer.add_string buf x;
-          Buffer.add_string buf " : ";
-          Buffer.add_string buf (string_of_type a);
-          Buffer.add_string buf " ) -> ";
-          s_termW t1
       | LetW(t1, (x, y, t2)) ->
-          Buffer.add_string buf "let <";
+          Buffer.add_string buf "let ";
           Buffer.add_string buf x;
           Buffer.add_string buf ", "; 
           Buffer.add_string buf y; 
-          Buffer.add_string buf "> = "; 
+          Buffer.add_string buf " = "; 
           s_termW t1;
           Buffer.add_string buf " in ";
           s_termW t2
@@ -253,9 +246,9 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf " in ";
           s_termW t2
       | CaseW(t1, [(x, t2); (y, t3)]) ->
-          Buffer.add_string buf "case ";
+          Buffer.add_string buf "match ";
           s_termW t1;
-          Buffer.add_string buf " of inl(";
+          Buffer.add_string buf " with inl(";
           Buffer.add_string buf x;
           Buffer.add_string buf ") -> ";
           s_termW t2;
@@ -291,32 +284,29 @@ let string_of_termW (term: Term.t): string =
       | Var(x) -> 
          Buffer.add_string buf  x
       | UnitW -> 
-          Buffer.add_string buf "<>"
-      | ConstW(None, s) -> 
+          Buffer.add_string buf "()"
+      | ConstW(_, s) -> 
           Buffer.add_string buf (string_of_term_const s)
-      | ConstW(Some a, s) -> 
-          Buffer.add_string buf (string_of_term_const s);
-          Buffer.add_string buf "(* ";
-          Buffer.add_string buf (string_of_type a);
-          Buffer.add_string buf " *)"
       | PairW(t1, t2) -> 
-          Buffer.add_char buf '<';
+          Buffer.add_char buf '(';
           s_termW_app t1;
           Buffer.add_string buf ", ";
           s_termW_atom t2;
-          Buffer.add_char buf '>'
+          Buffer.add_char buf ')'
       | InW(2, 0, t1) -> 
-          Buffer.add_string buf "inl(";
-          s_termW_app t1;
+          Buffer.add_string buf "(inl ";
+          s_termW_atom t1;
           Buffer.add_char buf ')'
       | InW(2, 1, t1) -> 
-          Buffer.add_string buf "inr(";
-          s_termW_app t1;
+          Buffer.add_string buf "(inr ";
+          s_termW_atom t1;
           Buffer.add_char buf ')'
       | InW(n, k, t1) ->
           Buffer.add_string buf (Printf.sprintf "in(%i, %i," n k);
           s_termW_app t1;
           Buffer.add_char buf ')'
+      | TypeAnnot(t, _) ->
+          s_termW_atom t
       | LambdaW(_, _) | LetW(_, _) | CaseW(_, _)
       | TrW(_) | AppW(_, _) ->
           Buffer.add_char buf '(';
