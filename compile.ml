@@ -672,7 +672,7 @@ let rec project (a: Type.t) (b: Type.t) : Term.t =
 type equation = int * (Term.var * Term.t)
 
 let string_of_equation (i, (x, t)) =
-  Printf.sprintf "apply%i(%s) = %s" i x (Printing.string_of_termW t)
+  Printf.sprintf "and apply%i(%s) = %s" i x (Printing.string_of_termW t)
 
 let eqns_of_circuit (c : circuit) : equation list =                                   
   (* Information about the wires in the graph *)
@@ -717,7 +717,8 @@ let eqns_of_circuit (c : circuit) : equation list =
    * and returns the action that must happen if the token
    * is passed along that path
    *)
-  let in_k k n t = Term.mkAppW (Term.mkVar (Printf.sprintf "apply%i" k)) t in
+  let in_k k n t = 
+    if k = 0 then t else Term.mkAppW (Term.mkVar (Printf.sprintf "apply%i" k)) t in
   let rec action dst = 
     let x = fresh_var() in
     let y = fresh_var() in
@@ -919,7 +920,21 @@ let prg_of_circuit (c: circuit) : string =
   let c' = { output = map_wire pi c.output;
              instructions = List.map (map_instruction pi) c.instructions} in
   let eqns = eqns_of_circuit c' in
-    List.fold_left (fun s e -> (string_of_equation e) ^ "\n" ^ s) "" eqns
+    "type ('a, 'b) sum = Inl of 'a | Inr of 'b \n" ^
+    "let min = () \n" ^
+    "let zero = 0 \n" ^
+    "let succ n = n + 1 \n" ^
+    "let pred n = if n > 0 then n-1 else n \n" ^
+    "let eq m n = if (m = n) then Inl() else Inr() \n" ^
+    "let listcase l = \n" ^
+    "  match l with \n" ^
+    "    | [] -> Inl() \n" ^
+    "    | x::xs -> Inr(x, xs) \n" ^
+    "let rec bot () = bot ()                  \n" ^
+    "let nil = [] \n" ^
+    "let cons x xs = x :: xs  \n\n" ^
+    "let rec dummy = 0 \n" ^ 
+    (List.fold_left (fun s e -> (string_of_equation e) ^ "\n" ^ s) "" eqns)
 
 let prg_termU (t: Term.t) : string =
   let graph = circuit_of_termU [] [] t in

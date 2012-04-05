@@ -216,7 +216,7 @@ let string_of_term_const (c: term_const) : string =
   | Cmin -> "min"
   | Csucc -> "succ"
   | Ceq -> "eq"
-  | Cbot -> "bot"
+  | Cbot -> "bot()"
   | Cnatpred -> "pred"
   | Cnil -> "nil"
   | Ccons -> "cons"
@@ -289,9 +289,17 @@ let string_of_termW (term: Term.t): string =
       | UnitW -> 
           Buffer.add_string buf "()"
       | ConstW(Some a, Cmin) -> 
-            Buffer.add_string buf "(min:";
-            Buffer.add_string buf (string_of_type a);
-            Buffer.add_string buf ")"
+          begin
+            match Type.finddesc a with
+              | Type.OneW -> 
+                  Buffer.add_string buf "()"
+              | Type.NatW -> 
+                  Buffer.add_string buf "0"
+              | _ ->
+                  Buffer.add_string buf "(min:";
+                  Buffer.add_string buf (string_of_type a);
+                  Buffer.add_string buf ")"
+          end
       | ConstW(_, s) -> 
           Buffer.add_string buf (string_of_term_const s)
       | PairW(t1, t2) -> 
