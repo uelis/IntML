@@ -61,6 +61,7 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokSemicolon
 %token TokSharp
 %token TokList
+%token TokKwNat
 %token TokKwNil
 %token TokKwCons
 %token TokKwMatch
@@ -71,6 +72,7 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokKwPrint
 %token TokKwMin
 %token TokKwSucc
+%token TokKwPred
 %token TokKwEq
 %token TokKwHack
 %token TokLoop
@@ -189,6 +191,8 @@ termW_atom:
        { mkTerm (ConstW(None, Cmin)) } 
     | TokKwSucc
        { mkTerm (ConstW(None, Csucc)) }
+    | TokKwPred
+       { mkTerm (ConstW(None, Cnatpred)) }
     | TokKwNil
        { mkTerm (ConstW(None, Cnil)) } 
     | TokKwCons
@@ -235,6 +239,8 @@ typeW_atom:
                    Type.newty (Type.SumW [nat_ty (n-1); nat_ty 1])
         in  nat_ty $1
       }
+    | TokKwNat
+      { Type.newty (Type.NatW) }
     | TokList TokLAngle typeW TokRAngle
       { Type.newty (Type.ListW $3) }
     | TokLParen typeW TokRParen

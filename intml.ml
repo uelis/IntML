@@ -49,7 +49,7 @@ let rec print_compiled_terms (d: typed_decls) : unit =
     | TypedTermDeclU(f, t, _) :: r -> 
         Printf.printf "*** Writing compiled term for '%s' to file '%s.wc' ***\n" f f;
         flush stdout;
-        let (ct, ty) = compile_termU t in
+(*        let (ct, _) = compile_termU t in*)
           flush stdout;
           let oc = open_out (Printf.sprintf "%s.wc" f) in 
             Printf.fprintf oc "%s\n" (prg_termU t);

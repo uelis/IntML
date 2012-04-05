@@ -103,6 +103,13 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
              | Some a' -> a', [eq_expected_constraint t (a', b)]
              | None -> b, []
       end
+  | ConstW(a, Cnatpred) ->
+      let nat = newty Type.NatW in
+      let b = newty (FunW(nat, nat)) in
+      begin match a with
+             | Some a' -> a', [eq_expected_constraint t (a', b)]
+             | None -> b, []
+      end
   | ConstW(a, Ceq) ->
       let alpha = newty Var in
       let one = newty OneW in

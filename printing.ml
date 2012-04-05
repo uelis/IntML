@@ -96,6 +96,7 @@ let string_of_type (ty: Type.t): string =
       | Type.Var ->  
           Buffer.add_char buf '\'';
           Buffer.add_string buf (name_of_typevar t)
+      | Type.NatW -> Buffer.add_string buf "nat"
       | Type.ZeroW -> Buffer.add_char buf '0'
       | Type.OneW -> Buffer.add_char buf '1'
       | Type.ListW a -> 
@@ -149,7 +150,7 @@ let string_of_type (ty: Type.t): string =
           Buffer.add_string buf ", ";
           s_typeW t2;
           Buffer.add_char buf ']'
-      | Type.ZeroW | Type.OneW | Type.FunW _
+      | Type.ZeroW | Type.OneW | Type.FunW _ | Type.NatW
       | Type.SumW _ | Type.TensorW _ | Type.ListW _ ->
           s_typeW t
       | Type.FunU _ | Type.TensorU _  ->
@@ -198,7 +199,7 @@ let abstract_string_of_typeU (ty: Type.t): string =
           Buffer.add_string buf ", ";
           Buffer.add_string buf (string_of_type t2);
           Buffer.add_char buf ']'
-      | Type.ZeroW | Type.OneW | Type.FunW _
+      | Type.NatW | Type.ZeroW | Type.OneW | Type.FunW _
       | Type.SumW _ | Type.TensorW _ | Type.ListW _ ->
           Buffer.add_string buf (string_of_type t);
       | Type.FunU _ | Type.TensorU _  ->
@@ -216,9 +217,10 @@ let string_of_term_const (c: term_const) : string =
   | Csucc -> "succ"
   | Ceq -> "eq"
   | Cbot -> "bot"
+  | Cnatpred -> "pred"
   | Cnil -> "nil"
   | Ccons -> "cons"
-  | Clistcase -> "match"
+  | Clistcase -> "listcase"
 
 let string_of_termW (term: Term.t): string =
   let buf = Buffer.create 80 in
@@ -247,12 +249,12 @@ let string_of_termW (term: Term.t): string =
           s_termW t2
       | CaseW(t1, [(x, t2); (y, t3)]) ->
           Buffer.add_string buf "match ";
-          s_termW t1;
-          Buffer.add_string buf " with inl(";
+          s_termW_atom t1;
+          Buffer.add_string buf " with Inl(";
           Buffer.add_string buf x;
           Buffer.add_string buf ") -> ";
           s_termW t2;
-          Buffer.add_string buf " | inr(";
+          Buffer.add_string buf " | Inr(";
           Buffer.add_string buf y;
           Buffer.add_string buf ") -> ";
           s_termW t3
@@ -285,6 +287,10 @@ let string_of_termW (term: Term.t): string =
          Buffer.add_string buf  x
       | UnitW -> 
           Buffer.add_string buf "()"
+      | ConstW(Some a, Cmin) -> 
+            Buffer.add_string buf "(min:";
+            Buffer.add_string buf (string_of_type a);
+            Buffer.add_string buf ")"
       | ConstW(_, s) -> 
           Buffer.add_string buf (string_of_term_const s)
       | PairW(t1, t2) -> 
@@ -294,11 +300,11 @@ let string_of_termW (term: Term.t): string =
           s_termW_atom t2;
           Buffer.add_char buf ')'
       | InW(2, 0, t1) -> 
-          Buffer.add_string buf "(inl ";
+          Buffer.add_string buf "(Inl ";
           s_termW_atom t1;
           Buffer.add_char buf ')'
       | InW(2, 1, t1) -> 
-          Buffer.add_string buf "(inr ";
+          Buffer.add_string buf "(Inr ";
           s_termW_atom t1;
           Buffer.add_char buf ')'
       | InW(n, k, t1) ->

@@ -23,6 +23,7 @@ type term_const =
   | Csucc
   | Ceq
   | Cbot
+  | Cnatpred
   | Cnil
   | Ccons
   | Clistcase

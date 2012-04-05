@@ -6,9 +6,11 @@ open Term
 
 type env = (var * value) list
 and value =
+  | NatPredV 
   | NilV 
   | ConsV of (value option) * (value option)
   | MatchV
+  | NatV of int
   | UnitV 
   | SuccV of Type.t
   | EqV of Type.t * value option
@@ -23,6 +25,7 @@ let rec min (ty: Type.t) =
   | Type.Var -> 
       Printf.printf "warning: trying to evaluate polymophic min; instantiating variables with 1\n";
       UnitV  
+  | Type.NatW -> NatV(0)
   | Type.OneW -> UnitV
   | Type.TensorW(a, b) -> PairV(min a, min b)
   | Type.SumW(a :: l) -> InV(1 + (List.length l), 0, min a)
@@ -39,6 +42,7 @@ let rec succmin (ty: Type.t) (v: value) : succOrMin =
   | Type.Var, _ -> 
       Printf.printf "warning: trying to evaluate polymophic succ; instantiating variables with 1\n";
       Min(UnitV)  
+  | Type.NatW, NatV(n) -> Succ(NatV(n+1))
   | Type.OneW, _ -> Min(UnitV)
   | Type.TensorW(a, b), PairV(x, y) -> 
      (match succmin b y with
@@ -66,6 +70,7 @@ let rec eq (ty: Type.t) (v1: value) (v2: value) : bool =
       Printf.printf "warning: trying to evaluate polymophic eq; instantiating variables with 1\n";
       true
   | Type.OneW, _, _ -> true
+  | Type.NatW, NatV(v), NatV(w) -> v=w
   | Type.TensorW(a, b), PairV(v11, v12), PairV(v21, v22) -> eq a v11 v21 && eq b v12 v22
   | Type.SumW(l), InV(m, i, v1'), InV(n, j, v2') -> 
          (m = n) && (i = j) && (eq (List.nth l i) v1' v2')
@@ -79,6 +84,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
         print_string s;
         flush stdout;
         UnitV
+    | ConstW(Some a, Cnatpred) -> NatPredV
     | ConstW(Some a, Cnil) -> NilV
     | ConstW(Some a, Ccons) -> ConsV(None, None)
     | ConstW(Some a, Clistcase) -> MatchV
@@ -147,6 +153,12 @@ and appV (v1: value) (v2: value) : value =
     | SuccV(a) -> (match succmin a v2 with
                    | Min(_) -> v2
                    | Succ(v2') -> v2')
+    | NatPredV -> 
+        begin
+          match v2 with
+            | NatV(n) -> if n > 0 then NatV(n-1) else NatV(n)
+            | _ -> failwith "Internal: wrong application of pred"
+        end
     | ConsV(None, None) -> ConsV(Some v2, None)
     | ConsV(Some v3, None) -> ConsV(Some v3, Some v2)
     | MatchV -> 
@@ -171,7 +183,7 @@ let eval_closed (t: Term.t) : Term.t option =
           mkAppW (mkAppW (mkConstW None Ccons) (cv2termW v1)) (cv2termW v2)
       | InV(n, i, v1) -> mkInW n i (cv2termW v1)
       | PairV(v1, v2) -> mkPairW (cv2termW v1) (cv2termW v2)
-      | _ -> raise FunctionalValue in
+      | _ -> raise FunctionalValue in    
   let v = eval t [] in
     try 
       Some (cv2termW v)

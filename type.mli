@@ -16,6 +16,7 @@ type t =
 and desc = 
   | Link of t
   | Var
+  | NatW
   | ZeroW
   | OneW
   | TensorW of t * t

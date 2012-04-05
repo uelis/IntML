@@ -5,7 +5,7 @@
 
 type var = string
 
-let unusable_var = ""               
+let unusable_var = "_un"
 
 module Location = struct
   type pos = { column: int; line: int} 
@@ -20,6 +20,7 @@ type term_const =
   | Csucc
   | Ceq
   | Cbot
+  | Cnatpred
   | Cnil
   | Ccons
   | Clistcase

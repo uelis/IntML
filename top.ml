@@ -37,6 +37,7 @@ let term_loc (s : Term.t option) =
 
 let rec new_decl (ds : typed_decls) (d : decl) : typed_decls =
   Printing.reset_names ();
+  flush stdout;
   match d with
     | TermDeclW(f, t) ->
         begin 

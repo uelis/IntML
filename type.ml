@@ -7,6 +7,7 @@ type t =
 and desc = 
   | Link of t
   | Var
+  | NatW
   | ZeroW
   | OneW
   | TensorW of t * t
@@ -47,7 +48,7 @@ let rec equals (u: t) (v: t) : bool =
       match ur.desc, vr.desc with
         | Var, Var -> 
             false
-        | ZeroW, ZeroW | OneW, OneW -> 
+        | NatW, NatW | ZeroW, ZeroW | OneW, OneW -> 
             true
         | TensorW(u1, u2), TensorW(v1, v2) | TensorU(u1, u2), TensorU(v1, v2) 
         | FunW(u1, u2), FunW(v1, v2) | BoxU(u1, u2), BoxU(v1, v2) ->
@@ -76,6 +77,7 @@ let rec rename (f: t -> t) : t -> t =
   let rec ren (b: t) : t = 
     match (find b).desc with
       | Var -> f (find b)
+      | NatW -> newty NatW
       | ZeroW -> newty ZeroW
       | OneW -> newty OneW 
       | TensorW(b1, b2) -> newty(TensorW(ren b1, ren b2))
@@ -102,7 +104,7 @@ let freshen t =
 
 let rec freshen_index_types (a: t) : t =
     match (find a).desc with
-      | Var | ZeroW | OneW -> a
+      | Var | ZeroW | OneW | NatW -> a
       | TensorW(b1, b2) -> newty(TensorW(freshen_index_types b1, freshen_index_types b2))
       | SumW(bs) -> newty(SumW(List.map freshen_index_types bs))
       | FunW(b1, b2) -> newty(FunW(freshen_index_types b1, freshen_index_types b2))

@@ -23,12 +23,13 @@ letw max : 'a =
  loop 
    if succ z = z then return(z) else continue(succ z)
 
-(* working class predecessor *)
+(* working class predecessor
 letw pred : 'a -> 'a = 
   fun (x : 'a) -> 
      if x = (min : 'a) then (min : 'a)
      else let y = min 
           loop if succ y = x then return y else continue (succ y)
+          *)
 
 (* working class addition *)
 letw add : 'a -> 'b -> 'a = 
@@ -78,7 +79,7 @@ letw divmod : 'a -> 'b -> 'a * 'a =
 (* Print values of 'a as decimal numbers.
  * (uses function types!) *)
 letw print_dec : 'a -> 1 =
-   let ten = (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ min))))))))) : 11) in
+   let ten = succ (succ (succ (succ (succ (succ (succ (succ (succ (succ min)))))))))  in
    let print_upto10 =
       fun (x : 'a) ->
         let y = min in
@@ -124,10 +125,30 @@ letw fixw = fun x ->
 letu fix = hack fixw
  as {list<'b>}({'b}'a --o 'a) --o 'a
 
+letu addu : ['a] --> ['b] --> ['a] =
+  fun x ->
+  fix (fun (add : ['b] --> ['a]) -> fun (y : ['b]) ->
+    let [vy] = y in
+    case vy = min of
+      inl(true) -> x
+    | inr(false) -> 
+       let [s] = add [pred vy] in [succ s]
+  )
+
+letu fib2 : [nat] --> [nat] = 
+  fix (fun f -> fun x ->
+    let [v] = x in
+      case or (v = min) (v = (succ min)) of 
+        inl(true) ->
+          [succ min]
+      | inr(false) ->
+          copy f as f1, f2 in
+          addu (f1 [pred v]) (f2 [pred (pred v)]))
+
 letu f : (['a] --> ['a]) --> ['a] --> ['a] = 
   fun f -> fun x ->
     let [v] = x in
-      case leq v (succ (min:100)) of 
+      case leq v (succ min) of 
         inl(true) ->
           [succ min]
       | inr(false) ->
@@ -136,7 +157,7 @@ letu f : (['a] --> ['a]) --> ['a] --> ['a] =
           let [w2] = f2 [pred (pred v)] in
             [add w1 w2]
 
-letu fib : [100] --> [100] = fix f
+letu fib : [nat] --> [nat] = fix f
 
 letu g : (['a] --> ['a]) --> ['a] --> ['a] = 
   fun f -> fun x ->
@@ -148,7 +169,7 @@ letu g : (['a] --> ['a]) --> ['a] --> ['a] =
           let [w1] = f [pred v] in
             [mul v w1]
 
-letu fact : [1000] --> [1000] = fix g            
+letu fact : [nat] --> [nat] = fix g            
 
 letu g_tr : (['a] --> ['a] --> ['a]) --> ['a] --> ['a] --> ['a] = 
   fun f -> fun x -> fun accu ->
@@ -169,10 +190,18 @@ letw t = let [x] = fib [succ (succ (succ (succ (succ min))))] in print " "; prin
 letw t = let [x] = fib [succ (succ (succ (succ (succ (succ min)))))] in print " "; print_dec x
 letw t = let [x] = fib [succ (succ (succ (succ (succ (succ (succ min))))))] in print " "; print_dec x
 
+letw t = let [x] = fib2 [min] in print " "; print_dec x
+letw t = let [x] = fib2 [succ min] in print " "; print_dec x
+letw t = let [x] = fib2 [succ (succ min)] in print " "; print_dec x
+letw t = let [x] = fib2 [succ (succ (succ min))] in print " "; print_dec x
+letw t = let [x] = fib2 [succ (succ (succ (succ min)))] in print " "; print_dec x
+letw t = let [x] = fib2 [succ (succ (succ (succ (succ min))))] in print " "; print_dec x
+letw t = let [x] = fib2 [succ (succ (succ (succ (succ (succ min)))))] in print " "; print_dec x
+letw t = let [x] = fib2 [succ (succ (succ (succ (succ (succ (succ min))))))] in print " "; print_dec x
+
 letw t = let [x] = fact [min] in print " "; print_dec x
 letw t = let [x] = fact [succ min] in print " "; print_dec x
 letw t = let [x] = fact [succ (succ min)] in print " "; print_dec x
 letw t = let [x] = fact [succ (succ (succ min))] in print " "; print_dec x
 letw t = let [x] = fact [succ (succ (succ (succ min)))] in print " "; print_dec x
 letw t = let [x] = fact [succ (succ (succ (succ (succ min))))] in print " "; print_dec x
-

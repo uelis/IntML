@@ -46,7 +46,7 @@ module Unify(T : sig type t end) = struct
               union c1 c2
           | _, Var -> 
               union c2 c1
-          | ZeroW, ZeroW | OneW, OneW | SumW([]), SumW([]) -> 
+          | NatW, NatW | ZeroW, ZeroW | OneW, OneW | SumW([]), SumW([]) -> 
               ()
           | TensorW(t1, t2), TensorW(s1, s2) | FunW(t1, t2), FunW(s1, s2) 
           | BoxU(t1, t2), BoxU(s1, s2) | TensorU(t1, t2), TensorU(s1, s2) ->

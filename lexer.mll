@@ -61,6 +61,8 @@ rule main = parse
   | "print"    { TokKwPrint }
   | "min"      { TokKwMin }
   | "succ"     { TokKwSucc }
+  | "pred"     { TokKwPred }
+  | "nat"      { TokKwNat }
   | "eq"       { TokKwEq }
   | "hack"     { TokKwHack }
   | "copy"     { TokKwCopy }
