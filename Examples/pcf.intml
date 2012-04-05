@@ -125,14 +125,18 @@ letw fixw = fun x ->
 letu fix = hack fixw
  as {list<'b>}({'b}'a --o 'a) --o 'a
 
+letu succu =
+  fun x -> let [v] = x in [succ v]
+
 letu addu : ['a] --> ['b] --> ['a] =
   fun x ->
   fix (fun (add : ['b] --> ['a]) -> fun (y : ['b]) ->
     let [vy] = y in
     case vy = min of
-      inl(true) -> x
+      inl(true) -> 
+       x
     | inr(false) -> 
-       let [s] = add [pred vy] in [succ s]
+       succu (add [pred vy])
   )
 
 letu fib2 : [nat] --> [nat] = 
@@ -144,6 +148,25 @@ letu fib2 : [nat] --> [nat] =
       | inr(false) ->
           copy f as f1, f2 in
           addu (f1 [pred v]) (f2 [pred (pred v)]))
+
+letu mulu : [nat] --> [nat] --> [nat] =
+  fun x ->
+  fix (fun (mul : [nat] --> [nat]) -> fun (y : [nat]) ->
+    let [vy] = y in
+    case vy = min of
+      inl(true) -> [min]
+    | inr(false) -> 
+       addu x (mul [pred vy])
+  )
+
+letu fact2 : [nat] --> [nat] = 
+  fix (fun f -> fun x ->
+    let [v] = x in
+      case v = min of 
+        inl(true) ->
+          [succ min]
+      | inr(false) ->
+          mulu [v] (f [pred v]))
 
 letu f : (['a] --> ['a]) --> ['a] --> ['a] = 
   fun f -> fun x ->
