@@ -248,7 +248,7 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf " in ";
           s_termW t2
       | CaseW(t1, [(x, t2); (y, t3)]) ->
-          Buffer.add_string buf "match ";
+          Buffer.add_string buf "(match ";
           s_termW_atom t1;
           Buffer.add_string buf " with Inl(";
           Buffer.add_string buf x;
@@ -257,7 +257,8 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf " | Inr(";
           Buffer.add_string buf y;
           Buffer.add_string buf ") -> ";
-          s_termW t3
+          s_termW t3;
+          Buffer.add_string buf ")"
       | CaseW(t1, l) ->
           Buffer.add_string buf "case ";
           s_termW t1;
