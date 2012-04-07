@@ -310,6 +310,14 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf (Printf.sprintf "in(%i, %i," n k);
           s_termW_app t1;
           Buffer.add_char buf ')'
+      | TypeAnnot(t, None) ->
+          s_termW_app t
+      | TypeAnnot(t, Some a) ->
+          Buffer.add_char buf '(';
+          s_termW t;
+          Buffer.add_string buf " : ";
+          Buffer.add_string buf (string_of_type a);
+          Buffer.add_char buf ')'
       | LambdaW(_, _) | LetW(_, _) | CaseW(_, _)
       | TrW(_) | AppW(_, _) ->
           Buffer.add_char buf '(';
