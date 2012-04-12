@@ -920,20 +920,20 @@ let prg_of_circuit (c: circuit) : string =
   let c' = { output = map_wire pi c.output;
              instructions = List.map (map_instruction pi) c.instructions} in
   let eqns = eqns_of_circuit c' in
-    "type ('a, 'b) sum = Inl of 'a | Inr of 'b \n" ^
-    "let min = () \n" ^
-    "let zero = 0 \n" ^
-    "let succ n = n + 1 \n" ^
-    "let pred n = if n > 0 then n-1 else n \n" ^
-    "let eq m n = if (m = n) then Inl() else Inr() \n" ^
-    "let listcase l = \n" ^
-    "  match l with \n" ^
-    "    | [] -> Inl() \n" ^
-    "    | x::xs -> Inr(x, xs) \n" ^
-    "let rec bot () = bot ()                  \n" ^
-    "let nil = [] \n" ^
-    "let cons x xs = x :: xs  \n\n" ^
-    "let rec dummy = 0 \n" ^ 
+    "datatype ('a, 'b) sum = Inl of 'a | Inr of 'b \n" ^
+    "val min = () \n" ^
+    "val zero = 0 \n" ^
+    "fun succ n = n + 1 \n" ^
+    "fun pred n = if n > 0 then n-1 else n \n" ^
+    "fun eq m n = if (m = n) then Inl() else Inr() \n" ^
+    "fun listcase l = \n" ^
+    "  case l of \n" ^
+    "      [] => Inl() \n" ^
+    "    | x::xs => Inr(x, xs) \n" ^
+    "fun bot () = bot ()                  \n" ^
+    "val nil = [] \n" ^
+    "fun cons x xs = x :: xs  \n\n" ^
+    "fun dummy () = 0 \n" ^ 
     (List.fold_left (fun s e -> (string_of_equation e) ^ "\n" ^ s) "" eqns)
 
 let prg_termU (t: Term.t) : string =

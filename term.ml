@@ -5,7 +5,7 @@
 
 type var = string
 
-let unusable_var = "_un"
+let unusable_var = "unusable"
 
 module Location = struct
   type pos = { column: int; line: int} 

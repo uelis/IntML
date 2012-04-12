@@ -227,19 +227,20 @@ let string_of_termW (term: Term.t): string =
   let rec s_termW (t: Term.t): unit =
     match t.desc with
       | LambdaW((x, _), t1) ->
-          Buffer.add_string buf "fun ";
+          Buffer.add_string buf "fn ";
           Buffer.add_string buf x;
-          Buffer.add_string buf " -> ";
+          Buffer.add_string buf " => ";
           s_termW t1
       | LetW(t1, (x, y, t2)) ->
-          Buffer.add_string buf "let ";
+          Buffer.add_string buf "let val (";
           Buffer.add_string buf x;
           Buffer.add_string buf ", "; 
           Buffer.add_string buf y; 
-          Buffer.add_string buf " = "; 
+          Buffer.add_string buf ") = "; 
           s_termW t1;
           Buffer.add_string buf " in ";
-          s_termW t2
+          s_termW t2;
+          Buffer.add_string buf " end "
       | LetBoxW(t1, (x, t2)) ->
           Buffer.add_string buf "let [";
           Buffer.add_string buf x;
@@ -248,15 +249,15 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf " in ";
           s_termW t2
       | CaseW(t1, [(x, t2); (y, t3)]) ->
-          Buffer.add_string buf "(match ";
+          Buffer.add_string buf "(case ";
           s_termW_atom t1;
-          Buffer.add_string buf " with Inl(";
+          Buffer.add_string buf " of Inl(";
           Buffer.add_string buf x;
-          Buffer.add_string buf ") -> ";
+          Buffer.add_string buf ") => ";
           s_termW t2;
           Buffer.add_string buf " | Inr(";
           Buffer.add_string buf y;
-          Buffer.add_string buf ") -> ";
+          Buffer.add_string buf ") => ";
           s_termW t3;
           Buffer.add_string buf ")"
       | CaseW(t1, l) ->
