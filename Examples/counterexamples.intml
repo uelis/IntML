@@ -2,7 +2,7 @@
  * lambda calculus, but not in IntML.
  *
  * In short, v1 has type {1+'a}({'a}X --o X) --o X.
- * while v2 has type ({'a}({'a}X --o X) --o X) --o X.
+ * while v2 has type {...}({'a}({'a}X --o X) --o X) --o X.
  * To type (v2 v1) one would have to unify 'a and 1+'a, which
  * is not possible.
  *)
