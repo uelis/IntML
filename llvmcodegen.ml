@@ -490,30 +490,19 @@ let build_instruction (i : instruction) : unit =
            build_jwa w1 (x, t) w1
        end 
    | Tensor(w1, w2, w3) -> 
+       let x, sigma, v = "x", "sigma", "v" in
        (* <sigma, v> @ w1       |-->  <sigma, inl(v)> @ w3 *)
-       let src1, dp1, da1, dal1 =
-         let src1 = Hashtbl.find entry_points w1.src in
-           Llvm.position_at_end src1 builder;
-           let sp, sa, sal = Hashtbl.find token_names w1.src in
-           let i1 = Llvm.integer_type context 1 in
-           let zero = Llvm.const_null i1 in
-           let dp = sp in
-           let da = build_concat sa sal (Some zero) 1 in
-           let dal = sal + 1 in
-             src1, dp, da, dal
-       in
+       let src1 = Hashtbl.find entry_points w1.src in
+       let dp1, da1, dal1 =
+         let t = mkLetW (mkVar x) 
+                   ((sigma, v), (mkPairW (mkVar sigma) (mkInlW (mkVar v)))) in
+            build_jump_argument w1 (x, t) w3 in
        (* <sigma, v> @ w2       |-->  <sigma, inr(v)> @ w3 *)
-       let src2, dp2, da2, dal2 =
-         let src2 = Hashtbl.find entry_points w2.src in
-           Llvm.position_at_end src2 builder;
-           let sp, sa, sal = Hashtbl.find token_names w2.src in
-           let i1 = Llvm.integer_type context 1 in
-           let one = Llvm.const_all_ones i1 in
-           let dp = sp in
-           let da = build_concat sa sal (Some one) 1 in
-           let dal = sal + 1 in
-             src2, dp, da, dal
-       in
+       let src2 = Hashtbl.find entry_points w2.src in
+       let dp2, da2, dal2 =
+         let t = mkLetW (mkVar x) 
+                   ((sigma, v), (mkPairW (mkVar sigma) (mkInrW (mkVar v)))) in
+            build_jump_argument w2 (x, t) w3 in
        (* insert phi *)
        connect2 (src1, dp1, da1, dal1) (src2, dp2, da2, dal2) w3.dst;
        Llvm.position_at_end src1 builder;
