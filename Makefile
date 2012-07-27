@@ -1,4 +1,5 @@
-all: opt 
+all: 
+	ocamlbuild -cflags "-g -I +llvm-3.0" -lflags "-g -cc g++ -I +llvm-3.0 llvm.cma" intml.byte
 
 byte:
 	ocamlbuild intml.byte

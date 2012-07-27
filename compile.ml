@@ -1139,7 +1139,7 @@ let message_passing_term (c: circuit): Term.t =
             | Epsilon(w1 (* [A] *), 
                       w2 (* \Tens A [B] *), 
                       w3 (* [B] *)) when w2.src = dst ->
-                (* <sigma, <c, v>> @ w1 -> <sigma, v> @ w3 *)
+                (* <sigma, <c, v>> @ w2 -> <sigma, v> @ w3 *)
                 (x, mkLetW (mkVar x) ((sigma, x), 
                   mkLetW (mkVar x) ((c, v), 
                     in_k w3.src (max_wire_src_dst + 1) 

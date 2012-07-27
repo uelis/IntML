@@ -288,7 +288,7 @@ let string_of_termW (term: Term.t): string =
       | Var(x) -> 
          Buffer.add_string buf  x
       | UnitW -> 
-          Buffer.add_string buf "()"
+          Buffer.add_string buf "U()"
       | ConstW(Some a, Cmin) -> 
           begin
             match Type.finddesc a with

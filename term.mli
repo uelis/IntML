@@ -74,8 +74,9 @@ val mkLetBoxU : t -> var * t -> t
 val mkCaseU : t -> var * t -> var * t -> t
 val mkCopyU : t -> (var * var) * t -> t
 val mkHackU : Type.t option -> t -> t
+val mkTypeAnnot : t -> Type.t option -> t
 val mkLambdaWList : var list * t -> t
-val mkAppWList : t -> t list -> t
+val mkAppWList : t -> t list -> t                                  
 
 val free_vars : t -> var list 
 val rename_vars : (var -> var) -> t -> t 

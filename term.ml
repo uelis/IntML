@@ -72,6 +72,7 @@ let mkLetBoxU s (x, t) = { desc = LetBoxU(s, (x, t)); loc = None }
 let mkCaseU s (x1, t1) (x2, t2) = { desc = CaseU(s, (x1, t1), (x2, t2)); loc = None }
 let mkCopyU s ((x, y), t) = { desc = CopyU(s, (x, y, t)); loc = None }
 let mkHackU ty t = { desc = HackU(ty, t); loc = None }
+let mkTypeAnnot t a = { desc = TypeAnnot(t, a); loc = None }
 
 let rec mkLambdaWList (xs, t) = 
   match xs with 

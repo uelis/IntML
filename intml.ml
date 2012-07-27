@@ -49,6 +49,9 @@ let rec print_compiled_terms (d: typed_decls) : unit =
     | TypedTermDeclU(f, t, _) :: r -> 
         Printf.printf "*** Writing compiled term for '%s' to file '%s.wc' ***\n" f f;
         flush stdout;
+        let graph = circuit_of_termU [] [] t in
+        let _ = infer_types graph in 
+          Llvmcodegen.llvm_circuit graph;
 (*        let (ct, _) = compile_termU t in*)
           flush stdout;
           let oc = open_out (Printf.sprintf "%s.wc" f) in 
