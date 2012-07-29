@@ -510,18 +510,16 @@ let build_instruction (i : instruction) : unit =
        let x, sigma, v = "x", "sigma", "v" in
        (* <sigma, v> @ w1       |-->  <sigma, inl(v)> @ w3 *)
        let src1 = Hashtbl.find entry_points w1.src in
-       let denc1' =
+       let denc1 =
          let t = mkLetW (mkVar x) 
                    ((sigma, v), (mkPairW (mkVar sigma) (mkInlW (mkVar v)))) in
             build_jump_argument w1 (x, t) w3 in
-       let denc1 = build_truncate_extend denc1' w3.type_forward in
        (* <sigma, v> @ w2       |-->  <sigma, inr(v)> @ w3 *)
        let src2 = Hashtbl.find entry_points w2.src in
-       let denc2' =
+       let denc2 =
          let t = mkLetW (mkVar x) 
                    ((sigma, v), (mkPairW (mkVar sigma) (mkInrW (mkVar v)))) in
             build_jump_argument w2 (x, t) w3 in
-       let denc2 = build_truncate_extend denc2' w3.type_forward in
        (* insert phi *)         
        connect2 src1 denc1 src2 denc2 w3.dst;
        Llvm.position_at_end src1 builder;
@@ -531,16 +529,21 @@ let build_instruction (i : instruction) : unit =
        (* <sigma, inl(v)> @ w3  |-->  <sigma, v> @ w1
           <sigma, inr(v)> @ w3  |-->  <sigma, v> @ w2 *)        
        begin
-         let src3 = Hashtbl.find entry_points w3.src in
-           Llvm.position_at_end src3 builder;
+         let x, sigma, v, c = "x", "sigma", "v", "c" in
+         let t = mkLetW (mkVar x) 
+                   ((sigma, c), mkCaseW (mkVar c) 
+                         [(v, mkInlW (mkPairW (mkVar sigma) (mkVar v))) ;
+                          (v, mkInrW (mkPairW (mkVar sigma) (mkVar v))) ]) in
+         let src3_block = Hashtbl.find entry_points w3.src in
+           Llvm.position_at_end src3_block builder;
            let senc = Hashtbl.find token_names w3.src in
-           let d_payload = senc.payload in
-           assert (senc.attrib_bitlen > 0);
-           let d_attrib_bitlen = senc.attrib_bitlen - 1 in
-           let d_attrib, cond = build_split senc.attrib d_attrib_bitlen 1 in
-           let denc = {payload = d_payload; attrib = d_attrib; attrib_bitlen = d_attrib_bitlen} in
-           let denc1 = build_truncate_extend denc w1.type_forward in
-           let denc2 = build_truncate_extend denc w2.type_forward in
+           let tenc = build_term [(x, senc)] [(x, w3.type_back)] t 
+                        (Type.newty (Type.SumW[w1.type_forward; w2.type_forward])) in
+           let dal = tenc.attrib_bitlen - 1 in
+           let da, cond = build_split tenc.attrib dal 1 in
+           let denc12= {payload = tenc.payload; attrib = da; attrib_bitlen = dal }in
+           let denc1 = build_truncate_extend denc12 w1.type_forward in
+           let denc2 = build_truncate_extend denc12 w2.type_forward in
              match cond with
                | None -> assert false
                | Some cond' ->
@@ -596,6 +599,18 @@ let build_instruction (i : instruction) : unit =
         end
     | LWeak(w1 (* \Tens A X *), 
             w2 (* \Tens B X *)) (* B <= A *) ->
+(*       let src1 = Hashtbl.find entry_points w1.src in
+       let senc1 = Hashtbl.find token_names w1.src in
+       Llvm.position_at_end src1 builder;
+       let denc1 = build_truncate_extend senc1 w2.type_forward in
+           connect1 denc1 w2.dst;
+       ignore (build_br w2.dst);
+       let src2 = Hashtbl.find entry_points w2.src in
+       let senc2 = Hashtbl.find token_names w2.src in
+       Llvm.position_at_end src2 builder;
+       let denc2 = build_truncate_extend senc2 w1.type_forward in
+           connect1 denc2 w1.dst;
+       ignore (build_br w1.dst);*)
        let x, sigma, v, y, c = "x", "sigma", "v", "y", "c" in
        begin
          let a, b  = 
@@ -648,23 +663,20 @@ let build_instruction (i : instruction) : unit =
        (*  <sigma, <v,w>> @ w2         |-->  <sigma, <inl(v),w>> @ w1 *) 
        let x, sigma, v, y, c, d = "x", "sigma", "v", "y", "c", "d" in
        let src2 = Hashtbl.find entry_points w2.src in
-       let denc2' =
+       let denc2 =
          let t = mkLetW (mkVar x) 
                    ((sigma, v), mkLetW (mkVar v) 
                                   ((d, y), (mkPairW (mkVar sigma) 
                                               (mkPairW (mkInlW (mkVar d)) (mkVar y))))) in
             build_jump_argument w2 (x, t) w1 in
-         (*unnötig?*)
-       let denc2 = build_truncate_extend denc2' w1.type_forward in
        (* <sigma, <v,w>> @ w3         |-->  <sigma, <inr(v),w>> @ w1 *)
        let src3 = Hashtbl.find entry_points w3.src in
-       let denc3' =
+       let denc3 =
          let t = mkLetW (mkVar x) 
                    ((sigma, v), mkLetW (mkVar v) 
                                   ((d, y), (mkPairW (mkVar sigma) 
                                               (mkPairW (mkInrW (mkVar d)) (mkVar y))))) in
             build_jump_argument w3 (x, t) w1 in
-       let denc3 = build_truncate_extend denc3' w1.type_forward in
        connect2 src2 denc2 src3 denc3 w1.dst;
        Llvm.position_at_end src2 builder;
        ignore (build_br w1.dst);
