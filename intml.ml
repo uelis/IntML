@@ -48,16 +48,31 @@ let rec print_compiled_terms (d: typed_decls) : unit =
     | TypedTermDeclW(_, _, _) :: r -> print_compiled_terms r
     | TypedTermDeclU(f, t, _) :: r -> 
         Printf.printf "*** Writing compiled term for '%s' to file '%s.wc' ***\n" f f;
-        flush stdout;
-        let graph = circuit_of_termU [] [] t in
-        let _ = infer_types graph in 
-          Llvmcodegen.llvm_circuit graph;
-(*        let (ct, _) = compile_termU t in*)
           flush stdout;
           let oc = open_out (Printf.sprintf "%s.wc" f) in 
             Printf.fprintf oc "%s\n" (prg_termU t);
             close_out oc;
             print_compiled_terms r
+
+let rec llvm_compile (d: typed_decls) : unit = 
+  match d with
+    | [] -> ()
+    | TypedTermDeclW(_, _, _) :: r -> llvm_compile r
+    | TypedTermDeclU(f, t, ty) :: r -> 
+        (* compile only terms of box type *)
+        (match Type.finddesc ty with
+          | Type.BoxU(q, a) ->              
+              (match Type.finddesc q with
+                 | Type.OneW ->
+                    Printf.printf "*** Writing llvm bytecode for '%s' to file '%s.bc' ***\n" f f;
+                    flush stdout;
+                    let graph = circuit_of_termU [] [] t in
+                    let _ = infer_types graph in 
+                    let llvm_module = Llvmcodegen.llvm_circuit graph in
+                      ignore (Llvm_bitwriter.write_bitcode_file llvm_module (Printf.sprintf "%s.bc" f))
+                 | _ -> ())
+           | _ -> ());
+        llvm_compile r
 
 let rec eval_loop (ds: typed_decls) : unit =
   Printf.printf "\n# ";
@@ -91,6 +106,9 @@ let arg_spec =
    ("--compiled-terms", 
     Arg.Unit (fun _ -> opt_print_compiled_terms := true), 
     "Write the compiled term for each upper class declaration into a file.");
+   ("--llvm", 
+    Arg.Unit (fun _ -> opt_llvm_compile := true), 
+    "Compile upper class programs of type [A] to LLVM bitcode.");
    ]
 
 let usage_msg = "First argument must be the name of a file containing definitions."  
@@ -109,6 +127,7 @@ try
         let substituted_decls = subst_decls decls in
         let typed_decls = List.fold_left Top.new_decl [] substituted_decls in
           if !opt_print_compiled_terms then print_compiled_terms typed_decls;
+          if !opt_llvm_compile then llvm_compile typed_decls;
           if !opt_print_graphs then print_graphs typed_decls;
           typed_decls
       end 

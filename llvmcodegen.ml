@@ -8,7 +8,11 @@ module IntMap = Map.Make(
   end
 )
 
-type encoded_value = Llvm.llvalue list * (Llvm.llvalue option) * int
+type encoded_value = {
+  payload : Llvm.llvalue list;
+  attrib: Llvm.llvalue option;
+  attrib_bitlen: int
+}
   
 let context = Llvm.global_context ()
 let the_module = Llvm.create_module context "test"
@@ -120,6 +124,47 @@ let build_split (z : Llvm.llvalue option) (len1 : int) (len2 : int)
           let y = Llvm.build_trunc z ilen2 "y" builder in
             Some x, Some y                      
 
+(* TODO: doc 
+* truncate if necessary
+* *)                      
+let build_truncate_extend (enc : encoded_value) (a : Type.t) =
+  let a_payload_size = payload_size a in
+  let a_attrib_bitlen = attrib_size a in
+  let rec mk_payload p n =
+    if n = 0 then [] else 
+      match p with
+        | [] -> Llvm.const_null (Llvm.i32_type context) :: (mk_payload [] (n-1)) 
+        | x::xs -> x :: (mk_payload xs (n-1)) in
+  let x_payload = mk_payload enc.payload a_payload_size in
+  let x_attrib = 
+    if enc.attrib_bitlen < a_attrib_bitlen then
+      begin
+        match enc.attrib with
+          | None -> 
+              Some (Llvm.const_null (Llvm.integer_type context a_attrib_bitlen))
+          | Some enc_attrib' ->
+              Some (Llvm.build_zext enc_attrib'
+                      (Llvm.integer_type context a_attrib_bitlen) 
+                      "zext_attrib" builder)
+      end
+    else if enc.attrib_bitlen > a_attrib_bitlen then
+      begin
+        assert (enc.attrib_bitlen > 0);
+        match enc.attrib with
+          | None -> assert false (* not possible if enc.attrib_bitlen > 0 *)
+          | Some enc_attrib' ->
+              if a_attrib_bitlen = 0 then None else
+              Some (Llvm.build_trunc enc_attrib'
+                      (Llvm.integer_type context a_attrib_bitlen) 
+                      "trunc_attrib" builder)
+      end 
+    else
+      (* nothing to truncate or extend *)
+      enc.attrib
+  in
+  let x_attrib_bitlen = min enc.attrib_bitlen a_attrib_bitlen in
+    {payload = x_payload; attrib = x_attrib; attrib_bitlen = x_attrib_bitlen}
+
 (*
  * Füge TypeAnnot an den Stellen ein, an denen Typinformationen
  * gebraucht werden.
@@ -151,9 +196,9 @@ let build_term (ctx: (var * encoded_value) list)
       | InW(_, _, _) -> assert false
       | CaseW(t1, [(x, t2); (y, t3)]) ->
           let alpha = Type.newty Type.Var in
-            mkTypeAnnot 
-              (mkCaseW (annotate_term t1) [(x, annotate_term t2); (y, annotate_term t3)])
-              (Some alpha)
+              (mkCaseW 
+                 (mkTypeAnnot (annotate_term t1) (Some alpha)) 
+                 [(x, annotate_term t2); (y, annotate_term t3)])
       | CaseW(_, _) -> assert false
       | AppW({ desc=LetW(s, (x, y, t1)) }, t2) -> 
           (* TODO: binding *)
@@ -180,7 +225,7 @@ let build_term (ctx: (var * encoded_value) list)
           let ms = 
             if msl = 0 then None else 
               Some (Llvm.const_null (Llvm.integer_type context msl)) in
-            mp ap, ms, msl
+            {payload = mp ap; attrib = ms; attrib_bitlen = msl}
 (*      | ConstW(Some a, Cmin) when Type.finddesc a = Type.NatW ->
           let i32 = Llvm.integer_type context 32 in
           let zero = Llvm.const_null i32 in
@@ -194,11 +239,10 @@ let build_term (ctx: (var * encoded_value) list)
                       | Type.NatW ->
                           begin
                             match build_annotatedterm ctx t1 with
-                              | [x], None, 0 -> 
-                                  let i32 = Llvm.integer_type context 32 in
-                                  let one = Llvm.const_int i32 1 in
+                              | {payload = [x]; attrib = None} -> 
+                                  let one = Llvm.const_int (Llvm.i32_type context) 1 in
                                   let x' = Llvm.build_add x one "succ" builder in
-                                    [x'], None, 0
+                                    {payload = [x']; attrib = None; attrib_bitlen = 0}
                               | _ -> assert false
                           end
                       | _ -> assert false
@@ -215,130 +259,112 @@ let build_term (ctx: (var * encoded_value) list)
           let puts = Llvm.declare_function "puts" putstype the_module in
           let args = Array.make 1 strptr in
             ignore (Llvm.build_call puts args "i" builder);
-            [], None, 0
+            {payload = []; attrib = None; attrib_bitlen = 0}
       | ConstW(None, _) -> assert false
       (* TODO  | ConstW of (Type.t option) * term_const *)
       | UnitW ->
-          [], None, 0
+          {payload = []; attrib = None; attrib_bitlen = 0}
       | TypeAnnot({ desc = PairW(t1, t2) }, Some a) ->
           begin
             match Type.finddesc a with
               | Type.TensorW(a1, a2) ->
-                  let t1p, t1a, t1al = build_annotatedterm ctx t1 in
-                  let t2p, t2a, t2al = build_annotatedterm ctx t2 in
+                  let t1enc = build_annotatedterm ctx t1 in
+                  let t2enc = build_annotatedterm ctx t2 in
                   let len_t1a = attrib_size a1 in
                   let len_t2a = attrib_size a2 in
                   let len = len_t1a + len_t2a in
-                  let ta = build_concat t1a len_t1a t2a len_t2a in
-                    t1p @ t1p, ta, len
+                  let ta = build_concat (t1enc.attrib) len_t1a (t2enc.attrib) len_t2a in
+                    {payload = t1enc.payload @ t2enc.payload; attrib = ta; attrib_bitlen = len}
               | _ -> assert false
           end
       | LetW({ desc = TypeAnnot(s, Some a) }, (x, y, t)) ->
           begin
             match Type.finddesc a with
               | Type.TensorW(ax, ay) ->
-                  let sp, sa, sal = build_annotatedterm ctx s in
+                  let senc = build_annotatedterm ctx s in
                   let len_sxp = payload_size ax in
                   let len_syp = payload_size ay in
                   let len_sxa = attrib_size ax in
                   let len_sya = attrib_size ay in
-                    assert (List.length sp = len_sxp + len_syp);
-                    assert (sal = len_sxa + len_sya);
-                    let sxp, syp = part len_sxp sp in
-                    let sxa, sya = build_split sa len_sxa len_sya in
-                      build_annotatedterm ((x, (sxp, sxa, len_sxa)) :: 
-                                           (y, (syp, sya, len_sya)) :: ctx)  t
+                    assert (List.length senc.payload = len_sxp + len_syp);
+                    assert (senc.attrib_bitlen = len_sxa + len_sya);
+                    let sxp, syp = part len_sxp senc.payload in
+                    let sxa, sya = build_split senc.attrib len_sxa len_sya in
+                      build_annotatedterm ((x, {payload = sxp; attrib = sxa; attrib_bitlen = len_sxa}) :: 
+                                           (y, {payload = syp; attrib = sya; attrib_bitlen = len_sya}) :: ctx)  t
               | _ -> assert false
           end
       | TypeAnnot({ desc = InW(2, i, t) }, Some a) ->
-          let tp, ta, tal = build_annotatedterm ctx t in
-          let i1 = Llvm.integer_type context 1 in
-          let branch = 
-            if i = 0 then Llvm.const_null i1 
-            else if i = 1 then Llvm.const_all_ones i1 
-            else assert false in
-          let tao = build_concat ta tal (Some branch) 1 in
+          let tenc = build_annotatedterm ctx t in
+          let branch = Llvm.const_int (Llvm.integer_type context 1) i in
+          let attrib_branch = build_concat tenc.attrib tenc.attrib_bitlen (Some branch) 1 in
           let rec fill_payload n xp =
             if n = 0 then xp else 
               fill_payload (n-1) (xp @ [Llvm.const_null (Llvm.i32_type context)]) in
-          let xp = fill_payload (payload_size a - (List.length tp)) tp in
+          let xp = fill_payload (payload_size a - (List.length tenc.payload)) tenc.payload in
           let xal = attrib_size a in
           let xa = 
-            if (attrib_size a) > tal then
-              match tao with
-                | Some tao' ->
-                    Some (Llvm.build_zext tao'
+            if (attrib_size a) > tenc.attrib_bitlen + 1 then
+              match attrib_branch with
+                | Some attrib_branch' ->
+                    Some (Llvm.build_zext attrib_branch'
                             (Llvm.integer_type context xal) 
                             "xa" builder)
                 | None -> assert false
             else 
-              tao in
-            xp, xa, xal
-      | TypeAnnot({ desc = CaseW(u, [(x, s); (y, t)]) }, Some a) -> 
-          let func = Llvm.block_parent (Llvm.insertion_block builder) in
-          let block_s = Llvm.append_block context "case_l" func in 
-          let block_t = Llvm.append_block context "case_r" func in 
-          let block_res = Llvm.append_block context "case_res" func in
-          let up, ua, ual = build_annotatedterm ctx u in
+              attrib_branch in
+            {payload = xp; attrib = xa; attrib_bitlen = xal}
+      | CaseW({ desc = TypeAnnot(u, Some a) }, [(x, s); (y, t)]) -> 
+          let uenc = build_annotatedterm ctx u in
           let ax, ay = 
             match Type.finddesc a with
               | Type.SumW [ax; ay] -> ax, ay
               | _ -> assert false in
-          let xp, _ = part (payload_size ax) up in
-          let yp, _ = part (payload_size ay) up in
-          let xal = attrib_size ax in
-          let yal = attrib_size ay in
-          let xya, cond = build_split ua (ual - 1) 1 in
-          let xa = 
-            if xal < ual - 1 then
-              match xya with
-                | Some xya' ->
-                    Some (Llvm.build_trunc xya' (Llvm.integer_type context xal) "xa" builder)
-                | None -> assert false (* not possible if xal < ual -1 *)
-            else
-              xya in
-          let ya = 
-            if yal < ual -1 then
-              match xya with
-                | Some xya' ->
-                    Some (Llvm.build_trunc xya' (Llvm.integer_type context yal) "ya" builder)
-                | None -> assert false (* not possible if xal < ual -1 *)
-            else
-              xya in
-            assert (ual > 0);
+          assert (uenc.attrib_bitlen > 0);
+          let xya, cond = build_split uenc.attrib (uenc.attrib_bitlen - 1) 1 in
+          let xyenc = {payload = uenc.payload; attrib = xya; attrib_bitlen = uenc.attrib_bitlen - 1} in
+          let xenc = build_truncate_extend xyenc ax in
+          let yenc = build_truncate_extend xyenc ay in
+          let func = Llvm.block_parent (Llvm.insertion_block builder) in
+          let block_s = Llvm.append_block context "case_l" func in 
+          let block_t = Llvm.append_block context "case_r" func in 
+          let block_res = Llvm.append_block context "case_res" func in
             begin
-              match cond with
-                | None -> assert false
-                | Some cond' ->
-                    ignore (Llvm.build_cond_br cond' block_s block_t builder);
-                    Llvm.position_at_end block_s builder;
-                    let sp, sa, sal = build_annotatedterm ((x, (xp, xa, xal)) :: ctx) s in
+            match cond with
+              | None -> assert false
+              | Some cond' ->
+                  ignore (Llvm.build_cond_br cond' block_s block_t builder);
+                  Llvm.position_at_end block_s builder;
+                  (* may generate new blocks! *)
+                  let senc = build_annotatedterm ((x, xenc) :: ctx) s in
+                  let block_end_s = Llvm.insertion_block builder in
+                    ignore (Llvm.build_br block_res builder);
+                    Llvm.position_at_end block_t builder;
+                    let tenc = build_annotatedterm ((y, yenc) :: ctx) t in
+                    let block_end_t = Llvm.insertion_block builder in
                       ignore (Llvm.build_br block_res builder);
-                      Llvm.position_at_end block_t builder;
-                      let tp, ta, tal = build_annotatedterm ((y, (yp, ya, yal)) :: ctx) t in
-                        ignore (Llvm.build_br block_res builder);
-                        assert (sal = tal);
-                        (* insert phi nodes in result *)
-                        Llvm.position_at_end block_res builder;
-                        let za =
-                          match sa, ta with
-                            | None, None -> None
-                            | Some sa', Some ta' -> 
-                                Some (Llvm.build_phi [(sa', block_s); 
-                                                      (ta', block_t)] "za" builder)
-                            | _, _ -> assert false in
-                        let zp = 
-                          List.map 
-                            (fun (x,y) -> Llvm.build_phi [(x, block_s);
-                                                          (y, block_t)] "z" builder)
-                            (List.combine sp tp) in
-                          zp, za, sal
+                      assert (senc.attrib_bitlen = tenc.attrib_bitlen);
+                      (* insert phi nodes in result *)
+                      Llvm.position_at_end block_res builder;
+                      let z_attrib =
+                        match senc.attrib, tenc.attrib with
+                          | None, None -> None
+                          | Some sa', Some ta' -> 
+                              Some (Llvm.build_phi [(sa', block_end_s); 
+                                                    (ta', block_end_t)] "za" builder)
+                          | _, _ -> assert false in
+                      let z_payload = 
+                        List.map 
+                          (fun (x,y) -> Llvm.build_phi [(x, block_end_s);
+                                                        (y, block_end_t)] "z" builder)
+                          (List.combine senc.payload tenc.payload) in
+                        {payload = z_payload; attrib = z_attrib; attrib_bitlen = senc.attrib_bitlen}
             end
       | TypeAnnot(t, _) ->
           build_annotatedterm ctx t
       | AppW({desc = LambdaW((x, a), t1)}, t2) ->
-          let t2p, t2a, t2al = build_annotatedterm ctx t2 in
-            build_annotatedterm ((x, (t2p, t2a, t2al)) :: ctx) t1
+          let t2enc = build_annotatedterm ctx t2 in
+            build_annotatedterm ((x, t2enc) :: ctx) t1
       | _ -> 
           Printf.printf "%s\n" (Printing.string_of_termW t);
           failwith "TODO"
@@ -355,14 +381,33 @@ let build_term (ctx: (var * encoded_value) list)
     build_annotatedterm ctx t_annotated
 
 
-let entry_points : (int, Llvm.llbasicblock) Hashtbl.t = Hashtbl.create 10
+let entry_points : (int, Llvm.llbasicblock) Hashtbl.t = Hashtbl.create 10                                                         
 let token_names : (int, encoded_value) Hashtbl.t = Hashtbl.create 10
+let all_tokens : ((Llvm.llvalue * Llvm.llvalue) list) ref = ref []
+
+let replace_in_token_names (oldv : Llvm.llvalue) (newv : Llvm.llvalue)  =
+  let replace (token_name : encoded_value) =
+    let payload = List.map (fun v -> if v == oldv then newv else v) token_name.payload in
+    let attrib = 
+      match token_name.attrib with
+        | None -> None
+        | Some v -> if v == oldv then Some newv else token_name.attrib in
+      {payload = payload; attrib = attrib; attrib_bitlen = token_name.attrib_bitlen } in
+    (* TODO: inefficient *)
+  let bindings = Hashtbl.fold (fun n token bdgs -> (n,token)::bdgs) token_names [] in
+    Hashtbl.clear token_names;
+    List.iter (fun (n, token) -> Hashtbl.add token_names n (replace token)) bindings
 
 let allocate_tables (is : instruction list) =
   Hashtbl.clear entry_points;
+  Hashtbl.clear token_names;
+  all_tokens := [];
   let build_dummy ty name builder = 
      let i0 = Llvm.build_alloca ty name builder in
-       Llvm.build_bitcast i0 ty name builder in 
+     let dummy = Llvm.build_bitcast i0 ty name builder in
+       all_tokens := (dummy, Llvm.const_null ty)::!all_tokens;
+       dummy
+     in 
   let add_module n a =
     (try ignore (Hashtbl.find entry_points n) with
        | Not_found ->
@@ -389,7 +434,7 @@ let allocate_tables (is : instruction list) =
                  (* (Llvm.declare_global (Llvm.integer_type context xs)
                   * token_name the_module) *)
              in 
-               Hashtbl.add token_names n (xp, xa, xs)
+               Hashtbl.add token_names n {payload = xp; attrib = xa; attrib_bitlen = xs}
     ) in
   let all_wires = Compile.wires is in
     List.iter 
@@ -410,75 +455,62 @@ let build_defining_instruction_map (is : Compile.instruction list) =
     build_map is 
 
 let build_instruction (i : instruction) : unit =
-  let build_br xp xa xal dst = 
+  let build_br dst = 
     let dst_block = Hashtbl.find entry_points dst in
       Llvm.build_br dst_block builder in    
-  let build_cond_br xp xa xal cond tdst fdst= 
+  let build_cond_br cond tdst fdst= 
     let tdst_block = Hashtbl.find entry_points tdst in
     let fdst_block = Hashtbl.find entry_points fdst in
       Llvm.build_cond_br cond tdst_block fdst_block builder in
     (* w1 and w2 are attached with src to same node. Message arrives on w1,
      * is passed to w2 *)
-  let connect1 (newp, newa, newal) dst =
-    let oldp, olda, oldal = Hashtbl.find token_names dst in
-(*         Printf.printf "%i %i -> %i\n" oldal newal dst;*)
-      assert (oldal <= newal);
+  let connect1 newenc dst =
+    let oldenc = Hashtbl.find token_names dst in
+(*      Printf.printf "%i %i -> %i\n" oldenc.attrib_bitlen newenc.attrib_bitlen dst; *)
+      assert (oldenc.attrib_bitlen = newenc.attrib_bitlen);
+      assert (List.length oldenc.payload = (List.length newenc.payload));
+      Hashtbl.replace token_names dst newenc;
       List.iter 
-        (fun (n, o) -> Llvm.replace_all_uses_with o n) 
-        (List.combine newp oldp);
-      let newa =
-        match newa, olda with          
-          | None, None | Some _, None -> None
-          | Some n, Some o -> 
-              let n' =
-                if newal > oldal then
-                  Llvm.build_trunc n (Llvm.integer_type context oldal) "xa" builder 
-                else n in
-                Llvm.replace_all_uses_with o n';
-                Some n'
-          | _ , _ -> assert false
-      in
-      Hashtbl.replace token_names dst (newp, newa, oldal)
+        (fun (n, o) -> 
+           Llvm.replace_all_uses_with o n;
+           replace_in_token_names o n
+        ) 
+        (List.combine newenc.payload oldenc.payload);
+      (match newenc.attrib, oldenc.attrib with          
+        | None, None -> ()
+        | Some n, Some o -> 
+            Llvm.replace_all_uses_with o n;
+            replace_in_token_names o n
+        | _ , _ -> assert false);
   in
-  let connect2 (block1, new1p, new1a, new1al) (block2, new2p, new2a, new2al) dst =
-    let newal = max new1al new2al in
-    let extend na nl block =
-      Llvm.position_at_end block builder;
-      if newal > nl then
-        begin
-        match na with
-          | None -> 
-              Some (Llvm.const_null (Llvm.integer_type context newal))
-          | Some n1 ->
-              (Some (Llvm.build_zext n1 (Llvm.integer_type context newal) "xa" builder))
-        end
-      else na in
-    let new1a = extend new1a new1al block1 in
-    let new2a = extend new2a new2al block2 in
+  let connect2 block1 new1enc block2 new2enc dst =
+    assert (new1enc.attrib_bitlen = new2enc.attrib_bitlen);
+    let newal = new1enc.attrib_bitlen in
     let dstblock = Hashtbl.find entry_points dst in
       position_at_start dstblock builder;
+      (* TODO: extend payload *)
     let newp =
       List.map 
         (fun (n1, n2) -> Llvm.build_phi [(n1, block1); (n2, block2)] "xp" builder)
-        (List.combine new1p new2p) in
+        (List.combine new1enc.payload new2enc.payload) in
     let newa =
-      match new1a, new2a with
+      match new1enc.attrib, new2enc.attrib with
         | None, None -> None
         | Some n1, Some n2 -> 
             Some (Llvm.build_phi [(n1, block1); (n2, block2)] "xa" builder)
-              (* TODO *)
+              (* TODO? *)
         | _ , _ -> assert false in
-      connect1 (newp, newa, newal) dst in
+      connect1 {payload = newp; attrib = newa; attrib_bitlen = newal} dst in
   let build_jump_argument w1 (x, t) w2 =
     let src_block = Hashtbl.find entry_points w1.src in
       Llvm.position_at_end src_block builder;
-      let sp, sa, sal = Hashtbl.find token_names w1.src in
-      build_term [(x, (sp, sa, sal))] [(x, w1.type_back)] t w2.type_forward in
+      let senc = Hashtbl.find token_names w1.src in
+      build_term [(x, senc)] [(x, w1.type_back)] t w2.type_forward in
   (* build actual jump with argument *)
   let build_jwa w1 (x, t) w2 =
-    let dp, da, dal = build_jump_argument w1 (x, t) w2 in
-      ignore (build_br dp da dal w2.dst);
-      connect1 (dp, da, dal) w2.dst
+    let denc = build_jump_argument w1 (x, t) w2 in
+      ignore (build_br w2.dst);
+      connect1 denc w2.dst
   in
   match i with
    | Axiom(w1 (* [f] *), f) ->
@@ -493,38 +525,43 @@ let build_instruction (i : instruction) : unit =
        let x, sigma, v = "x", "sigma", "v" in
        (* <sigma, v> @ w1       |-->  <sigma, inl(v)> @ w3 *)
        let src1 = Hashtbl.find entry_points w1.src in
-       let dp1, da1, dal1 =
+       let denc1' =
          let t = mkLetW (mkVar x) 
                    ((sigma, v), (mkPairW (mkVar sigma) (mkInlW (mkVar v)))) in
             build_jump_argument w1 (x, t) w3 in
+       let denc1 = build_truncate_extend denc1' w3.type_forward in
        (* <sigma, v> @ w2       |-->  <sigma, inr(v)> @ w3 *)
        let src2 = Hashtbl.find entry_points w2.src in
-       let dp2, da2, dal2 =
+       let denc2' =
          let t = mkLetW (mkVar x) 
                    ((sigma, v), (mkPairW (mkVar sigma) (mkInrW (mkVar v)))) in
             build_jump_argument w2 (x, t) w3 in
-       (* insert phi *)
-       connect2 (src1, dp1, da1, dal1) (src2, dp2, da2, dal2) w3.dst;
+       let denc2 = build_truncate_extend denc2' w3.type_forward in
+       (* insert phi *)         
+       connect2 src1 denc1 src2 denc2 w3.dst;
        Llvm.position_at_end src1 builder;
-       ignore (build_br dp1 da1 dal1 w3.dst);
+       ignore (build_br w3.dst);
        Llvm.position_at_end src2 builder;
-       ignore (build_br dp2 da2 dal2 w3.dst);
+       ignore (build_br w3.dst);
        (* <sigma, inl(v)> @ w3  |-->  <sigma, v> @ w1
           <sigma, inr(v)> @ w3  |-->  <sigma, v> @ w2 *)        
        begin
          let src3 = Hashtbl.find entry_points w3.src in
            Llvm.position_at_end src3 builder;
-           let sp, sa, sal = Hashtbl.find token_names w3.src in
-           let dp = sp in
-           assert (sal > 0);
-           let dal = sal - 1 in
-           let da, cond = build_split sa dal 1 in
+           let senc = Hashtbl.find token_names w3.src in
+           let d_payload = senc.payload in
+           assert (senc.attrib_bitlen > 0);
+           let d_attrib_bitlen = senc.attrib_bitlen - 1 in
+           let d_attrib, cond = build_split senc.attrib d_attrib_bitlen 1 in
+           let denc = {payload = d_payload; attrib = d_attrib; attrib_bitlen = d_attrib_bitlen} in
+           let denc1 = build_truncate_extend denc w1.type_forward in
+           let denc2 = build_truncate_extend denc w2.type_forward in
              match cond with
                | None -> assert false
                | Some cond' ->
-                   connect1 (dp, da, dal) w1.dst;
-                   connect1 (dp, da, dal) w2.dst;
-                   ignore (build_cond_br dp da dal cond' w2.dst w1.dst);
+                   connect1 denc1 w1.dst;
+                   connect1 denc2 w2.dst;
+                   ignore (build_cond_br cond' w2.dst w1.dst);
        end
    | Der(w1 (* \Tens A X *), w2 (* X *), f) ->
        let x, sigma, v, c = "x", "sigma", "v", "c" in
@@ -621,25 +658,27 @@ let build_instruction (i : instruction) : unit =
        (*  <sigma, <v,w>> @ w2         |-->  <sigma, <inl(v),w>> @ w1 *) 
        let x, sigma, v, y, c, d = "x", "sigma", "v", "y", "c", "d" in
        let src2 = Hashtbl.find entry_points w2.src in
-       let dp2, da2, dal2 =
+       let denc2' =
          let t = mkLetW (mkVar x) 
                    ((sigma, v), mkLetW (mkVar v) 
                                   ((d, y), (mkPairW (mkVar sigma) 
                                               (mkPairW (mkInlW (mkVar d)) (mkVar y))))) in
             build_jump_argument w2 (x, t) w1 in
+       let denc2 = build_truncate_extend denc2' w1.type_forward in
        (* <sigma, <v,w>> @ w3         |-->  <sigma, <inr(v),w>> @ w1 *)
        let src3 = Hashtbl.find entry_points w3.src in
-       let dp3, da3, dal3 =
+       let denc3' =
          let t = mkLetW (mkVar x) 
                    ((sigma, v), mkLetW (mkVar v) 
                                   ((d, y), (mkPairW (mkVar sigma) 
                                               (mkPairW (mkInrW (mkVar d)) (mkVar y))))) in
             build_jump_argument w3 (x, t) w1 in
-       connect2 (src2, dp2, da2, dal2) (src3, dp3, da3, dal3) w1.dst;
+       let denc3 = build_truncate_extend denc3' w1.type_forward in
+       connect2 src2 denc2 src3 denc3 w1.dst;
        Llvm.position_at_end src2 builder;
-       ignore (build_br dp2 da2 dal2 w1.dst);
+       ignore (build_br w1.dst);
        Llvm.position_at_end src3 builder;
-       ignore (build_br dp3 da3 dal3 w1.dst);
+       ignore (build_br w1.dst);
 
        (*   <sigma, <inl(v), w>> @ w1   |-->  <sigma, <v,w>> @ w2
             <sigma, <inr(v), w>> @ w1   |-->  <sigma, <v,w>> @ w3 *)
@@ -651,17 +690,20 @@ let build_instruction (i : instruction) : unit =
                           (d, mkInrW (mkPairW (mkVar sigma) (mkPairW (mkVar d) (mkVar v)))) ])) in
          let src1_block = Hashtbl.find entry_points w1.src in
            Llvm.position_at_end src1_block builder;
-           let sp, sa, sal = Hashtbl.find token_names w1.src in
-           let dp, dai, dali = build_term [(x, (sp, sa, sal))] [(x, w1.type_back)] t 
-                               (Type.newty (Type.SumW[w2.type_forward; w3.type_forward])) in
-           let dal = dali - 1 in
-           let da, cond = build_split sa dal 1 in
+           let senc = Hashtbl.find token_names w1.src in
+           let tenc = build_term [(x, senc)] [(x, w1.type_back)] t 
+                        (Type.newty (Type.SumW[w2.type_forward; w3.type_forward])) in
+           let dal = tenc.attrib_bitlen - 1 in
+           let da, cond = build_split tenc.attrib dal 1 in
+           let denc23 = {payload = tenc.payload; attrib = da; attrib_bitlen = dal }in
+           let denc2 = build_truncate_extend denc23 w2.type_forward in
+           let denc3 = build_truncate_extend denc23 w3.type_forward in
              match cond with
                | None -> assert false
                | Some cond' ->
-                   connect1 (dp, da, dal) w2.dst;
-                   connect1 (dp, da, dal) w3.dst;
-                   ignore (build_cond_br dp da dal cond' w3.dst w2.dst)
+                   connect1 denc2 w2.dst;
+                   connect1 denc3 w3.dst;
+                   ignore (build_cond_br cond' w3.dst w2.dst)
        end         
 
 let build_body (c : circuit) =
@@ -674,8 +716,12 @@ let build_body (c : circuit) =
              Llvm.position_at_end block builder;
              ignore (Llvm.build_br block builder)
          | _ -> ()
-  ) entry_points
+  ) entry_points;
+  (* replace unreachable tokens by zero *)
+  List.iter (fun (t, z) -> Llvm.replace_all_uses_with t z) !all_tokens
 
+
+(* Must be applied to circuit of type [A] *)    
 let llvm_circuit (c : Compile.circuit) = 
   let void = Llvm.void_type context in
   let ft = Llvm.function_type void (Array.make 0 void) in
@@ -692,5 +738,6 @@ let llvm_circuit (c : Compile.circuit) =
     ignore (Llvm.build_ret_void builder);
     (* body *)
     build_body c;
-(*    Llvm.delete_block dummy; *)
-    Llvm.dump_module the_module
+    Llvm.delete_block dummy; 
+    Llvm.dump_module the_module;
+    the_module

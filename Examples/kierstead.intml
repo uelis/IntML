@@ -18,8 +18,10 @@ letu tester =
 
 (* The terms (t1 tester) and (t2 tester) give different results. *)
 
-letw test1 = 
-   let [r] = t1 tester in r
+letu test1 = 
+   let [r] = t1 tester in [if r then print "true" else print "false"]
 
-letw test2 = 
-   let [r] = t2 tester in r
+(*
+letu test2 = 
+   let [r] = t2 tester in [if r then print "true" else print "false"]
+   *)
