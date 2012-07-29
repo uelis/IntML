@@ -200,8 +200,10 @@ let build_term (ctx: (var * encoded_value) list)
                  [(x, annotate_term t2); (y, annotate_term t3)])
       | CaseW(_, _) -> assert false
       | AppW({ desc=LetW(s, (x, y, t1)) }, t2) -> 
-          (* TODO: binding *)
-          annotate_term (mkLetW s ((x, y), mkAppW t1 t2))
+          let fvt2 = free_vars t2 in
+          let x' = variant_var_avoid x fvt2 in
+          let y' = variant_var_avoid y fvt2 in
+          annotate_term (mkLetW s ((x', y'), mkAppW (subst (mkVar y') y (subst (mkVar x') x t1)) t2))
       | AppW(t1, t2) -> mkAppW (annotate_term t1) (annotate_term t2)
       | LambdaW((x, a), t1) -> mkLambdaW ((x, a), annotate_term t1)
       | TrW(t1) -> mkTrW (annotate_term t1)
@@ -322,28 +324,28 @@ let build_term (ctx: (var * encoded_value) list)
                   Llvm.position_at_end block_s builder;
                   (* may generate new blocks! *)
                   let senc = build_annotatedterm ((x, xenc) :: ctx) s in
-                    ignore (Llvm.build_br block_res builder);
-                    let block_end_s = Llvm.insertion_block builder in
-                      Llvm.position_at_end block_t builder;
-                      let tenc = build_annotatedterm ((y, yenc) :: ctx) t in
-                        ignore (Llvm.build_br block_res builder);
-                        let block_end_t = Llvm.insertion_block builder in
-                          assert (senc.attrib_bitlen = tenc.attrib_bitlen);
-                          (* insert phi nodes in result *)
-                          Llvm.position_at_end block_res builder;
-                          let z_attrib =
-                            match senc.attrib, tenc.attrib with
-                              | None, None -> None
-                              | Some sa', Some ta' -> 
-                                  Some (Llvm.build_phi [(sa', block_end_s); 
-                                                        (ta', block_end_t)] "za" builder)
-                              | _, _ -> assert false in
-                          let z_payload = 
-                            List.map 
-                              (fun (x,y) -> Llvm.build_phi [(x, block_end_s);
-                                                            (y, block_end_t)] "z" builder)
-                              (List.combine senc.payload tenc.payload) in
-                            {payload = z_payload; attrib = z_attrib; attrib_bitlen = senc.attrib_bitlen}
+                  let _ = Llvm.build_br block_res builder in
+                  let block_end_s = Llvm.insertion_block builder in
+                    Llvm.position_at_end block_t builder;
+                    let tenc = build_annotatedterm ((y, yenc) :: ctx) t in
+                    let _ = Llvm.build_br block_res builder in
+                    let block_end_t = Llvm.insertion_block builder in
+                      assert (senc.attrib_bitlen = tenc.attrib_bitlen);
+                      (* insert phi nodes in result *)
+                      Llvm.position_at_end block_res builder;
+                      let z_attrib =
+                        match senc.attrib, tenc.attrib with
+                          | None, None -> None
+                          | Some sa', Some ta' -> 
+                              Some (Llvm.build_phi [(sa', block_end_s); 
+                                                    (ta', block_end_t)] "za" builder)
+                          | _, _ -> assert false in
+                      let z_payload = 
+                        List.map 
+                          (fun (x,y) -> Llvm.build_phi [(x, block_end_s);
+                                                        (y, block_end_t)] "z" builder)
+                          (List.combine senc.payload tenc.payload) in
+                        {payload = z_payload; attrib = z_attrib; attrib_bitlen = senc.attrib_bitlen}
             end
       | TypeAnnot(t, _) ->
           build_annotatedterm ctx t
@@ -473,7 +475,6 @@ let build_instruction (i : instruction) : unit =
     let newal = new1enc.attrib_bitlen in
     let dstblock = Hashtbl.find entry_points dst in
       position_at_start dstblock builder;
-      (* TODO: extend payload *)
     let newp =
       List.map 
         (fun (n1, n2) -> Llvm.build_phi [(n1, block1); (n2, block2)] "xp" builder)
@@ -483,7 +484,6 @@ let build_instruction (i : instruction) : unit =
         | None, None -> None
         | Some n1, Some n2 -> 
             Some (Llvm.build_phi [(n1, block1); (n2, block2)] "xa" builder)
-              (* TODO? *)
         | _ , _ -> assert false in
       connect1 {payload = newp; attrib = newa; attrib_bitlen = newal} dst in
   let build_jump_argument w1 (x, t) w2 =
@@ -596,13 +596,13 @@ let build_instruction (i : instruction) : unit =
         end
     | LWeak(w1 (* \Tens A X *), 
             w2 (* \Tens B X *)) (* B <= A *) ->
-        let a, b  = 
-          match Type.finddesc w1.type_back, 
-                Type.finddesc w2.type_forward with 
-            | Type.TensorW(a, _), Type.TensorW(b, _) -> a, b
-            | _ -> assert false in
        let x, sigma, v, y, c = "x", "sigma", "v", "y", "c" in
        begin
+         let a, b  = 
+           match Type.finddesc w1.type_back, 
+                 Type.finddesc w2.type_forward with 
+             | Type.TensorW(a, _), Type.TensorW(b, _) -> a, b
+             | _ -> assert false in
          let t = mkLetW (mkVar x) 
                    ((sigma, y), mkLetW (mkVar y) 
                                   ((c, v), (mkPairW (mkVar sigma) 
@@ -611,6 +611,11 @@ let build_instruction (i : instruction) : unit =
             build_jwa w1 (x, t) w2
        end;
        begin
+         let a, b  = 
+           match Type.finddesc w1.type_forward, 
+                 Type.finddesc w2.type_back with 
+             | Type.TensorW(a, _), Type.TensorW(b, _) -> a, b
+             | _ -> assert false in
          let t = mkLetW (mkVar x) 
                    ((sigma, y), mkLetW (mkVar y) 
                                   ((c, v), (mkPairW (mkVar sigma) 

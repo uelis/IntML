@@ -17,11 +17,13 @@ letu tester =
    nor (g1 [false]) (g2 [true])
 
 (* The terms (t1 tester) and (t2 tester) give different results. *)
+letu test0 = 
+   let [r] = t1 (fun g -> (g [false])) in [if r then print "true" else print "false"]
 
+(*
 letu test1 = 
    let [r] = t1 tester in [if r then print "true" else print "false"]
 
-(*
 letu test2 = 
    let [r] = t2 tester in [if r then print "true" else print "false"]
    *)
