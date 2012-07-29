@@ -139,12 +139,12 @@ let build_truncate_extend (enc : encoded_value) (a : Type.t) =
   let x_attrib = 
     if enc.attrib_bitlen < a_attrib_bitlen then
       begin
+        let i_a_attrib_bitlen = Llvm.integer_type context a_attrib_bitlen in
         match enc.attrib with
           | None -> 
-              Some (Llvm.const_null (Llvm.integer_type context a_attrib_bitlen))
+              Some (Llvm.const_null i_a_attrib_bitlen)
           | Some enc_attrib' ->
-              Some (Llvm.build_zext enc_attrib'
-                      (Llvm.integer_type context a_attrib_bitlen) 
+              Some (Llvm.build_zext enc_attrib' i_a_attrib_bitlen
                       "zext_attrib" builder)
       end
     else if enc.attrib_bitlen > a_attrib_bitlen then
@@ -162,8 +162,7 @@ let build_truncate_extend (enc : encoded_value) (a : Type.t) =
       (* nothing to truncate or extend *)
       enc.attrib
   in
-  let x_attrib_bitlen = min enc.attrib_bitlen a_attrib_bitlen in
-    {payload = x_payload; attrib = x_attrib; attrib_bitlen = x_attrib_bitlen}
+    {payload = x_payload; attrib = x_attrib; attrib_bitlen = a_attrib_bitlen}
 
 (*
  * Füge TypeAnnot an den Stellen ein, an denen Typinformationen
@@ -298,22 +297,8 @@ let build_term (ctx: (var * encoded_value) list)
           let tenc = build_annotatedterm ctx t in
           let branch = Llvm.const_int (Llvm.integer_type context 1) i in
           let attrib_branch = build_concat tenc.attrib tenc.attrib_bitlen (Some branch) 1 in
-          let rec fill_payload n xp =
-            if n = 0 then xp else 
-              fill_payload (n-1) (xp @ [Llvm.const_null (Llvm.i32_type context)]) in
-          let xp = fill_payload (payload_size a - (List.length tenc.payload)) tenc.payload in
-          let xal = attrib_size a in
-          let xa = 
-            if (attrib_size a) > tenc.attrib_bitlen + 1 then
-              match attrib_branch with
-                | Some attrib_branch' ->
-                    Some (Llvm.build_zext attrib_branch'
-                            (Llvm.integer_type context xal) 
-                            "xa" builder)
-                | None -> assert false
-            else 
-              attrib_branch in
-            {payload = xp; attrib = xa; attrib_bitlen = xal}
+          let denc = { payload = tenc.payload; attrib = attrib_branch; attrib_bitlen = tenc.attrib_bitlen + 1} in
+            build_truncate_extend denc a
       | CaseW({ desc = TypeAnnot(u, Some a) }, [(x, s); (y, t)]) -> 
           let uenc = build_annotatedterm ctx u in
           let ax, ay = 
@@ -333,32 +318,32 @@ let build_term (ctx: (var * encoded_value) list)
             match cond with
               | None -> assert false
               | Some cond' ->
-                  ignore (Llvm.build_cond_br cond' block_s block_t builder);
+                  ignore (Llvm.build_cond_br cond' block_t block_s builder);
                   Llvm.position_at_end block_s builder;
                   (* may generate new blocks! *)
                   let senc = build_annotatedterm ((x, xenc) :: ctx) s in
-                  let block_end_s = Llvm.insertion_block builder in
                     ignore (Llvm.build_br block_res builder);
-                    Llvm.position_at_end block_t builder;
-                    let tenc = build_annotatedterm ((y, yenc) :: ctx) t in
-                    let block_end_t = Llvm.insertion_block builder in
-                      ignore (Llvm.build_br block_res builder);
-                      assert (senc.attrib_bitlen = tenc.attrib_bitlen);
-                      (* insert phi nodes in result *)
-                      Llvm.position_at_end block_res builder;
-                      let z_attrib =
-                        match senc.attrib, tenc.attrib with
-                          | None, None -> None
-                          | Some sa', Some ta' -> 
-                              Some (Llvm.build_phi [(sa', block_end_s); 
-                                                    (ta', block_end_t)] "za" builder)
-                          | _, _ -> assert false in
-                      let z_payload = 
-                        List.map 
-                          (fun (x,y) -> Llvm.build_phi [(x, block_end_s);
-                                                        (y, block_end_t)] "z" builder)
-                          (List.combine senc.payload tenc.payload) in
-                        {payload = z_payload; attrib = z_attrib; attrib_bitlen = senc.attrib_bitlen}
+                    let block_end_s = Llvm.insertion_block builder in
+                      Llvm.position_at_end block_t builder;
+                      let tenc = build_annotatedterm ((y, yenc) :: ctx) t in
+                        ignore (Llvm.build_br block_res builder);
+                        let block_end_t = Llvm.insertion_block builder in
+                          assert (senc.attrib_bitlen = tenc.attrib_bitlen);
+                          (* insert phi nodes in result *)
+                          Llvm.position_at_end block_res builder;
+                          let z_attrib =
+                            match senc.attrib, tenc.attrib with
+                              | None, None -> None
+                              | Some sa', Some ta' -> 
+                                  Some (Llvm.build_phi [(sa', block_end_s); 
+                                                        (ta', block_end_t)] "za" builder)
+                              | _, _ -> assert false in
+                          let z_payload = 
+                            List.map 
+                              (fun (x,y) -> Llvm.build_phi [(x, block_end_s);
+                                                            (y, block_end_t)] "z" builder)
+                              (List.combine senc.payload tenc.payload) in
+                            {payload = z_payload; attrib = z_attrib; attrib_bitlen = senc.attrib_bitlen}
             end
       | TypeAnnot(t, _) ->
           build_annotatedterm ctx t
@@ -664,6 +649,7 @@ let build_instruction (i : instruction) : unit =
                                   ((d, y), (mkPairW (mkVar sigma) 
                                               (mkPairW (mkInlW (mkVar d)) (mkVar y))))) in
             build_jump_argument w2 (x, t) w1 in
+         (*unnötig?*)
        let denc2 = build_truncate_extend denc2' w1.type_forward in
        (* <sigma, <v,w>> @ w3         |-->  <sigma, <inr(v),w>> @ w1 *)
        let src3 = Hashtbl.find entry_points w3.src in
