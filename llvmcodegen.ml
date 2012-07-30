@@ -430,17 +430,6 @@ let allocate_tables (is : instruction list) =
          add_module w.dst w.type_forward;
     ) all_wires
 
-let build_defining_instruction_map (is : Compile.instruction list) =
-  let rec build_map i =
-    match i with
-      | [] -> IntMap.empty
-      | node :: rest -> 
-          List.fold_right 
-            (fun w map -> IntMap.add w.src node map) 
-            (Compile.wires [node]) (build_map rest) 
-  in
-    build_map is 
-
 let build_instruction (i : instruction) : unit =
   let build_br dst = 
     let dst_block = Hashtbl.find entry_points dst in
