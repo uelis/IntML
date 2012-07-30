@@ -742,5 +742,5 @@ let llvm_circuit (c : Compile.circuit) =
     (* body *)
     build_body c;
     Llvm.delete_block dummy; 
-    Llvm.dump_module the_module;
+    (* Llvm.dump_module the_module; *)
     the_module
