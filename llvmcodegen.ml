@@ -1,13 +1,6 @@
 open Term
 open Compile
 
-module IntMap = Map.Make(
-  struct
-    type t = int
-    let compare = compare
-  end
-)
-
 type encoded_value = {
   payload : Llvm.llvalue list;
   attrib: Llvm.llvalue option;
@@ -73,26 +66,53 @@ let part n l =
   let (h, t) = part_rev n l in
     (List.rev h, t)
 
-let rec payload_size (a: Type.t) : int = 
-  let open Type in
-    match finddesc a with
-      | Link _ -> assert false
-      | Var(_) | ZeroW | OneW -> 0
-      | NatW -> 1
-      | TensorW(a1, a2) -> payload_size a1 + (payload_size a2)
-      | SumW[a1; a2] -> (max (payload_size a1) (payload_size a2))
-      | ListW _ -> failwith "TODO"
-      | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
+let entry_points : (int, Llvm.llbasicblock) Hashtbl.t = Hashtbl.create 10                                                         
+let token_names : (int, encoded_value) Hashtbl.t = Hashtbl.create 10
+let all_tokens : ((Llvm.llvalue * Llvm.llvalue) list) ref = ref []
+let payload_size_memo = Type.Typetbl.create 10
+let attrib_size_memo = Type.Typetbl.create 10
 
-let rec attrib_size (a: Type.t) : int = 
-  let open Type in
-    match finddesc a with
-      | Link _ -> assert false
-      | Var | ZeroW | OneW | NatW -> 0
-      | TensorW(a1, a2) -> attrib_size a1 + (attrib_size a2)
-      | SumW[a1; a2] -> 1 + (max (attrib_size a1) (attrib_size a2))
-      | ListW _ -> failwith "TODO"
-      | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
+let clear_tables () =
+  Hashtbl.clear entry_points;
+  Hashtbl.clear token_names;
+  all_tokens := [];
+  Type.Typetbl.clear payload_size_memo;
+  Type.Typetbl.clear attrib_size_memo
+
+(* TODO: check that memoization is really ok here, i.e. that sizes do not change
+ * *)
+let rec payload_size (a: Type.t) : int = 
+  try Type.Typetbl.find payload_size_memo a with
+    | Not_found ->
+        let size =
+          let open Type in
+            match finddesc a with
+              | Link _ -> assert false
+              | Var(_) | ZeroW | OneW -> 0
+              | NatW -> 1
+              | TensorW(a1, a2) -> payload_size a1 + (payload_size a2)
+              | SumW[a1; a2] -> (max (payload_size a1) (payload_size a2))
+              | ListW _ -> failwith "TODO"
+              | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
+        in
+          Type.Typetbl.add payload_size_memo a size;
+          size
+
+let rec attrib_size (a: Type.t) : int =
+  try Type.Typetbl.find attrib_size_memo a with
+    |Not_found ->
+        let size =
+          let open Type in
+            match finddesc a with
+              | Link _ -> assert false
+              | Var | ZeroW | OneW | NatW -> 0
+              | TensorW(a1, a2) -> attrib_size a1 + (attrib_size a2)
+              | SumW[a1; a2] -> 1 + (max (attrib_size a1) (attrib_size a2))
+              | ListW _ -> failwith "TODO"
+              | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
+        in
+          Type.Typetbl.add attrib_size_memo a size;
+          size
 
 let build_concat 
       (v1 : Llvm.llvalue option) (l1 : int) 
@@ -368,9 +388,6 @@ let build_term (ctx: (var * encoded_value) list)
     build_annotatedterm ctx t_annotated
 
 
-let entry_points : (int, Llvm.llbasicblock) Hashtbl.t = Hashtbl.create 10                                                         
-let token_names : (int, encoded_value) Hashtbl.t = Hashtbl.create 10
-let all_tokens : ((Llvm.llvalue * Llvm.llvalue) list) ref = ref []
 
 let replace_in_token_names (oldv : Llvm.llvalue) (newv : Llvm.llvalue)  =
   let replace (token_name : encoded_value) =
@@ -386,9 +403,7 @@ let replace_in_token_names (oldv : Llvm.llvalue) (newv : Llvm.llvalue)  =
     List.iter (fun (n, token) -> Hashtbl.add token_names n (replace token)) bindings
 
 let allocate_tables (is : instruction list) =
-  Hashtbl.clear entry_points;
-  Hashtbl.clear token_names;
-  all_tokens := [];
+  clear_tables();
   let build_dummy ty name builder = 
      let i0 = Llvm.build_alloca ty name builder in
      let dummy = Llvm.build_bitcast i0 ty name builder in
