@@ -69,19 +69,15 @@ let part n l =
 let entry_points : (int, Llvm.llbasicblock) Hashtbl.t = Hashtbl.create 10                                                         
 let token_names : (int, encoded_value) Hashtbl.t = Hashtbl.create 10
 let all_tokens : ((Llvm.llvalue * Llvm.llvalue) list) ref = ref []
-let payload_size_memo = Type.Typetbl.create 10
-let attrib_size_memo = Type.Typetbl.create 10
 
 let clear_tables () =
   Hashtbl.clear entry_points;
   Hashtbl.clear token_names;
-  all_tokens := [];
-  Type.Typetbl.clear payload_size_memo;
-  Type.Typetbl.clear attrib_size_memo
+  all_tokens := []
 
-(* TODO: check that memoization is really ok here, i.e. that sizes do not change
- * *)
 let rec payload_size (a: Type.t) : int = 
+  let payload_size_memo = Type.Typetbl.create 5 in
+  let rec p_s a = 
   try Type.Typetbl.find payload_size_memo a with
     | Not_found ->
         let size =
@@ -90,15 +86,18 @@ let rec payload_size (a: Type.t) : int =
               | Link _ -> assert false
               | Var(_) | ZeroW | OneW -> 0
               | NatW -> 1
-              | TensorW(a1, a2) -> payload_size a1 + (payload_size a2)
-              | SumW[a1; a2] -> (max (payload_size a1) (payload_size a2))
+              | TensorW(a1, a2) -> p_s a1 + (p_s a2)
+              | SumW[a1; a2] -> (max (p_s a1) (p_s a2))
               | ListW _ -> failwith "TODO"
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
         in
           Type.Typetbl.add payload_size_memo a size;
           size
+  in p_s a
 
-let rec attrib_size (a: Type.t) : int =
+let attrib_size (a: Type.t) : int =
+  let attrib_size_memo = Type.Typetbl.create 5 in
+  let rec a_s a = 
   try Type.Typetbl.find attrib_size_memo a with
     |Not_found ->
         let size =
@@ -106,13 +105,14 @@ let rec attrib_size (a: Type.t) : int =
             match finddesc a with
               | Link _ -> assert false
               | Var | ZeroW | OneW | NatW -> 0
-              | TensorW(a1, a2) -> attrib_size a1 + (attrib_size a2)
-              | SumW[a1; a2] -> 1 + (max (attrib_size a1) (attrib_size a2))
+              | TensorW(a1, a2) -> a_s a1 + (a_s a2)
+              | SumW[a1; a2] -> 1 + (max (a_s a1) (a_s a2))
               | ListW _ -> failwith "TODO"
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
         in
           Type.Typetbl.add attrib_size_memo a size;
           size
+  in a_s a
 
 let build_concat 
       (v1 : Llvm.llvalue option) (l1 : int) 
