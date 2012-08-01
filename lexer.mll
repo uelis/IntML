@@ -45,6 +45,7 @@ rule main = parse
   | "fun"      { TokLambda }
   | '+'        { TokPlus }
   | '*'        { TokTimes }
+  | '/'        { TokDiv }
   | ','        { TokComma }
   | '''        { TokQuote }
   | ':'        { TokColon }

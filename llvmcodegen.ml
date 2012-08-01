@@ -1,3 +1,9 @@
+(* TODO: 
+ * - rename nat => int
+ * - operations on int (+,*,/,print)
+ * - remove succ
+ * - list-type
+ *)
 open Term
 open Compile
 
@@ -145,7 +151,7 @@ let build_split (z : Llvm.llvalue option) (len1 : int) (len2 : int)
             Some x, Some y                      
 
 (* TODO: doc 
-* truncate if necessary
+* truncate or extend if necessary
 * *)                      
 let build_truncate_extend (enc : encoded_value) (a : Type.t) =
   let a_payload_size = payload_size a in
@@ -247,11 +253,60 @@ let build_term (ctx: (var * encoded_value) list)
             if msl = 0 then None else 
               Some (Llvm.const_null (Llvm.integer_type context msl)) in
             {payload = mp ap; attrib = ms; attrib_bitlen = msl}
-(*      | ConstW(Some a, Cmin) when Type.finddesc a = Type.NatW ->
-          let i32 = Llvm.integer_type context 32 in
-          let zero = Llvm.const_null i32 in
-            [zero], None, 0*)
-      | AppW({desc = ConstW(Some a, Csucc)}, t1) ->
+      | ConstW(Some a, Cintconst(i)) ->
+          assert (Type.finddesc a = Type.NatW);
+          let vali = Llvm.const_int (Llvm.i32_type context) i in
+            {payload = [vali]; attrib = None; attrib_bitlen = 0}
+      | AppW({desc = ConstW(Some a, Cintprint)}, t1) ->
+          begin
+            match Type.finddesc a with
+              | Type.FunW(a1, a2) -> 
+                  begin
+                    match Type.finddesc a1 with
+                      | Type.NatW ->
+                          begin
+                            match build_annotatedterm ctx t1 with
+                              | {payload = [x]; attrib = None} -> 
+                                  let i8a = Llvm.pointer_type (Llvm.i8_type context) in
+                                  let i32 = Llvm.i32_type context in
+                                  let formatstr = Llvm.build_global_string "%i" "format" builder in            
+                                  let formatstrptr = Llvm.build_in_bounds_gep formatstr (Array.make 2 (Llvm.const_null i32)) "forrmatptr" builder in
+                                  let printftype = Llvm.function_type (Llvm.i32_type context) (Array.of_list [i8a; i32]) in
+                                  let printf = Llvm.declare_function "printf" printftype the_module in
+                                  let args = Array.of_list [formatstrptr; x] in
+                                    ignore (Llvm.build_call printf args "i" builder);
+                                    {payload = []; attrib = None; attrib_bitlen = 0}
+                              | _ -> assert false
+                          end
+                      | _ -> assert false
+                  end
+              | _ -> assert false
+          end
+      | AppW({desc = AppW({desc = ConstW(Some a, binop)}, t1)}, t2) 
+          when (binop = Cintadd || binop = Cintsub || binop = Cintmul || binop = Cintdiv) ->
+          begin
+            match build_annotatedterm ctx t1, build_annotatedterm ctx t2 with
+              | {payload = [x]; attrib = None},  {payload = [y]; attrib = None} ->
+                  let res =
+                    match binop with
+                      | Cintadd -> Llvm.build_add x y "sum" builder 
+                      | Cintsub -> Llvm.build_sub x y "sub" builder 
+                      | Cintmul -> Llvm.build_mul x y "mul" builder 
+                      | Cintdiv -> Llvm.build_sdiv x y "sdiv" builder 
+                      | _ -> assert false
+                  in
+                    {payload = [res]; attrib = None; attrib_bitlen = 0}
+              | _ -> assert false
+          end
+      | AppW({desc = AppW({desc = ConstW(Some a, Cinteq)}, t1)}, t2) ->
+          begin
+            match build_annotatedterm ctx t1, build_annotatedterm ctx t2 with
+              | {payload = [x]; attrib = None},  {payload = [y]; attrib = None} ->
+                  let eq = Llvm.build_icmp Llvm.Icmp.Ne x y "eq" builder in
+                    {payload = []; attrib = Some eq; attrib_bitlen = 1}
+              | _ -> assert false
+          end
+(*      | AppW({desc = ConstW(Some a, Csucc)}, t1) ->
           begin
             match Type.finddesc a with
               | Type.FunW(a1, a2) -> 
@@ -269,7 +324,7 @@ let build_term (ctx: (var * encoded_value) list)
                       | _ -> assert false
                   end
               | _ -> assert false
-          end
+          end*)
       | ConstW(Some a, Cprint(s)) ->
           let i32 = Llvm.i32_type context in
           let str = Llvm.build_global_string s "s" builder in            
@@ -282,7 +337,6 @@ let build_term (ctx: (var * encoded_value) list)
             ignore (Llvm.build_call puts args "i" builder);
             {payload = []; attrib = None; attrib_bitlen = 0}
       | ConstW(None, _) -> assert false
-      (* TODO  | ConstW of (Type.t option) * term_const *)
       | UnitW ->
           {payload = []; attrib = None; attrib_bitlen = 0}
       | TypeAnnot({ desc = PairW(t1, t2) }, Some a) ->

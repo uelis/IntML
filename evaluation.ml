@@ -84,18 +84,18 @@ let rec eval (t: Term.t) (sigma : env) : value =
         print_string s;
         flush stdout;
         UnitV
-    | ConstW(Some a, Cnatpred) -> NatPredV
-    | ConstW(Some a, Cnil) -> NilV
-    | ConstW(Some a, Ccons) -> ConsV(None, None)
+(*    | ConstW(Some a, Cnatpred) -> NatPredV *)
+    | ConstW(Some a, Clistnil) -> NilV
+    | ConstW(Some a, Clistcons) -> ConsV(None, None)
     | ConstW(Some a, Clistcase) -> MatchV
     | ConstW(Some a, Cmin) -> min a
-    | ConstW(Some a, Csucc) -> 
+(*    | ConstW(Some a, Csucc) -> 
         begin 
           match Type.finddesc a with
             | Type.FunW(b, _) -> SuccV(b)
             | _ -> assert false
-        end
-    | ConstW(Some a, Ceq) -> 
+        end*)
+    | ConstW(Some a, Cinteq) -> 
         begin 
           match Type.finddesc a with
             | Type.FunW(b, _) -> EqV(b, None)
@@ -178,9 +178,9 @@ let eval_closed (t: Term.t) : Term.t option =
   let rec cv2termW (v: value) =
     match v with 
       | UnitV -> mkUnitW 
-      | NilV -> mkConstW None Cnil
+      | NilV -> mkConstW None Clistnil
       | ConsV(Some v1, Some v2) -> 
-          mkAppW (mkAppW (mkConstW None Ccons) (cv2termW v1)) (cv2termW v2)
+          mkAppW (mkAppW (mkConstW None Clistcons) (cv2termW v1)) (cv2termW v2)
       | InV(n, i, v1) -> mkInW n i (cv2termW v1)
       | PairV(v1, v2) -> mkPairW (cv2termW v1) (cv2termW v2)
       | _ -> raise FunctionalValue in    

@@ -214,12 +214,16 @@ let string_of_term_const (c: term_const) : string =
   match c with
   | Cprint s -> "print(" ^ s ^ ")"
   | Cmin -> "min"
-  | Csucc -> "succ"
-  | Ceq -> "eq"
+  | Cinteq -> "eq"
   | Cbot -> "bot()"
-  | Cnatpred -> "pred"
-  | Cnil -> "nil"
-  | Ccons -> "cons"
+  | Cintconst i -> Printf.sprintf "intconst %i" i
+  | Cintadd -> "intadd"
+  | Cintsub -> "intsub"
+  | Cintmul -> "intmul"
+  | Cintdiv -> "intdiv"
+  | Cinteq -> "inteq"
+  | Clistnil -> "nil"
+  | Clistcons -> "cons"
   | Clistcase -> "listcase"
 
 let string_of_termW (term: Term.t): string =

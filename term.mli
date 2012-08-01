@@ -20,12 +20,16 @@ end
 type term_const =
   | Cprint of string
   | Cmin
-  | Csucc
-  | Ceq
   | Cbot
-  | Cnatpred
-  | Cnil
-  | Ccons
+  | Cintconst of int
+  | Cintadd
+  | Cintsub
+  | Cintmul
+  | Cintdiv
+  | Cinteq
+  | Cintprint
+  | Clistnil
+  | Clistcons
   | Clistcase
 
 type t = { desc: t_desc;      

@@ -55,6 +55,7 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokLambda
 %token TokPlus
 %token TokTimes
+%token TokDiv
 %token TokComma
 %token TokQuote
 %token TokColon
@@ -95,6 +96,8 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token <string> TokIdent 
 %token <string> TokString 
 %token TokEof
+
+%left TokAdd
 
 %start decls
 %start top_query
@@ -159,8 +162,11 @@ termW:
        { mkTerm (AppW (mkTerm (LambdaW(($2, None), $6)), $4)) }
     | TokLet TokLBracket identifier TokRBracket TokEquals termU TokIn termW
        { mkTerm (LetBoxW($6, ($3, $8))) }
-    | termW_app TokSemicolon termW
-       { mkTerm (AppW (mkTerm (LambdaW((unusable_var, Some (Type.newty Type.OneW)), $3)), $1)) }
+/*    | termW_app TokSemicolon termW
+       { mkTerm (AppW (mkTerm (LambdaW((unusable_var, Some (Type.newty Type.OneW)), $3)), $1)) } 
+    | termW_atom TokEquals termW
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cinteq)), $1)), $3)) } 
+       */
     | termW_app
        { $1 } 
 
@@ -169,10 +175,10 @@ termW_app:
        { $1 }
     | termW_app termW_atom 
        { mkTerm (AppW($1, $2))  }
-    | termW_app TokEquals termW_atom
-       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Ceq)), $1)), $3)) }
 
 termW_atom:
+    | termW_atom TokPlus termW_atom
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cintadd)), $1)), $3)) }
     | identifier
        { mkTerm (Term.Var($1)) }
     | TokLAngle TokRAngle 
@@ -187,20 +193,24 @@ termW_atom:
        { mkTerm (InW(2, 1, $3)) }
     | TokKwPrint TokString
        { mkTerm (ConstW(None, Cprint $2)) } 
+    | TokKwPrint termW
+       { mkTerm (AppW(mkTerm (ConstW(None, Cintprint)), $2)) }
     | TokKwMin
        { mkTerm (ConstW(None, Cmin)) } 
-    | TokKwSucc
-       { mkTerm (ConstW(None, Csucc)) }
+/*    | TokKwSucc
+       { mkTerm (ConstW(None, Csucc)) } 
     | TokKwPred
-       { mkTerm (ConstW(None, Cnatpred)) }
+       { mkTerm (ConstW(None, Cnatpred)) } */
+    | TokNum
+       { mkTerm (ConstW(None, Cintconst($1))) } 
     | TokKwNil
-       { mkTerm (ConstW(None, Cnil)) } 
+       { mkTerm (ConstW(None, Clistnil)) } 
     | TokKwCons
-       { mkTerm (ConstW(None, Ccons)) }
+       { mkTerm (ConstW(None, Clistcons)) }
     | TokKwMatch
        { mkTerm (ConstW(None, Clistcase)) } 
-    | TokKwEq
-       { mkTerm (ConstW(None, Ceq)) }
+/*    | TokKwEq
+       { mkTerm (ConstW(None, Cinteq)) }*/
     | TokLParen termW TokColon typeW TokRParen
        { match $2.desc with
          | ConstW(None, c) -> {$2 with desc = ConstW(Some $4, c)}

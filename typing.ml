@@ -76,11 +76,27 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
                              "Is it perhaps an upper class variable?"))
       end
   | ConstW(a, Cprint s) ->
-      newty OneW, []
-  | ConstW(a, Cnil) ->
+      newty OneW, [] (* TODO*)
+  | ConstW(a, Cintconst(_)) ->
+      let intty = newty Type.NatW in
+      begin match a with
+             | Some a' -> a', [eq_expected_constraint t (a', intty)]
+             | None -> intty, []
+      end
+  | ConstW(a, Cintprint) ->
+      let b = newty (FunW(newty Type.NatW, newty Type.OneW)) in
+      begin match a with
+             | Some a' -> a', [eq_expected_constraint t (a', b)]
+             | None -> b, []
+      end
+  | ConstW(a, Cintadd) | ConstW(a, Cintsub) | ConstW(a, Cintmul) | ConstW(a, Cintdiv) ->
+      let intty = newty Type.NatW in        
+      let b = newty (FunW(intty, newty (FunW(intty, intty)))) in
+        b, []
+  | ConstW(a, Clistnil) ->
       let alpha = newty Type.Var in        
         newty (Type.ListW alpha), []
-  | ConstW(a, Ccons) ->
+  | ConstW(a, Clistcons) ->
       let alpha = newty Type.Var in        
       let listalpha = newty (Type.ListW alpha) in
       let b = newty (FunW(alpha, newty (FunW(listalpha, listalpha)))) in
@@ -96,7 +112,7 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         | Some a' -> a', []
         | None -> newty Type.Var, []
       end
-  | ConstW(a, Csucc) ->
+(*  | ConstW(a, Csucc) ->
       let alpha = newty Type.Var in        
       let b = newty (FunW(alpha, alpha)) in
       begin match a with
@@ -109,12 +125,12 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
       begin match a with
              | Some a' -> a', [eq_expected_constraint t (a', b)]
              | None -> b, []
-      end
-  | ConstW(a, Ceq) ->
-      let alpha = newty Var in
+      end *)
+  | ConstW(a, Cinteq) ->
+      let intty = newty NatW in
       let one = newty OneW in
-      let b = newty (FunW(alpha, 
-                          newty (FunW(alpha, 
+      let b = newty (FunW(intty, 
+                          newty (FunW(intty, 
                                       newty (SumW([one; one])))))) in
         begin match a with
           | Some a' -> a', [eq_expected_constraint t (a', b)]
