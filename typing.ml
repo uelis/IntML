@@ -441,6 +441,12 @@ let solve_constraints (con: type_constraint list) : unit =
                      (a, alpha, Some ContextShape) :: l)
         m [] 
     in
+      (*
+  List.iter (fun (t, t', _) ->
+               Printf.printf "%s = %s\n" 
+                 (Printing.string_of_type t)
+                 (Printing.string_of_type t')) eqs_of_ineqs;
+  flush stdout; *)
       U.unify_pairs eqs_of_ineqs
 
 let principal_typeW (c: contextW) (t: Term.t) : Type.t = 
