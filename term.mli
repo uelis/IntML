@@ -92,7 +92,7 @@ val variant : t -> t
  * the given name-supply. *)
 val variant_with_name_supply : (unit -> var) -> t -> t 
 
-val map_type_annots : (Type.t option -> Type.t option) -> t -> t
+(* val map_type_annots : (Type.t option -> Type.t option) -> t -> t *)
 
 val fresh_vars_for_missing_annots : t -> t
 

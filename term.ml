@@ -163,7 +163,6 @@ let map_type_annots (f: Type.t option -> Type.t option) (term: t) : t =
     | ConstW(ty, s) -> { term with desc = ConstW(f ty, s) }
     | InW(n, k, s) -> { term with desc = InW(n, k, mta s) }
     | TrW(s) -> { term with desc = TrW(mta s) }
-    (* TODO *)
     | FoldW(ty, s) -> { term with desc = FoldW(ty, mta s) }
     | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, mta s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
@@ -273,8 +272,37 @@ let freshen_type_vars t =
     with Not_found ->
       let y = Type.newty Type.Var in
         Type.Typetbl.add new_type_vars (Type.find x) y;
-        y
-  in map_type_annots (function 
-                        | None -> None
-                        | Some a -> Some (Type.subst fv a)) t
+        y in
+  let f = function 
+    | None -> None
+    | Some a -> Some (Type.subst fv a) in
+  let rec mta term = 
+    match term.desc with
+    | Var(_) | UnitW -> term 
+    | ConstW(ty, s) -> { term with desc = ConstW(f ty, s) }
+    | InW(n, k, s) -> { term with desc = InW(n, k, mta s) }
+    | TrW(s) -> { term with desc = TrW(mta s) }
+    | FoldW((alpha, a), s) -> 
+        { term with desc = FoldW((fv alpha, Type.subst fv a), mta s) }
+    | UnfoldW((alpha, a), s) -> 
+        { term with desc = UnfoldW((fv alpha, Type.subst fv a), mta s) }
+    | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
+    | HackU(ty, s) -> { term with desc = HackU(f ty, mta s) }
+    | PairW(s, t) -> { term with desc = PairW(mta s, mta t) }
+    | PairU (s, t) -> { term with desc = PairU(mta s, mta t) }
+    | AppW (s, t) -> { term with desc = AppW(mta s, mta t) }
+    | AppU(s, t) -> { term with desc = AppU(mta s, mta t) } 
+    | LetW(s, (x, y, t)) -> { term with desc = LetW(mta s, (x, y, mta t)) } 
+    | LetU(s, (x, y, t))  -> { term with desc = LetU(mta s, (x, y, mta t)) } 
+    | CopyU(s, (x, y, t)) -> { term with desc = CopyU(mta s, (x, y, mta t)) } 
+    | LambdaW((x, ty), t) -> { term with desc = LambdaW((x, f ty), mta t) }
+    | LambdaU((x, ty), t) -> { term with desc = LambdaU((x, f ty), mta t) } 
+    | LetBoxW(s, (x, t)) -> { term with desc = LetBoxW(mta s, (x, mta t)) }
+    | LetBoxU(s, (x, t)) -> { term with desc = LetBoxU(mta s, (x, mta t)) }
+    | CaseW(s, l) -> 
+        { term with desc = CaseW(mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
+    | CaseU(s, (x, t), (y, u)) ->
+        { term with desc = CaseU(mta s, (x, mta t), (y, mta u)) } 
+    | TypeAnnot(t, ty) -> { term with desc = TypeAnnot(mta t, f ty) }
+  in mta t
 
