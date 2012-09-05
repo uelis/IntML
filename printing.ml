@@ -294,24 +294,24 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf " *)"
       | PairW(t1, t2) -> 
           Buffer.add_char buf '<';
-          s_termW_app t1;
+          s_termW t1;
           Buffer.add_string buf ", ";
-          s_termW_atom t2;
+          s_termW t2;
           Buffer.add_char buf '>'
       | InW(2, 0, t1) -> 
           Buffer.add_string buf "inl(";
-          s_termW_app t1;
+          s_termW t1;
           Buffer.add_char buf ')'
       | InW(2, 1, t1) -> 
           Buffer.add_string buf "inr(";
-          s_termW_app t1;
+          s_termW t1;
           Buffer.add_char buf ')'
       | InW(n, k, t1) ->
           Buffer.add_string buf (Printf.sprintf "in(%i, %i," n k);
-          s_termW_app t1;
+          s_termW t1;
           Buffer.add_char buf ')'
       | TypeAnnot(t, None) ->
-          s_termW_app t
+          s_termW t
       | TypeAnnot(t, Some a) ->
           Buffer.add_char buf '(';
           s_termW t;

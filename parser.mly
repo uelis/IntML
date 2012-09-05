@@ -101,7 +101,7 @@ let clear_type_vars () = Hashtbl.clear type_vars
 
 top_query: 
     | termW TokEof
-      { Top.DirTerm("eval", $1) }
+      { clear_type_vars (); Top.DirTerm("eval", $1) }
     | decl TokEof
       { Top.DirDecl("decl", $1) }
     | TokSharp TokIdent TokEof
