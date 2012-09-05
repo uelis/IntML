@@ -22,7 +22,7 @@ and desc =
   | TensorW of t * t
   | SumW of t list
   | FunW of t * t
-  | ListW of t
+  | MuW of t * t
   | BoxU of t * t
   | TensorU of t * t
   | FunU of t * t * t
@@ -36,7 +36,7 @@ val union : t -> t -> unit
 
 val equals : t -> t -> bool
 
-val rename: (t -> t) -> t -> t
+val subst: (t -> t) -> t -> t
 val freshen: t -> t
 val freshen_index_types: t -> t
 

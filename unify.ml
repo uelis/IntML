@@ -55,8 +55,11 @@ module Unify(T : sig type t end) = struct
           | SumW(t1 :: tl1), SumW(s1 :: sl1) -> 
               unify_raw (t1, s1, tag);
               unify_raw (newty (SumW(tl1)), newty (SumW(sl1)), tag) 
-          | ListW(a1), ListW(b1) -> 
-              unify_raw(a1, b1, tag)
+          | MuW(alpha, a), MuW(beta, b) -> 
+              let gamma = newty Var in
+              let a' = subst (fun x -> if x == alpha then gamma else x) a in
+              let b' = subst (fun x -> if x == beta then gamma else x) b in
+              unify_raw(a', b', tag)
           | FunU(a1, t1, t2), FunU(b1, s1, s2) -> 
               unify_raw (a1, b1, tag);
               unify_raw (t1, s1, tag);
@@ -76,7 +79,7 @@ module Unify(T : sig type t end) = struct
             r.mark <- mark_open;
             begin
               match r.desc with 
-                | ListW(t1) -> dfs t1
+                | MuW(alpha, t1) -> dfs t1
                 | TensorW(t1, t2) | FunW(t1, t2)
                 | BoxU(t1, t2) | TensorU(t1, t2) -> dfs t1; dfs t2
                 | FunU(t1, t2, t3) -> dfs t1; dfs t2; dfs t3

@@ -99,9 +99,11 @@ let string_of_type (ty: Type.t): string =
       | Type.NatW -> Buffer.add_string buf "nat"
       | Type.ZeroW -> Buffer.add_char buf '0'
       | Type.OneW -> Buffer.add_char buf '1'
-      | Type.ListW a -> 
-          Buffer.add_string buf "list<";
-          s_typeW a;
+      | Type.MuW(alpha, t) ->
+          Buffer.add_string buf "mu<";
+          s_typeW alpha;
+          Buffer.add_char buf ',';
+          s_typeW t;
           Buffer.add_char buf '>'
       | Type.FunW _ | Type.SumW _ | Type.TensorW _ ->
           Buffer.add_char buf '(';
@@ -151,7 +153,7 @@ let string_of_type (ty: Type.t): string =
           s_typeW t2;
           Buffer.add_char buf ']'
       | Type.ZeroW | Type.OneW | Type.FunW _ | Type.NatW
-      | Type.SumW _ | Type.TensorW _ | Type.ListW _ ->
+      | Type.SumW _ | Type.TensorW _ | Type.MuW _ ->
           s_typeW t
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -200,7 +202,7 @@ let abstract_string_of_typeU (ty: Type.t): string =
           Buffer.add_string buf (string_of_type t2);
           Buffer.add_char buf ']'
       | Type.NatW | Type.ZeroW | Type.OneW | Type.FunW _
-      | Type.SumW _ | Type.TensorW _ | Type.ListW _ ->
+      | Type.SumW _ | Type.TensorW _ | Type.MuW _ ->
           Buffer.add_string buf (string_of_type t);
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -214,7 +216,6 @@ let string_of_term_const (c: term_const) : string =
   match c with
   | Cprint s -> "print(" ^ s ^ ")"
   | Cmin -> "min"
-  | Cinteq -> "eq"
   | Cbot -> "bot()"
   | Cintconst i -> Printf.sprintf "intconst %i" i
   | Cintadd -> "intadd"
@@ -222,9 +223,7 @@ let string_of_term_const (c: term_const) : string =
   | Cintmul -> "intmul"
   | Cintdiv -> "intdiv"
   | Cinteq -> "inteq"
-  | Clistnil -> "nil"
-  | Clistcons -> "cons"
-  | Clistcase -> "listcase"
+  | Cintprint -> "intprint"
 
 let string_of_termW (term: Term.t): string =
   let buf = Buffer.create 80 in
@@ -277,6 +276,13 @@ let string_of_termW (term: Term.t): string =
       | TrW(t1) ->
           Buffer.add_string buf "trace ";
           s_termW t1
+      | FoldW((alpha, a), t1) ->
+          Buffer.add_string buf "fold<";
+          Buffer.add_string buf (string_of_type alpha);
+          Buffer.add_string buf ". ";
+          Buffer.add_string buf (string_of_type a);
+          Buffer.add_string buf "> ";
+          s_termW t1
       | _ ->
           (s_termW_app t)
   and s_termW_app (t: Term.t) =
@@ -309,21 +315,21 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf (string_of_term_const s)
       | PairW(t1, t2) -> 
           Buffer.add_char buf '(';
-          s_termW_app t1;
+          s_termW t1;
           Buffer.add_string buf ", ";
-          s_termW_atom t2;
+          s_termW t2;
           Buffer.add_char buf ')'
       | InW(2, 0, t1) -> 
           Buffer.add_string buf "(Inl ";
-          s_termW_atom t1;
+          s_termW t1;
           Buffer.add_char buf ')'
       | InW(2, 1, t1) -> 
           Buffer.add_string buf "(Inr ";
-          s_termW_atom t1;
+          s_termW t1;
           Buffer.add_char buf ')'
       | InW(n, k, t1) ->
           Buffer.add_string buf (Printf.sprintf "in(%i, %i," n k);
-          s_termW_app t1;
+          s_termW t1;
           Buffer.add_char buf ')'
       | TypeAnnot(t, _) ->
           s_termW_atom t

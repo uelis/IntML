@@ -94,7 +94,7 @@ let rec payload_size (a: Type.t) : int =
               | NatW -> 1
               | TensorW(a1, a2) -> p_s a1 + (p_s a2)
               | SumW[a1; a2] -> (max (p_s a1) (p_s a2))
-              | ListW _ -> failwith "TODO"
+              | MuW _ -> failwith "TODO"
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
         in
           Type.Typetbl.add payload_size_memo a size;
@@ -113,7 +113,7 @@ let attrib_size (a: Type.t) : int =
               | Var | ZeroW | OneW | NatW -> 0
               | TensorW(a1, a2) -> a_s a1 + (a_s a2)
               | SumW[a1; a2] -> 1 + (max (a_s a1) (a_s a2))
-              | ListW _ -> failwith "TODO"
+              | MuW _ -> failwith "TODO"
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
         in
           Type.Typetbl.add attrib_size_memo a size;

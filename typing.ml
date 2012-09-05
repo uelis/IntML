@@ -93,20 +93,6 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
       let intty = newty Type.NatW in        
       let b = newty (FunW(intty, newty (FunW(intty, intty)))) in
         b, []
-  | ConstW(a, Clistnil) ->
-      let alpha = newty Type.Var in        
-        newty (Type.ListW alpha), []
-  | ConstW(a, Clistcons) ->
-      let alpha = newty Type.Var in        
-      let listalpha = newty (Type.ListW alpha) in
-      let b = newty (FunW(alpha, newty (FunW(listalpha, listalpha)))) in
-        b, []
-  | ConstW(a, Clistcase) ->
-      let alpha = newty Type.Var in        
-      let one = newty OneW in
-      let listalpha = newty (Type.ListW alpha) in
-      let b = newty (FunW(listalpha, newty (SumW[one; newty (TensorW(alpha, listalpha))]))) in
-        b, []
   | ConstW(a, Cmin) ->
       begin match a with
         | Some a' -> a', []
@@ -192,6 +178,22 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
           | None -> con1
           | Some a-> eq_expected_constraint (Term.mkVar x) (alpha, a) :: con1
         end
+  | FoldW((alpha, a), t) -> 
+      let mua = newty (MuW(alpha, a)) in
+      let a_unfolded = 
+        Type.subst (fun beta -> if beta == alpha then mua else beta) a in
+      let a1, con1 = ptW c t in
+        newty (MuW(alpha, a)),
+        eq_expected_constraint t (a_unfolded, a1) ::
+        con1
+  | UnfoldW((alpha, a), t) ->
+      let mua = newty (MuW(alpha, a)) in
+      let a_unfolded = 
+        Type.subst (fun beta -> if beta == alpha then mua else beta) a in
+      let a1, con1 = ptW c t in
+        a_unfolded,
+        eq_expected_constraint t (newty (MuW(alpha, a)), a1) ::
+        con1
   | TrW(t1) -> 
       let a1, con1 = ptW c t1 in
       let alpha, beta, gamma = newty Var, newty Var, newty Var in
@@ -368,8 +370,9 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
       let a, con = ptU c phi t in
         a,
         eq_expected_constraint t (a, ty) :: con
-  |TrW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _)|InW (_, _, _)|LetW (_, _)
-  | LetBoxW(_,_) | PairW (_, _)|ConstW (_, _)|UnitW ->
+  | TrW _  |LambdaW (_, _) | AppW (_, _) | CaseW (_, _) | InW (_, _, _) 
+  | LetW (_, _) | LetBoxW(_,_) | PairW (_, _)|ConstW (_, _)|UnitW 
+  | FoldW _ | UnfoldW _ ->
       raise (Typing_error (Some t, "Upper class term expected."))
 
 let raise_error (failed_eqn: U.failure_reason) =

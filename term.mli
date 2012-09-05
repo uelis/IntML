@@ -28,9 +28,6 @@ type term_const =
   | Cintdiv
   | Cinteq
   | Cintprint
-  | Clistnil
-  | Clistcons
-  | Clistcase
 
 type t = { desc: t_desc;      
            loc: Location.t }
@@ -44,6 +41,8 @@ and t_desc =
   | CaseW of t * ((var * t) list)        (* s, <x1>t1, <x2>t2, ... *)
   | AppW of t * t                        (* s, t *)
   | LambdaW of (var * Type.t option) * t (* <x>s *)
+  | FoldW of (Type.t * Type.t) * t
+  | UnfoldW of (Type.t * Type.t) * t
   | TrW of t                             (* t *)
   | LetBoxW of t * (var * t)             (* s, <x>t *)
   | PairU of t * t                       (* s, t *)
@@ -69,6 +68,7 @@ val mkCaseW : t -> (var * t) list -> t
 val mkAppW : t -> t -> t
 val mkLambdaW : (var * Type.t option) * t -> t
 val mkTrW : t -> t
+val mkFoldW : Type.t * Type.t -> t -> t
 val mkPairU : t -> t -> t
 val mkLetU : t -> (var * var) * t -> t
 val mkAppU : t -> t -> t

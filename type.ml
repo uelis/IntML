@@ -13,7 +13,7 @@ and desc =
   | TensorW of t * t
   | SumW of t list
   | FunW of t * t
-  | ListW of t
+  | MuW of t * t
   | BoxU of t * t
   | TensorU of t * t
   | FunU of t * t * t                          
@@ -40,6 +40,24 @@ let union (t1 : t) (t2 : t) : unit =
 
 type type_t = t                
 
+let rec subst (f: t -> t) (b: t) : t =
+  match (find b).desc with
+    | Var -> f (find b)
+    | NatW -> newty NatW
+    | ZeroW -> newty ZeroW
+    | OneW -> newty OneW 
+    | TensorW(b1, b2) -> newty(TensorW(subst f b1, subst f b2))
+    | SumW(bs) -> newty(SumW(List.map (subst f) bs))
+    | FunW(b1, b2) -> newty(FunW(subst f b1, subst f b2))
+    | MuW(alpha, a) -> 
+        let beta = newty Var in
+        let a' = subst (fun x -> if x = alpha then beta else x) a in 
+        newty(MuW(alpha, subst f a'))
+    | BoxU(a1, a2) -> newty(BoxU(subst f a1, subst f a2))
+    | TensorU(b1, b2) -> newty(TensorU(subst f b1, subst f b2))
+    | FunU(a1, b1, b2) -> newty(FunU(subst f a1, subst f b1, subst f b2))
+    | Link _ -> assert false
+
 let rec equals (u: t) (v: t) : bool =
   let ur = find u in
   let vr = find v in
@@ -53,8 +71,12 @@ let rec equals (u: t) (v: t) : bool =
         | TensorW(u1, u2), TensorW(v1, v2) | TensorU(u1, u2), TensorU(v1, v2) 
         | FunW(u1, u2), FunW(v1, v2) | BoxU(u1, u2), BoxU(v1, v2) ->
             (equals u1 v1) && (equals u2 v2)
-        | ListW(u1), ListW(v1) ->
-            (equals u1 v1)
+        | MuW(alpha, a), MuW(beta, b) ->
+            (* TODO: inefficient *)
+            let gamma = newty Var in
+            (equals 
+               (subst (fun x -> if x == alpha then gamma else x) a) 
+               (subst (fun x -> if x == beta then gamma else x) b) )
         | FunU(u1, u2, u3), FunU(v1, v2, v3) ->
             (equals u1 v1) && (equals u2 v2) && (equals u3 v3)
         | SumW(lu), SumW(lv) ->            
@@ -73,23 +95,6 @@ struct
 end
 )
 
-let rec rename (f: t -> t) : t -> t =
-  let rec ren (b: t) : t = 
-    match (find b).desc with
-      | Var -> f (find b)
-      | NatW -> newty NatW
-      | ZeroW -> newty ZeroW
-      | OneW -> newty OneW 
-      | TensorW(b1, b2) -> newty(TensorW(ren b1, ren b2))
-      | SumW(bs) -> newty(SumW(List.map ren bs))
-      | FunW(b1, b2) -> newty(FunW(ren b1, ren b2))
-      | ListW(a1) -> newty(ListW(ren a1))
-      | BoxU(a1, a2) -> newty(BoxU(ren a1, ren a2))
-      | TensorU(b1, b2) -> newty(TensorU(ren b1, ren b2))
-      | FunU(a1, b1, b2) -> newty(FunU(ren a1, ren b1, ren b2))
-      | Link _ -> assert false
-  in ren
-
 let freshen t = 
   let vm = Typetbl.create 10 in
   let fv x = 
@@ -100,7 +105,7 @@ let freshen t =
         Typetbl.add vm (find x) y;
         y
   in
-    rename fv t
+    subst fv t
 
 let rec freshen_index_types (a: t) : t =
     match (find a).desc with
@@ -108,7 +113,7 @@ let rec freshen_index_types (a: t) : t =
       | TensorW(b1, b2) -> newty(TensorW(freshen_index_types b1, freshen_index_types b2))
       | SumW(bs) -> newty(SumW(List.map freshen_index_types bs))
       | FunW(b1, b2) -> newty(FunW(freshen_index_types b1, freshen_index_types b2))
-      | ListW(a1) -> newty(ListW(freshen_index_types a1))
+      | MuW(alpha, a) -> newty(MuW(alpha, freshen_index_types a))
       | BoxU(a1, a2) -> newty(BoxU(freshen_index_types a1, freshen_index_types a2))
       | TensorU(b1, b2) -> newty(TensorU(freshen_index_types b1, freshen_index_types b2))
       | FunU(a1, b1, b2) -> newty(FunU(newty Var, freshen_index_types b1, freshen_index_types b2))

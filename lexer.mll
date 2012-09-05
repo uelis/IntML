@@ -47,12 +47,15 @@ rule main = parse
   | '*'        { TokTimes }
   | '/'        { TokDiv }
   | ','        { TokComma }
+  | ','        { TokDot }
   | '''        { TokQuote }
   | ':'        { TokColon }
   | ';'        { TokSemicolon }
   | '#'        { TokSharp }
   | '='        { TokEquals }
-  | "list"     { TokList }
+  | "mu"       { TokMu }
+  | "fold"     { TokFold }
+  | "unfold"   { TokUnfold }
   | "nil"      { TokKwNil }
   | "cons"     { TokKwCons  }
   | "match"    { TokKwMatch  }

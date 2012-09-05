@@ -7,10 +7,8 @@ open Term
 type env = (var * value) list
 and value =
   | NatPredV 
-  | NilV 
-  | ConsV of (value option) * (value option)
-  | MatchV
   | NatV of int
+  | FoldV of (Type.t * Type.t) * value
   | UnitV 
   | SuccV of Type.t
   | EqV of Type.t * value option
@@ -30,7 +28,7 @@ let rec min (ty: Type.t) =
   | Type.TensorW(a, b) -> PairV(min a, min b)
   | Type.SumW(a :: l) -> InV(1 + (List.length l), 0, min a)
   | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
-  | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _ | Type.ListW _ ->
+  | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _ | Type.MuW _ ->
       failwith "internal: min" 
 
 type succOrMin =
@@ -85,9 +83,6 @@ let rec eval (t: Term.t) (sigma : env) : value =
         flush stdout;
         UnitV
 (*    | ConstW(Some a, Cnatpred) -> NatPredV *)
-    | ConstW(Some a, Clistnil) -> NilV
-    | ConstW(Some a, Clistcons) -> ConsV(None, None)
-    | ConstW(Some a, Clistcase) -> MatchV
     | ConstW(Some a, Cmin) -> min a
 (*    | ConstW(Some a, Csucc) -> 
         begin 
@@ -132,6 +127,14 @@ let rec eval (t: Term.t) (sigma : env) : value =
         | FunV(tau, x, t1) -> TrV(tau, x, t1)
         | _ -> failwith "Internal: Wrong application of trace."
        )
+    | FoldW((alpha, a), t) ->
+        let v = eval t sigma in
+          FoldV((alpha, a), v)
+    | UnfoldW(_, t) ->
+        (match eval t sigma with
+           | FoldV(_, v) -> v
+           | _ -> failwith "Internal: unfold applied to non-fold value."
+        )
     | LetBoxW(t1, (x, t2)) ->
         let s1, a1 = Compile.compile_termU t1 in
         let v1 = eval (mkAppW s1 mkUnitW) sigma in
@@ -159,15 +162,6 @@ and appV (v1: value) (v2: value) : value =
             | NatV(n) -> if n > 0 then NatV(n-1) else NatV(n)
             | _ -> failwith "Internal: wrong application of pred"
         end
-    | ConsV(None, None) -> ConsV(Some v2, None)
-    | ConsV(Some v3, None) -> ConsV(Some v3, Some v2)
-    | MatchV -> 
-        begin
-          match v2 with
-            | NilV -> InV(2, 0, UnitV)
-            | ConsV(Some v3, Some v4) -> InV(2, 1, PairV(v3, v4))
-            | _ -> failwith "Internal: wrong application of match"
-        end
     | EqV(a, None) -> EqV(a, Some v2)
     | EqV(a, Some v3) -> if eq a v2 v3 then InV(2, 0, UnitV) else InV(2, 1, UnitV)
     | _ -> failwith "Internal: Cannot apply non-functional value."
@@ -178,11 +172,9 @@ let eval_closed (t: Term.t) : Term.t option =
   let rec cv2termW (v: value) =
     match v with 
       | UnitV -> mkUnitW 
-      | NilV -> mkConstW None Clistnil
-      | ConsV(Some v1, Some v2) -> 
-          mkAppW (mkAppW (mkConstW None Clistcons) (cv2termW v1)) (cv2termW v2)
       | InV(n, i, v1) -> mkInW n i (cv2termW v1)
       | PairV(v1, v2) -> mkPairW (cv2termW v1) (cv2termW v2)
+      | FoldV((alpha, a), v) -> mkFoldW (alpha, a) (cv2termW v)
       | _ -> raise FunctionalValue in    
   let v = eval t [] in
     try 

@@ -25,9 +25,6 @@ type term_const =
   | Cintdiv
   | Cinteq
   | Cintprint
-  | Clistnil
-  | Clistcons
-  | Clistcase
 
 type t =
     { desc: t_desc;      
@@ -42,6 +39,8 @@ and t_desc =
   | CaseW of t * ((var * t) list)      (* s, <x>t1, <y>t2 *)
   | AppW of t * t                      (* s, t *)
   | LambdaW of (var * (Type.t option)) * t 
+  | FoldW of (Type.t * Type.t) * t
+  | UnfoldW of (Type.t * Type.t) * t
   | TrW of t                           (* t *)
   | LetBoxW of t * (var * t)             (* s, <x>t *)
   | PairU of t * t                     (* s, t *)
@@ -67,6 +66,7 @@ let mkCaseW s l = { desc = CaseW(s, l); loc = None }
 let mkAppW s t = { desc = AppW(s, t); loc = None }
 let mkLambdaW ((x, ty), t) = { desc = LambdaW((x, ty), t); loc = None }
 let mkTrW t = { desc = TrW(t); loc = None }
+let mkFoldW (alpha, a) s = { desc = FoldW((alpha, a), s); loc = None }
 let mkPairU s t= { desc = PairU(s, t); loc = None }
 let mkLetU s ((x, y), t) = { desc = LetU(s, (x, y, t)); loc = None }
 let mkAppU s t = { desc = AppU(s, t); loc = None }
@@ -93,7 +93,8 @@ let rec free_vars (term: t) : var list =
   match term.desc with
     | Var(v) -> [v]
     | ConstW(_, _) | UnitW -> []
-    | InW(_,_,s) | TrW(s) | BoxTermU(s) | HackU(_, s) -> free_vars s
+    | InW(_,_,s) | FoldW(_, s) | UnfoldW(_, s) | TrW(s) 
+    | BoxTermU(s) | HackU(_, s) -> free_vars s
     | PairW(s, t) | PairU (s, t) | AppW (s, t) | AppU(s, t) -> 
         (free_vars s) @ (free_vars t)
     | LetW(s, (x, y, t)) | LetU(s, (x, y, t)) | CopyU(s, (x, y, t)) ->
@@ -116,11 +117,13 @@ let rename_vars (f: var -> var) (term: t) : t =
     | ConstW(_, _) | UnitW -> term
     | InW(n, k, s) -> { term with desc = InW(n, k, rn s) }
     | TrW(s) -> { term with desc = TrW(rn s) }
+    | FoldW(ty, s) -> { term with desc = FoldW(ty, rn s) }
+    | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, rn s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(rn s) }
     | HackU(ty, s) -> { term with desc = HackU(ty, rn s) }
     | PairW(s, t) -> { term with desc = PairW(rn s, rn t) }
-    | PairU (s, t) -> { term with desc = PairU(rn s, rn t) }
-    | AppW (s, t) -> { term with desc = AppW(rn s, rn t) }
+    | PairU(s, t) -> { term with desc = PairU(rn s, rn t) }
+    | AppW(s, t) -> { term with desc = AppW(rn s, rn t) }
     | AppU(s, t) -> { term with desc = AppU(rn s, rn t) } 
     | LetW(s, (x, y, t)) -> { term with desc = LetW(rn s, (f x, f y, rn t)) } 
     | LetU(s, (x, y, t))  -> { term with desc = LetU(rn s, (f x, f y, rn t)) } 
@@ -160,6 +163,9 @@ let map_type_annots (f: Type.t option -> Type.t option) (term: t) : t =
     | ConstW(ty, s) -> { term with desc = ConstW(f ty, s) }
     | InW(n, k, s) -> { term with desc = InW(n, k, mta s) }
     | TrW(s) -> { term with desc = TrW(mta s) }
+    (* TODO *)
+    | FoldW(ty, s) -> { term with desc = FoldW(ty, mta s) }
+    | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, mta s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
     | HackU(ty, s) -> { term with desc = HackU(f ty, mta s) }
     | PairW(s, t) -> { term with desc = PairW(mta s, mta t) }
@@ -204,6 +210,8 @@ let head_subst (s: t) (x: var) (t: t) : t option =
       | UnitW | ConstW(_, _) -> term
       | InW(n, k, s) -> { term with desc = InW(n, k, sub sigma s) }
       | TrW(s) -> { term with desc = TrW(sub sigma s) }
+      | FoldW(ty, s) -> { term with desc = FoldW(ty, sub sigma s) }
+      | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, sub sigma s) }
       | BoxTermU(s) -> { term with desc = BoxTermU(sub sigma s) }
       | HackU(ty, s) -> { term with desc = HackU(ty, sub sigma s) }
       | PairW(s, t) -> { term with desc = PairW(sub sigma s, sub sigma t) }
@@ -268,5 +276,5 @@ let freshen_type_vars t =
         y
   in map_type_annots (function 
                         | None -> None
-                        | Some a -> Some (Type.rename fv a)) t
+                        | Some a -> Some (Type.subst fv a)) t
 

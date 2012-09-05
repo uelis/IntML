@@ -281,7 +281,8 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
             U.unify w.type_back (tyTensor(sigma1, tym)); 
             (w, ins)
       | TrW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _)| InW (_, _, _)
-      | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_, _)|UnitW ->
+      | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_, _)|UnitW
+      | FoldW _ | UnfoldW _ ->
           assert false 
   and compile_in_box (c: var) (sigma: var list) (gamma: ctx) (t: Term.t) =
     let (gamma_in_box, i_enter_box) = enter_box gamma in
