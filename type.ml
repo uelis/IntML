@@ -40,6 +40,20 @@ let union (t1 : t) (t2 : t) : unit =
 
 type type_t = t                
 
+let rec free_vars (b: t) : t list =
+  match (find b).desc with
+    | Var -> [find b]
+    | NatW | ZeroW | OneW -> []
+    | TensorW(b1, b2) | FunW(b1, b2) | TensorU(b1, b2) | BoxU(b1, b2) ->
+        free_vars b1 @ (free_vars b2)
+    | FunU(a1, b1, b2) -> 
+        free_vars a1 @ (free_vars b1) @ (free_vars b2)
+    | SumW(bs) -> List.concat (List.map free_vars bs)
+    | MuW(alpha, a) -> 
+        let fva = free_vars a in
+          List.filter (fun beta -> not (find beta == find alpha)) fva
+    | Link _ -> assert false
+
 let rec subst (f: t -> t) (b: t) : t =
   match (find b).desc with
     | Var -> f (find b)

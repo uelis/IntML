@@ -435,22 +435,32 @@ let solve_constraints (con: type_constraint list) : unit =
             try newty (SumW[a; Type.Typetbl.find m (Type.find alpha)]) with Not_found -> a 
           in
             Type.Typetbl.replace m (Type.find alpha) b;
-            join_lower_bounds rest  
-  in 
+            join_lower_bounds rest in
+  let solve_ineq (a, alpha) =
+    assert (Type.finddesc alpha = Var);
+    let fva = Type.free_vars a in
+    let sol =
+      if List.exists (fun beta -> find beta == find alpha) fva then
+        let beta = newty Var in
+        let a' = subst (fun x -> if x == alpha then beta else x) a in
+        Type.newty (Type.MuW(beta, Type.newty (Type.SumW [Type.newty Type.OneW; a'])))
+      else 
+        a in
+      U.unify_pairs [(sol, alpha, Some ContextShape)]
+  in
     join_lower_bounds ineqs;
     (* Add equations for lower bounds. *)    
-    let eqs_of_ineqs = 
-      Type.Typetbl.fold (fun alpha a l -> 
-                     (a, alpha, Some ContextShape) :: l)
+    let ineqs = 
+      Type.Typetbl.fold (fun alpha a l -> (a, alpha) :: l)
         m [] 
     in
+      List.iter solve_ineq ineqs
       (*
   List.iter (fun (t, t', _) ->
                Printf.printf "%s = %s\n" 
                  (Printing.string_of_type t)
                  (Printing.string_of_type t')) eqs_of_ineqs;
   flush stdout; *)
-      U.unify_pairs eqs_of_ineqs
 
 let principal_typeW (c: contextW) (t: Term.t) : Type.t = 
   try 

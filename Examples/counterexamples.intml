@@ -1,0 +1,24 @@
+(* v3 is an example of a term that is typeable in the simply-typed
+ * lambda calculus, but not in IntML.
+ *
+ * In short, v1 has type {1+'a}({'a}X --o X) --o X.
+ * while v2 has type {...}({'a}({'a}X --o X) --o X) --o X.
+ * To type (v2 v1) one would have to unify 'a and 1+'a, which
+ * is not possible.
+ *)
+letu v1 = fun f -> copy f as f1, f2 in f1 (f2 (fun x -> x))
+letu v2 = fun g -> copy g as g1, g2 in g1 (fun x -> g2 (fun y -> x))
+letu v3 = v2 v1
+
+(* Note that the corresponding term is typeable in the simply-typed
+ * lambda calculus, however. The following program is accepted by
+ * OCaml.
+ * let v1 = fun f -> f (f (fun x -> x))
+ * let v2 = fun g -> g (fun x -> g (fun y -> x))
+ * let v3 = v2 v1
+ *)
+
+(* Variant of the same example *)
+letu u1 = fun x -> fun f -> copy f as f1, f2 in f1 (f2 x)
+letu u2 = fun f -> copy f as f1, f2 in f1 (fun x -> f2 (fun y -> x))
+letu u3 = fun x -> u2 (u1 x)

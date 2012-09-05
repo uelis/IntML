@@ -36,6 +36,7 @@ val union : t -> t -> unit
 
 val equals : t -> t -> bool
 
+val free_vars: t -> t list                         
 val subst: (t -> t) -> t -> t
 val freshen: t -> t
 val freshen_index_types: t -> t

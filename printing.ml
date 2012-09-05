@@ -48,9 +48,9 @@ let string_of_type (ty: Type.t): string =
     try
       let k = Tbl.find table (i,j) in
         Tbl.replace table (i,j) (k+1);
-        if k > 2 then
+(*        if k > 2 then
           (Buffer.add_string buf "..."; false)
-        else true
+        else*) true
     with
        Not_found -> 
          Tbl.add table (i,j) 0;
