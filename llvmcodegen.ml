@@ -20,7 +20,6 @@ type encoded_value = {
 }
   
 let context = Llvm.global_context ()
-let the_module = Llvm.create_module context "test"
 let builder = Llvm.builder context
 
 let position_at_start block builder =
@@ -159,7 +158,9 @@ let build_truncate_extend (enc : encoded_value) (a : Type.t) =
   let x_attrib = List.rev (mk_attrib (List.rev enc.attrib) a_attrib_bitlen) in
     {payload = x_payload; attrib = x_attrib; attrib_bitlen = a_attrib_bitlen}
 
-let build_term (ctx: (var * encoded_value) list) 
+let build_term 
+      (the_module : Llvm.llmodule)
+      (ctx: (var * encoded_value) list) 
       (type_ctx: (var * Type.t) list) (t: Term.t) (a: Type.t)
       : encoded_value =
   (* Add type annotations in various places *)
@@ -524,7 +525,7 @@ let allocate_tables (is : instruction list) =
          add_module w.dst w.type_forward;
     ) all_wires
 
-let build_instruction (i : instruction) : unit =
+let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
   let build_br dst = 
     let dst_block = Hashtbl.find entry_points dst in
       Llvm.build_br dst_block builder in    
@@ -571,7 +572,7 @@ let build_instruction (i : instruction) : unit =
     let src_block = Hashtbl.find entry_points w1.src in
       Llvm.position_at_end src_block builder;
       let senc = Hashtbl.find token_names w1.src in
-      build_term [(x, senc)] [(x, w1.type_back)] t w2.type_forward in
+      build_term the_module [(x, senc)] [(x, w1.type_back)] t w2.type_forward in
   (* build actual jump with argument *)
   let build_jwa w1 (x, t) w2 =
     let denc = build_jump_argument w1 (x, t) w2 in
@@ -618,7 +619,7 @@ let build_instruction (i : instruction) : unit =
          let src3_block = Hashtbl.find entry_points w3.src in
            Llvm.position_at_end src3_block builder;
            let senc = Hashtbl.find token_names w3.src in
-           let tenc = build_term [(x, senc)] [(x, w3.type_back)] t 
+           let tenc = build_term the_module [(x, senc)] [(x, w3.type_back)] t 
                         (Type.newty (Type.SumW[w1.type_forward; w2.type_forward])) in
            let dal = tenc.attrib_bitlen - 1 in
            let da, cond = build_split tenc.attrib dal 1 in
@@ -761,7 +762,7 @@ let build_instruction (i : instruction) : unit =
          let src1_block = Hashtbl.find entry_points w1.src in
            Llvm.position_at_end src1_block builder;
            let senc = Hashtbl.find token_names w1.src in
-           let tenc = build_term [(x, senc)] [(x, w1.type_back)] t 
+           let tenc = build_term the_module [(x, senc)] [(x, w1.type_back)] t 
                         (Type.newty (Type.SumW[w2.type_forward; w3.type_forward])) in
            let dal = tenc.attrib_bitlen - 1 in
            let da, cond = build_split tenc.attrib dal 1 in
@@ -776,8 +777,8 @@ let build_instruction (i : instruction) : unit =
                    ignore (build_cond_br cond' w3.dst w2.dst)
        end         
 
-let build_body (c : circuit) =
-  List.iter build_instruction c.instructions;
+let build_body (the_module : Llvm.llmodule) (c : circuit) =
+  List.iter (build_instruction the_module) c.instructions;
   (* empty blocks become self-loops: *)
   Hashtbl.iter 
     (fun n block ->
@@ -793,6 +794,7 @@ let build_body (c : circuit) =
 
 (* Must be applied to circuit of type [A] *)    
 let llvm_circuit (c : Compile.circuit) = 
+  let the_module = Llvm.create_module context "intml" in
   let void = Llvm.void_type context in
   let ft = Llvm.function_type void (Array.make 0 void) in
   let f = Llvm.declare_function "main" ft the_module in
@@ -807,7 +809,7 @@ let llvm_circuit (c : Compile.circuit) =
     Llvm.position_at_end (Hashtbl.find entry_points c.output.dst) builder;
     ignore (Llvm.build_ret_void builder);
     (* body *)
-    build_body c;
+    build_body the_module c;
     Llvm.delete_block dummy; 
     (* Llvm.dump_module the_module; *)
     the_module
