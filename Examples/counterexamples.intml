@@ -22,3 +22,6 @@ letu v3 = v2 v1
 letu u1 = fun x -> fun f -> copy f as f1, f2 in f1 (f2 x)
 letu u2 = fun f -> copy f as f1, f2 in f1 (fun x -> f2 (fun y -> x))
 letu u3 = fun x -> u2 (u1 x)
+
+letu test = 
+  let [v] = u3 [inl(<>)] in [if v then print "a" else print "b"]

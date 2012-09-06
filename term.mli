@@ -69,6 +69,7 @@ val mkAppW : t -> t -> t
 val mkLambdaW : (var * Type.t option) * t -> t
 val mkTrW : t -> t
 val mkFoldW : Type.t * Type.t -> t -> t
+val mkUnfoldW : Type.t * Type.t -> t -> t
 val mkPairU : t -> t -> t
 val mkLetU : t -> (var * var) * t -> t
 val mkAppU : t -> t -> t

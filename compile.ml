@@ -22,6 +22,11 @@ let let_tupleW (x: var) ((sigma: var list), (f: Term.t)) : Term.t =
           mkLetW  (mkVar x) ((x, z), let_tuple x (rest, f)) 
   in let_tuple x (remove_shadow sigma, f)       
 
+let unTensorW a =
+  match Type.finddesc a with
+    | Type.TensorW(a1, a2) -> a1, a2
+    | _ -> assert false
+
 (** A wire represents a dart in an undirected graph. *)
 type wire = {
   src: int;
@@ -525,6 +530,8 @@ let rec dot_of_circuit
                 w1.src w1.dst w2.src w2.dst w3.src w3.dst
   in 
   let node_label ins =
+    let ws = wires [ins] in
+    let name =
         match ins with
           | Axiom(_, (_, { desc= LambdaW((x, None), _) })) 
               when x = unusable_var -> "[...]"
@@ -537,6 +544,8 @@ let rec dot_of_circuit
           | ADoor(_, _) -> "&darr;"
           | LWeak(_, _) -> "lweak"
           | Epsilon(_, _, _) -> "&pi;"
+    in 
+      List.fold_right (fun w s -> Printf.sprintf "%s(%i)" s w.src) ws name 
   in 
   let instructions_with_result = 
     (Door(flip c.output, 
@@ -629,7 +638,13 @@ let rec embed (a: Type.t) (b: Type.t) : Term.t =
                          Term.mkPairW 
                            (Term.mkConstW (Some b1) Cmin)
                            (Term.mkAppW (embed a b2) (Term.mkVar "x")))
-        end 
+        end
+    | Type.MuW(beta, b1) ->
+        let mub1 = Type.newty (Type.MuW(beta, b1)) in
+        let unfolded = 
+          Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
+          Term.mkLambdaW(("x", None),
+                         Term.mkFoldW (beta,b1) (Term.mkAppW (embed a unfolded) (Term.mkVar "x")))
     | _ -> raise Not_Leq
 
 (* If alpha <= beta then (embed alpha beta) is a corresponding 
@@ -668,6 +683,12 @@ let rec project (a: Type.t) (b: Type.t) : Term.t =
                            (("y", "z"), 
                             Term.mkAppW (project a b2) (Term.mkVar "z")))
         end 
+    | Type.MuW(beta, b1) ->
+        let mub1 = Type.newty (Type.MuW(beta, b1)) in
+        let unfolded = 
+          Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
+          Term.mkLambdaW(("x", None),
+                         Term.mkAppW (project a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x")))
     | _ -> raise Not_Leq
 
 type equation = int * (Term.var * Term.t)
@@ -1098,11 +1119,8 @@ let message_passing_term (c: circuit): Term.t =
             | LWeak(w1 (* \Tens A X *), 
                     w2 (* \Tens B X *)) (* B <= A *) when w1.src = dst ->
                 (* <sigma, <c, v>> @ w1 -> <sigma, <project b a c, v>> @ w2 *)
-                let a, b  = 
-                  match Type.finddesc w1.type_back, 
-                        Type.finddesc w2.type_forward with 
-                    | Type.TensorW(a, _), Type.TensorW(b, _) -> a, b
-                    | _ -> assert false in
+                let a = fst (unTensorW (snd (unTensorW w1.type_back))) in
+                let b = fst (unTensorW (snd (unTensorW w2.type_forward))) in
                 (x, mkLetW (mkVar x) 
                       ((sigma, y),
                        mkLetW (mkVar y) 
@@ -1115,11 +1133,8 @@ let message_passing_term (c: circuit): Term.t =
             | LWeak(w1 (* \Tens A X *), 
                     w2 (* \Tens B X *)) (* B <= A *) when w2.src = dst ->
                 (* <sigma, <c, v>> @ w2 -> <sigma, <embed b a c, v>> @ w1 *)
-                let a, b  = 
-                  match Type.finddesc w1.type_forward, 
-                        Type.finddesc w2.type_back with 
-                    | Type.TensorW(a, _), Type.TensorW(b, _) -> a, b
-                    | _ -> assert false in
+                let a = fst (unTensorW (snd (unTensorW w1.type_forward))) in
+                let b = fst (unTensorW (snd (unTensorW w2.type_back))) in
                 (x, mkLetW (mkVar x) 
                       ((sigma, y),
                        mkLetW (mkVar y) 

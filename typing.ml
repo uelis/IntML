@@ -181,7 +181,7 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
   | FoldW((alpha, a), t) -> 
       let mua = newty (MuW(alpha, a)) in
       let a_unfolded = 
-        Type.subst (fun beta -> if beta == alpha then mua else beta) a in
+        Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
       let a1, con1 = ptW c t in
         newty (MuW(alpha, a)),
         eq_expected_constraint t (a_unfolded, a1) ::
@@ -189,7 +189,7 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
   | UnfoldW((alpha, a), t) ->
       let mua = newty (MuW(alpha, a)) in
       let a_unfolded = 
-        Type.subst (fun beta -> if beta == alpha then mua else beta) a in
+        Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
       let a1, con1 = ptW c t in
         a_unfolded,
         eq_expected_constraint t (newty (MuW(alpha, a)), a1) ::
@@ -443,7 +443,8 @@ let solve_constraints (con: type_constraint list) : unit =
       if List.exists (fun beta -> find beta == find alpha) fva then
         let beta = newty Var in
         let a' = subst (fun x -> if x == alpha then beta else x) a in
-        Type.newty (Type.MuW(beta, Type.newty (Type.SumW [Type.newty Type.OneW; a'])))
+(*        Type.newty (Type.MuW(beta, Type.newty (Type.SumW [Type.newty Type.OneW; a']))) *)
+          Type.newty (Type.MuW(beta, a')) 
       else 
         a in
       U.unify_pairs [(sol, alpha, Some ContextShape)]

@@ -7,6 +7,12 @@
 open Term
 open Compile
 
+
+let unTensorW a =
+  match Type.finddesc a with
+    | Type.TensorW(a1, a2) -> a1, a2
+    | _ -> assert false
+
 type encoded_value = {
   payload : Llvm.llvalue list;
   attrib: Llvm.llvalue list;
@@ -61,6 +67,10 @@ let position_at_start block builder =
  * Attrib: x.a
  *)
 
+let rec list_init (n : int) (f : int -> 'a) : 'a list =
+   if n <= 0 then [] 
+   else f 0 :: (list_init (n-1) (fun i -> f (i+1)))
+
 let part n l =
   let rec part_rev n l =
     if n = 0 then ([], l) else
@@ -94,7 +104,7 @@ let rec payload_size (a: Type.t) : int =
               | NatW -> 1
               | TensorW(a1, a2) -> p_s a1 + (p_s a2)
               | SumW[a1; a2] -> (max (p_s a1) (p_s a2))
-              | MuW _ -> failwith "TODO"
+              | MuW _ -> 1
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
         in
           Type.Typetbl.add payload_size_memo a size;
@@ -113,7 +123,7 @@ let attrib_size (a: Type.t) : int =
               | Var | ZeroW | OneW | NatW -> 0
               | TensorW(a1, a2) -> a_s a1 + (a_s a2)
               | SumW[a1; a2] -> 1 + (max (a_s a1) (a_s a2))
-              | MuW _ -> failwith "TODO"
+              | MuW _ -> 0
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
         in
           Type.Typetbl.add attrib_size_memo a size;
@@ -138,7 +148,7 @@ let build_truncate_extend (enc : encoded_value) (a : Type.t) =
   let rec mk_payload p n =
     if n = 0 then [] else 
       match p with
-        | [] -> Llvm.const_null (Llvm.i32_type context) :: (mk_payload [] (n-1)) 
+        | [] -> Llvm.const_null (Llvm.i64_type context) :: (mk_payload [] (n-1)) 
         | x::xs -> x :: (mk_payload xs (n-1)) in
   let rec mk_attrib p n =
     if n = 0 then [] else 
@@ -146,17 +156,13 @@ let build_truncate_extend (enc : encoded_value) (a : Type.t) =
         | [] -> Llvm.const_null (Llvm.i1_type context) :: (mk_attrib [] (n-1)) 
         | x::xs -> x :: (mk_attrib xs (n-1)) in
   let x_payload = mk_payload enc.payload a_payload_size in
-  let x_attrib = mk_attrib enc.attrib a_attrib_bitlen in
+  let x_attrib = List.rev (mk_attrib (List.rev enc.attrib) a_attrib_bitlen) in
     {payload = x_payload; attrib = x_attrib; attrib_bitlen = a_attrib_bitlen}
 
-(*
- * Füge TypeAnnot an den Stellen ein, an denen Typinformationen
- * gebraucht werden.
- *
- * (Besser in dieser Funktion selbst auffrischen!?!) *)
 let build_term (ctx: (var * encoded_value) list) 
       (type_ctx: (var * Type.t) list) (t: Term.t) (a: Type.t)
       : encoded_value =
+  (* Add type annotations in various places *)
   let rec annotate_term (t: Term.t) : Term.t =
     match t.desc with
       | Var(_) | UnitW | ConstW(Some _, _) -> t
@@ -192,10 +198,13 @@ let build_term (ctx: (var * encoded_value) list)
       | AppW(t1, t2) -> mkAppW (annotate_term t1) (annotate_term t2)
       | LambdaW((x, a), t1) -> mkLambdaW ((x, a), annotate_term t1)
       | TrW(t1) -> mkTrW (annotate_term t1)
+      | FoldW((alpha, a), t1) -> mkFoldW (alpha, a) (annotate_term t1)
+      | UnfoldW((alpha, a), t1) -> mkUnfoldW (alpha, a) (annotate_term t1)
       | LetBoxW(_, _) -> assert false 
       | HackU (_, _)|CopyU (_, _)|CaseU (_, _, _)|LetBoxU (_, _)
       | BoxTermU _| LambdaU (_, _)|AppU (_, _)|LetU (_, _)|PairU (_, _) -> assert false
   in
+  (* Compile annotated term *)
   let rec build_annotatedterm (ctx: (string * encoded_value) list) (t: Term.t) 
         : encoded_value =
 (*    print_string (Printing.string_of_termW t);
@@ -206,14 +215,14 @@ let build_term (ctx: (var * encoded_value) list)
       | ConstW(Some a, Cmin) ->
           let ap = payload_size a in
           let msl = attrib_size a in
-          let zero = Llvm.const_null (Llvm.i32_type context) in
+          let zero = Llvm.const_null (Llvm.i64_type context) in
           let zero1 = Llvm.const_null (Llvm.i1_type context) in
           let rec mp n = if n = 0 then [] else zero::(mp (n-1)) in
           let rec ma n = if n = 0 then [] else zero1::(ma (n-1)) in
             {payload = mp ap; attrib = ma msl; attrib_bitlen = msl}
       | ConstW(Some a, Cintconst(i)) ->
           assert (Type.finddesc a = Type.NatW);
-          let vali = Llvm.const_int (Llvm.i32_type context) i in
+          let vali = Llvm.const_int (Llvm.i64_type context) i in
             {payload = [vali]; attrib = []; attrib_bitlen = 0}
       | AppW({desc = ConstW(Some a, Cintprint)}, t1) ->
           begin
@@ -226,10 +235,10 @@ let build_term (ctx: (var * encoded_value) list)
                             match build_annotatedterm ctx t1 with
                               | {payload = [x]; attrib = []} -> 
                                   let i8a = Llvm.pointer_type (Llvm.i8_type context) in
-                                  let i32 = Llvm.i32_type context in
+                                  let i64 = Llvm.i64_type context in
                                   let formatstr = Llvm.build_global_string "%i" "format" builder in            
-                                  let formatstrptr = Llvm.build_in_bounds_gep formatstr (Array.make 2 (Llvm.const_null i32)) "forrmatptr" builder in
-                                  let printftype = Llvm.function_type (Llvm.i32_type context) (Array.of_list [i8a; i32]) in
+                                  let formatstrptr = Llvm.build_in_bounds_gep formatstr (Array.make 2 (Llvm.const_null i64)) "forrmatptr" builder in
+                                  let printftype = Llvm.function_type (Llvm.i64_type context) (Array.of_list [i8a; i64]) in
                                   let printf = Llvm.declare_function "printf" printftype the_module in
                                   let args = Array.of_list [formatstrptr; x] in
                                     ignore (Llvm.build_call printf args "i" builder);
@@ -274,7 +283,7 @@ let build_term (ctx: (var * encoded_value) list)
                           begin
                             match build_annotatedterm ctx t1 with
                               | {payload = [x]; attrib = None} -> 
-                                  let one = Llvm.const_int (Llvm.i32_type context) 1 in
+                                  let one = Llvm.const_int (Llvm.i64_type context) 1 in
                                   let x' = Llvm.build_add x one "succ" builder in
                                     {payload = [x']; attrib = None; attrib_bitlen = 0}
                               | _ -> assert false
@@ -284,12 +293,12 @@ let build_term (ctx: (var * encoded_value) list)
               | _ -> assert false
           end*)
       | ConstW(Some a, Cprint(s)) ->
-          let i32 = Llvm.i32_type context in
+          let i64 = Llvm.i64_type context in
           let str = Llvm.build_global_string s "s" builder in            
-          let strptr = Llvm.build_in_bounds_gep str (Array.make 2 (Llvm.const_null i32)) "strptr" builder in
+          let strptr = Llvm.build_in_bounds_gep str (Array.make 2 (Llvm.const_null i64)) "strptr" builder in
             (* declare puts *)
           let i8a = Llvm.pointer_type (Llvm.i8_type context) in
-          let putstype = Llvm.function_type (Llvm.i32_type context) (Array.make 1 i8a) in
+          let putstype = Llvm.function_type (Llvm.i64_type context) (Array.make 1 i8a) in
           let puts = Llvm.declare_function "puts" putstype the_module in
           let args = Array.make 1 strptr in
             ignore (Llvm.build_call puts args "i" builder);
@@ -378,6 +387,70 @@ let build_term (ctx: (var * encoded_value) list)
                         {payload = z_payload; attrib = z_attrib; attrib_bitlen = senc.attrib_bitlen}
               | _ -> assert false
             end
+      | FoldW((alpha, a), t) ->
+          (* - malloc deklarieren
+           * - store aufrufen
+           *)
+          let tenc = build_annotatedterm ctx t in
+          let i64 = Llvm.i64_type context in
+          let i1 = Llvm.i1_type context in
+          let malloctype = Llvm.function_type 
+                             (Llvm.pointer_type (Llvm.i8_type context)) 
+                             (Array.of_list [i64]) in
+          let malloc = Llvm.declare_function "malloc" malloctype the_module in
+          let mua = Type.newty (Type.MuW(alpha, a)) in
+          let a_unfolded = Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
+          let len_p = payload_size a_unfolded in
+          let len_a = attrib_size a_unfolded in
+          let a_struct_members = Array.append (Array.make len_p i64) (Array.make len_a i1) in
+          let a_struct = Llvm.packed_struct_type context a_struct_members in
+          assert (len_p = List.length tenc.payload);
+          assert (len_a = List.length tenc.attrib);
+          let struct_content = 
+            List.combine
+              (list_init (len_p + len_a) (fun i -> i)) 
+              (tenc.payload @ tenc.attrib) in
+          let t_struct = 
+            List.fold_right 
+              (fun (i,v) s -> Llvm.build_insertvalue s v i "tstruct" builder) 
+              struct_content 
+              (Llvm.undef a_struct)
+          in
+(*
+          let t_struct = Llvm.const_packed_struct context 
+                           (Array.append 
+                              (Array.of_list tenc.payload) 
+                              (Array.of_list tenc.attrib)) in*)
+          let mem_i8ptr = Llvm.build_call malloc (Array.of_list [Llvm.size_of a_struct]) 
+                            "memi8" builder in
+          let mem_a_struct_ptr = Llvm.build_bitcast mem_i8ptr (Llvm.pointer_type a_struct) 
+                                   "memstruct" builder in
+          ignore (Llvm.build_store t_struct mem_a_struct_ptr builder);
+          let pl = Llvm.build_ptrtoint mem_a_struct_ptr i64 "memint" builder in
+            {payload = [pl]; attrib = []; attrib_bitlen = 0}
+      | UnfoldW((alpha, a), t) ->
+          let i64 = Llvm.i64_type context in
+          let i1 = Llvm.i1_type context in
+          let freetype = Llvm.function_type (Llvm.void_type context) (Array.of_list [i64]) in
+          let free = Llvm.declare_function "free" freetype the_module in
+          let mua = Type.newty (Type.MuW(alpha, a)) in
+          let a_unfolded = Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
+          let len_p = payload_size a_unfolded in
+          let len_a = attrib_size a_unfolded in
+          let a_struct_members = Array.append (Array.make len_p i64) (Array.make len_a i1) in
+          let a_struct = Llvm.packed_struct_type context a_struct_members in
+            begin
+              match build_annotatedterm ctx t with
+                | {payload = [tptrint]; attrib = []; attrib_bitlen = 0 } ->
+                    let tptr = Llvm.build_inttoptr tptrint (Llvm.pointer_type a_struct) "tptr" builder in
+                    let tstruct = Llvm.build_load tptr "tstruct" builder in
+                    ignore (Llvm.build_call free (Array.of_list [tptrint]) "" builder);
+                    let pl = list_init len_p (fun i -> Llvm.build_extractvalue tstruct i "p" builder) in
+                    let at = list_init len_a (fun i -> Llvm.build_extractvalue tstruct (len_p + i) "p" builder) in
+                    let abl (* FIXME *) = List.length at in
+                      {payload = pl; attrib = at; attrib_bitlen = abl}
+                | _ -> assert false
+            end
       | TypeAnnot(t, _) ->
           build_annotatedterm ctx t
       | AppW({desc = LambdaW((x, a), t1)}, t2) ->
@@ -429,7 +502,7 @@ let allocate_tables (is : instruction list) =
                if m = 0 then [] 
                else 
                  let name = Printf.sprintf "pl.%i.%i" n m in
-                 let t = (Llvm.integer_type context 32) in
+                 let t = Llvm.i64_type context in
                  let i = build_dummy t name builder in
                  i :: (mk_p (m-1)) in
              let xp = mk_p (payload_size a) in
@@ -607,25 +680,12 @@ let build_instruction (i : instruction) : unit =
         end
     | LWeak(w1 (* \Tens A X *), 
             w2 (* \Tens B X *)) (* B <= A *) ->
-(*       let src1 = Hashtbl.find entry_points w1.src in
-       let senc1 = Hashtbl.find token_names w1.src in
-       Llvm.position_at_end src1 builder;
-       let denc1 = build_truncate_extend senc1 w2.type_forward in
-           connect1 denc1 w2.dst;
-       ignore (build_br w2.dst);
-       let src2 = Hashtbl.find entry_points w2.src in
-       let senc2 = Hashtbl.find token_names w2.src in
-       Llvm.position_at_end src2 builder;
-       let denc2 = build_truncate_extend senc2 w1.type_forward in
-           connect1 denc2 w1.dst;
-       ignore (build_br w1.dst);*)
        let x, sigma, v, y, c = "x", "sigma", "v", "y", "c" in
        begin
-         let a, b  = 
-           match Type.finddesc w1.type_back, 
-                 Type.finddesc w2.type_forward with 
-             | Type.TensorW(a, _), Type.TensorW(b, _) -> a, b
-             | _ -> assert false in
+         let _, a_token = unTensorW w1.type_back in
+         let a, _ = unTensorW a_token in
+         let _, b_token = unTensorW w2.type_forward in
+         let b, _ = unTensorW b_token in
          let t = mkLetW (mkVar x) 
                    ((sigma, y), mkLetW (mkVar y) 
                                   ((c, v), (mkPairW (mkVar sigma) 
@@ -634,11 +694,10 @@ let build_instruction (i : instruction) : unit =
             build_jwa w1 (x, t) w2
        end;
        begin
-         let a, b  = 
-           match Type.finddesc w1.type_forward, 
-                 Type.finddesc w2.type_back with 
-             | Type.TensorW(a, _), Type.TensorW(b, _) -> a, b
-             | _ -> assert false in
+         let _, a_token = unTensorW w1.type_forward in
+         let a, _ = unTensorW a_token in
+         let _, b_token = unTensorW w2.type_back in
+         let b, _ = unTensorW b_token in
          let t = mkLetW (mkVar x) 
                    ((sigma, y), mkLetW (mkVar y) 
                                   ((c, v), (mkPairW (mkVar sigma) 

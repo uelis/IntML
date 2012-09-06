@@ -67,6 +67,7 @@ let mkAppW s t = { desc = AppW(s, t); loc = None }
 let mkLambdaW ((x, ty), t) = { desc = LambdaW((x, ty), t); loc = None }
 let mkTrW t = { desc = TrW(t); loc = None }
 let mkFoldW (alpha, a) s = { desc = FoldW((alpha, a), s); loc = None }
+let mkUnfoldW (alpha, a) s = { desc = UnfoldW((alpha, a), s); loc = None }
 let mkPairU s t= { desc = PairU(s, t); loc = None }
 let mkLetU s ((x, y), t) = { desc = LetU(s, (x, y, t)); loc = None }
 let mkAppU s t = { desc = AppU(s, t); loc = None }

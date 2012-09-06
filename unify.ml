@@ -57,8 +57,8 @@ module Unify(T : sig type t end) = struct
               unify_raw (newty (SumW(tl1)), newty (SumW(sl1)), tag) 
           | MuW(alpha, a), MuW(beta, b) -> 
               let gamma = newty Var in
-              let a' = subst (fun x -> if x == alpha then gamma else x) a in
-              let b' = subst (fun x -> if x == beta then gamma else x) b in
+              let a' = subst (fun x -> if equals x alpha then gamma else x) a in
+              let b' = subst (fun x -> if equals x beta then gamma else x) b in
               unify_raw(a', b', tag)
           | FunU(a1, t1, t2), FunU(b1, s1, s2) -> 
               unify_raw (a1, b1, tag);

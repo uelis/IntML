@@ -283,6 +283,13 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf (string_of_type a);
           Buffer.add_string buf "> ";
           s_termW t1
+      | UnfoldW((alpha, a), t1) ->
+          Buffer.add_string buf "unfold<";
+          Buffer.add_string buf (string_of_type alpha);
+          Buffer.add_string buf ". ";
+          Buffer.add_string buf (string_of_type a);
+          Buffer.add_string buf "> ";
+          s_termW t1
       | _ ->
           (s_termW_app t)
   and s_termW_app (t: Term.t) =
@@ -334,7 +341,7 @@ let string_of_termW (term: Term.t): string =
       | TypeAnnot(t, _) ->
           s_termW_atom t
       | LambdaW(_, _) | LetW(_, _) | CaseW(_, _)
-      | TrW(_) | AppW(_, _) ->
+      | TrW(_) | AppW(_, _) | FoldW _ | UnfoldW _ ->
           Buffer.add_char buf '(';
           s_termW t;
           Buffer.add_char buf ')'
