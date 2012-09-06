@@ -42,7 +42,7 @@ let rec new_decl (ds : typed_decls) (d : decl) : typed_decls =
     | TermDeclW(f, t) ->
         begin 
           try 
-            let t_with_type_annots = Term.fresh_vars_for_missing_annots t in
+            let t_with_type_annots = Term.fresh_vars_for_missing_annots (freshen_type_vars t) in
             let a = Typing.principal_typeW [] t_with_type_annots in
               Printf.printf "%s :w %s" f (string_of_type a);
               (match (Evaluation.eval_closed t_with_type_annots) with
@@ -56,7 +56,7 @@ let rec new_decl (ds : typed_decls) (d : decl) : typed_decls =
         end
     | TermDeclU(f, t) ->
         try 
-          let b = Typing.principal_typeU [] [] t in
+          let b = Typing.principal_typeU [] [] (freshen_type_vars t) in
           let b_str = 
             if !opt_print_type_details then
               string_of_type b

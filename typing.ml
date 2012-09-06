@@ -442,7 +442,7 @@ let solve_constraints (con: type_constraint list) : unit =
     let sol =
       if List.exists (fun beta -> find beta == find alpha) fva then
         let beta = newty Var in
-        let a' = subst (fun x -> if x == alpha then beta else x) a in
+        let a' = subst (fun x -> if equals x alpha then beta else x) a in
 (*        Type.newty (Type.MuW(beta, Type.newty (Type.SumW [Type.newty Type.OneW; a']))) *)
           Type.newty (Type.MuW(beta, a')) 
       else 
