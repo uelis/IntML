@@ -22,6 +22,11 @@ let let_tupleW (x: var) ((sigma: var list), (f: Term.t)) : Term.t =
           mkLetW  (mkVar x) ((x, z), let_tuple x (rest, f)) 
   in let_tuple x (remove_shadow sigma, f)       
 
+let unTensorW a =
+  match Type.finddesc a with
+    | Type.TensorW(a1, a2) -> a1, a2
+    | _ -> assert false
+
 (** A wire represents a dart in an undirected graph. *)
 type wire = {
   src: int;
@@ -825,11 +830,8 @@ let message_passing_term (c: circuit): Term.t =
             | LWeak(w1 (* \Tens A X *), 
                     w2 (* \Tens B X *)) (* B <= A *) when w1.src = dst ->
                 (* <sigma, <c, v>> @ w1 -> <sigma, <project b a c, v>> @ w2 *)
-                let a, b  = 
-                  match Type.finddesc w1.type_back, 
-                        Type.finddesc w2.type_forward with 
-                    | Type.TensorW(a, _), Type.TensorW(b, _) -> a, b
-                    | _ -> assert false in
+                let a = fst (unTensorW (snd (unTensorW w1.type_back))) in
+                let b = fst (unTensorW (snd (unTensorW w2.type_forward))) in
                 (x, mkLetW (mkVar x) 
                       ((sigma, y),
                        mkLetW (mkVar y) 
@@ -842,11 +844,8 @@ let message_passing_term (c: circuit): Term.t =
             | LWeak(w1 (* \Tens A X *), 
                     w2 (* \Tens B X *)) (* B <= A *) when w2.src = dst ->
                 (* <sigma, <c, v>> @ w2 -> <sigma, <embed b a c, v>> @ w1 *)
-                let a, b  = 
-                  match Type.finddesc w1.type_forward, 
-                        Type.finddesc w2.type_back with 
-                    | Type.TensorW(a, _), Type.TensorW(b, _) -> a, b
-                    | _ -> assert false in
+                let a = fst (unTensorW (snd (unTensorW w1.type_forward))) in
+                let b = fst (unTensorW (snd (unTensorW w2.type_back))) in
                 (x, mkLetW (mkVar x) 
                       ((sigma, y),
                        mkLetW (mkVar y) 
