@@ -54,6 +54,7 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokRBracket
 %token TokLambda
 %token TokPlus
+%token TokMinus
 %token TokTimes
 %token TokDiv
 %token TokComma
@@ -167,12 +168,16 @@ termW:
        { mkTerm (LetBoxW($6, ($3, $8))) }
     | TokKwPrint termW
        { mkTerm (AppW(mkTerm (ConstW(None, Cintprint)), $2)) }
-    | TokFold TokLAngle typeW TokComma typeW TokRAngle termW
+    | TokFold TokLAngle typeW TokDot typeW TokRAngle termW
        { mkTerm (FoldW(($3, $5), $7)) }
-    | TokUnfold TokLAngle typeW TokComma typeW TokRAngle termW
+    | TokUnfold TokLAngle typeW TokDot typeW TokRAngle termW
        { mkTerm (UnfoldW(($3, $5), $7)) }
+    | termW_app TokEquals termW_atom
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cinteq)), $1)), $3)) }
     | termW_app TokPlus termW_atom
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cintadd)), $1)), $3)) }
+    | termW_app TokMinus termW_atom
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cintsub)), $1)), $3)) }
     | termW_app
        { $1 } 
 

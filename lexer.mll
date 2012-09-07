@@ -44,10 +44,11 @@ rule main = parse
   | ']'        { TokRBracket }
   | "fun"      { TokLambda }
   | '+'        { TokPlus }
+  | '-'        { TokMinus }
   | '*'        { TokTimes }
   | '/'        { TokDiv }
   | ','        { TokComma }
-  | ','        { TokDot }
+  | '.'        { TokDot }
   | '''        { TokQuote }
   | ':'        { TokColon }
   | ';'        { TokSemicolon }
@@ -66,7 +67,7 @@ rule main = parse
   | "min"      { TokKwMin }
   | "succ"     { TokKwSucc }
   | "pred"     { TokKwPred }
-  | "nat"      { TokKwNat }
+  | "int"      { TokKwNat }
   | "eq"       { TokKwEq }
   | "hack"     { TokKwHack }
   | "copy"     { TokKwCopy }

@@ -7,23 +7,27 @@ open Term
 type env = (var * value) list
 and value =
   | NatPredV 
-  | NatV of int
+  | IntV of int
   | FoldV of (Type.t * Type.t) * value
   | UnitV 
-  | SuccV of Type.t
-  | EqV of Type.t * value option
   | InV of int * int * value
   | PairV of value * value
   | FunV of env * var * Term.t
   | TrV of env * var * Term.t
   | LoopV of env * var * Term.t
+  | InteqV of value option
+  | IntaddV of value option
+  | IntsubV of value option
+  | IntmulV of value option
+  | IntdivV of value option
+  | IntprintV
 
 let rec min (ty: Type.t) =
   match Type.finddesc ty with
   | Type.Var -> 
       Printf.printf "warning: trying to evaluate polymophic min; instantiating variables with 1\n";
       UnitV  
-  | Type.NatW -> NatV(0)
+  | Type.NatW -> IntV(0)
   | Type.OneW -> UnitV
   | Type.TensorW(a, b) -> PairV(min a, min b)
   | Type.SumW(a :: l) -> InV(1 + (List.length l), 0, min a)
@@ -40,7 +44,7 @@ let rec succmin (ty: Type.t) (v: value) : succOrMin =
   | Type.Var, _ -> 
       Printf.printf "warning: trying to evaluate polymophic succ; instantiating variables with 1\n";
       Min(UnitV)  
-  | Type.NatW, NatV(n) -> Succ(NatV(n+1))
+  | Type.NatW, IntV(n) -> Succ(IntV(n+1))
   | Type.OneW, _ -> Min(UnitV)
   | Type.TensorW(a, b), PairV(x, y) -> 
      (match succmin b y with
@@ -68,7 +72,7 @@ let rec eq (ty: Type.t) (v1: value) (v2: value) : bool =
       Printf.printf "warning: trying to evaluate polymophic eq; instantiating variables with 1\n";
       true
   | Type.OneW, _, _ -> true
-  | Type.NatW, NatV(v), NatV(w) -> v=w
+  | Type.NatW, IntV(v), IntV(w) -> v=w
   | Type.TensorW(a, b), PairV(v11, v12), PairV(v21, v22) -> eq a v11 v21 && eq b v12 v22
   | Type.SumW(l), InV(m, i, v1'), InV(n, j, v2') -> 
          (m = n) && (i = j) && (eq (List.nth l i) v1' v2')
@@ -82,20 +86,14 @@ let rec eval (t: Term.t) (sigma : env) : value =
         print_string s;
         flush stdout;
         UnitV
-(*    | ConstW(Some a, Cnatpred) -> NatPredV *)
     | ConstW(Some a, Cmin) -> min a
-(*    | ConstW(Some a, Csucc) -> 
-        begin 
-          match Type.finddesc a with
-            | Type.FunW(b, _) -> SuccV(b)
-            | _ -> assert false
-        end*)
-    | ConstW(Some a, Cinteq) -> 
-        begin 
-          match Type.finddesc a with
-            | Type.FunW(b, _) -> EqV(b, None)
-            | _ -> assert false
-        end
+    | ConstW(_, Cintconst(i)) -> IntV(i)
+    | ConstW(_, Cintprint) -> IntprintV
+    | ConstW(_, Cinteq) -> InteqV(None)
+    | ConstW(_, Cintadd) -> IntaddV(None)
+    | ConstW(_, Cintsub) -> IntsubV(None)
+    | ConstW(_, Cintmul) -> IntmulV(None)
+    | ConstW(_, Cintdiv) -> IntdivV(None)
     | ConstW(_, Cbot) ->  failwith "nontermination!"
       (* Note: "bot" does not need to be annotated *)
     | ConstW(None, s) ->
@@ -153,17 +151,42 @@ and appV (v1: value) (v2: value) : value =
        | InV(2, 0, w) -> w
        | InV(2, 1, w) -> appV v1 (InV(2, 1, w))
        | _ -> failwith "Internal: Wrong application of loop.")
-    | SuccV(a) -> (match succmin a v2 with
-                   | Min(_) -> v2
-                   | Succ(v2') -> v2')
     | NatPredV -> 
         begin
           match v2 with
-            | NatV(n) -> if n > 0 then NatV(n-1) else NatV(n)
+            | IntV(n) -> if n > 0 then IntV(n-1) else IntV(n)
             | _ -> failwith "Internal: wrong application of pred"
         end
-    | EqV(a, None) -> EqV(a, Some v2)
-    | EqV(a, Some v3) -> if eq a v2 v3 then InV(2, 0, UnitV) else InV(2, 1, UnitV)
+    | InteqV(None) -> InteqV(Some v2)
+    | InteqV(Some v3) -> 
+        (match v2, v3 with
+           | IntV(v2'), IntV(v3') -> 
+               if v2' = v3' then InV(2, 0, UnitV) else InV(2, 1, UnitV)
+           | _ -> assert false)
+    | IntaddV(None) -> IntaddV(Some v2)
+    | IntaddV(Some v3) -> 
+        (match v2, v3 with
+           | IntV(v2'), IntV(v3') -> IntV(v3' + v2')
+           | _ -> assert false)
+    | IntsubV(None) -> IntsubV(Some v2)
+    | IntsubV(Some v3) -> 
+        (match v2, v3 with
+           | IntV(v2'), IntV(v3') -> IntV(v3' - v2')
+           | _ -> assert false)
+    | IntmulV(None) -> IntmulV(Some v2)
+    | IntmulV(Some v3) -> 
+        (match v2, v3 with
+           | IntV(v2'), IntV(v3') -> IntV(v3' * v2')
+           | _ -> assert false)
+    | IntdivV(None) -> IntdivV(Some v2)
+    | IntdivV(Some v3) ->
+        (match v2, v3 with
+           | IntV(v2'), IntV(v3') -> IntV(v3' / v2')
+           | _ -> assert false)
+    | IntprintV ->
+        (match v2 with
+           | IntV(v2') -> Printf.printf "%i" v2'; UnitV
+           | _ -> assert false)
     | _ -> failwith "Internal: Cannot apply non-functional value."
 
 exception FunctionalValue
@@ -172,6 +195,7 @@ let eval_closed (t: Term.t) : Term.t option =
   let rec cv2termW (v: value) =
     match v with 
       | UnitV -> mkUnitW 
+      | IntV(i) -> mkConstW None (Cintconst(i))
       | InV(n, i, v1) -> mkInW n i (cv2termW v1)
       | PairV(v1, v2) -> mkPairW (cv2termW v1) (cv2termW v2)
       | FoldV((alpha, a), v) -> mkFoldW (alpha, a) (cv2termW v)

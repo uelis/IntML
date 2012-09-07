@@ -1,35 +1,3 @@
-letu I1 = fun x -> x
-letu I2 = I1 I1
-letu I3 = I2 I1
-letu I4 = I3 I1
-letu I5 = I4 I1
-letu I6 = I5 I1
-letu I7 = I6 I1
-letu I8 = I7 I1
-letu I9 = I8 I1
-letu I10 = I9 I1
-letu I11 = I10 I1 
-letu I12 = I11 I1
-letu I13 = I12 I1
-letu I14 = I13 I1
-letu I15 = I14 I1
-letu I16 = I15 I1
-letu I17 = I16 I1
-letu I18 = I17 I1
-letu I19 = I18 I1
-letu I20 = I19 I1
-letu I21 = I20 I1 
-letu I22 = I21 I1
-letu I23 = I22 I1
-letu I24 = I23 I1
-letu I25 = I24 I1
-letu I26 = I25 I1
-letu I27 = I26 I1
-letu I28 = I27 I1
-letu I29 = I28 I1
-letu I30 = I29 I1
-letu I31 = (I30 I1 : [2] --> [2])
-
 letw return = fun x -> inl(x)
 letw continue = fun x -> inr(x)
 
@@ -48,90 +16,75 @@ letw or = fun (x : 2) -> fun (y : 2) ->
 letw pi1 = fun x -> let <x1, x2> = x in x1
 letw pi2 = fun x -> let <x1, x2> = x in x2
 
-(* A-level maximum *)
-letw max : 'a =
- let z = min
- loop 
-   if succ z = z then return(z) else continue(succ z)
-
-(* working class predecessor
-letw pred : 'a -> 'a = 
-  fun (x : 'a) -> 
-     if x = (min : 'a) then (min : 'a)
-     else let y = min 
-          loop if succ y = x then return y else continue (succ y)
-          *)
-
 (* working class addition *)
-letw add : 'a -> 'b -> 'a = 
+letw add : 'a -> int -> 'a = 
   fun x -> fun y ->
     let z = <x, y> 
     loop
       let <x1, y1> = z in
-      if or (y1 = (min : 'b)) (succ x1 = x1) then return(x1)
-                 else continue(<succ x1, pred y1>)
+      if or (y1 = 0) ((x1 + 1) = x1) then return(x1)
+                 else continue(<x1 + 1, y1 - 1>)
 
-letw mul : 'a -> 'b -> 'a = 
+letw mul : int -> int -> int = 
   fun x -> fun y ->
-    let z = <(min:'a), y> 
+    let z = <0, y> 
     loop
       let <x1, y1> = z in
-      if y1 = (min : 'b) then return(x1)
-                 else continue(<add x x1, pred y1>)
+      if y1 = 0 then return(x1)
+                 else continue(<add x x1, y1 - 1>)
 
 (* working class subtraction *)
-letw sub : 'a -> 'b -> 'a = 
+letw sub : int -> int -> int = 
   fun x -> fun y ->
     let z = <x, y> 
     loop
       let <x1, y1> = z in
-      if y1 = (min : 'b) then return(x1)
-                 else continue(<pred x1, pred y1>)
+      if or (x1 = 0) (y1 = 0) then return(x1)
+                 else continue(<x1 - 1, y1 - 1>)
 
 letw leq : 'a -> 'b -> 2 =
   fun x -> fun y ->
     let z = <x, y>
     loop
       let <x', y'> = z in
-      if y' = min then
-         if x' = min then return true else return false
+      if y' = 0 then
+         if x' = 0 then return true else return false
       else 
-         if x = min then return true else continue <pred x', pred y'>
+         if x' = 0 then return true else continue <x' - 1, y' - 1>
 
 letw divmod : 'a -> 'b -> 'a * 'a = 
   fun x -> fun y ->
-    let z = <x, (min : 'a)>
+    let z = <x, 0>
     loop
       let <x', d> = z in
       if leq x' y then 
-         if leq y x' then return <succ d, min> else return <d, x'>
-      else continue <sub x' y, succ d>
+         if leq y x' then return <d + 1, 0> else return <d, x'>
+      else continue <sub x' y, d + 1>
 
 (* Print values of 'a as decimal numbers.
  * (uses function types!) *)
 letw print_dec : 'a -> 1 =
-   let ten = succ (succ (succ (succ (succ (succ (succ (succ (succ (succ min)))))))))  in
+   let ten = 10 in
    let print_upto10 =
       fun (x : 'a) ->
-        let y = min in
-        if x = y then print "0" 
-        else let y = succ y in if x = y then print "1" 
-        else let y = succ y in if x = y then print "2" 
-        else let y = succ y in if x = y then print "3" 
-        else let y = succ y in if x = y then print "4" 
-        else let y = succ y in if x = y then print "5" 
-        else let y = succ y in if x = y then print "6" 
-        else let y = succ y in if x = y then print "7" 
-        else let y = succ y in if x = y then print "8" 
+        if x = 0 then print "0" 
+        else if x = 1 then print "1" 
+        else if x = 2 then print "2" 
+        else if x = 3 then print "3" 
+        else if x = 4 then print "4" 
+        else if x = 5 then print "5" 
+        else if x = 6 then print "6" 
+        else if x = 7 then print "7" 
+        else if x = 8 then print "8" 
         else print "9" in
    fun x -> 
       let p = <x, fun u -> u>
       loop 
          let <z, f> = p in
          let <d, m> = divmod z ten in
-         let f' = fun u -> print_upto10 m; f u in
+         let f' = fun u -> (let z = print_upto10 m in f u) in
            if d = min then 
-             f' <>; return <>
+             (let z = f' <> in  return <>)
            else 
              continue <d, f'>
 
@@ -142,22 +95,22 @@ letw fixw = fun x ->
         case x of
           inl(bq) ->
             let <b,q> = bq in
-              inl(<cons b l, inr(q)>)
+              inl(<fold<'c.1+'b*'c> inr(<b,l>), inr(q)>)
         | inr(a) ->
-            case match l of
+            case unfold<'c.1+'b*'c> l of
               inl(nl) -> 
                  inr(a)
             | inr(cns) ->
                let <hd, tl> = cns in
                  inl(<tl, inl(<hd, a>)>)
   | inr(q) -> 
-     inl(<nil, inr(q)>)
+     inl(<fold<'c.1+'b*'c> inl(<>), inr(q)>)
 
 letu fix = hack fixw
- as {list<'b>}({'b}'a --o 'a) --o 'a
+ as {mu 'c. 1 + 'b*'c}({'b}'a --o 'a) --o 'a
 
 letu succu =
-  fun x -> let [v] = x in [succ v]
+  fun x -> let [v] = x in [v + 1]
 
 letu addu : ['a] --> ['b] --> ['a] =
   fun x ->
@@ -167,95 +120,96 @@ letu addu : ['a] --> ['b] --> ['a] =
       inl(true) -> 
        x
     | inr(false) -> 
-       succu (add [pred vy])
+       succu (add [vy - 1])
   )
 
-letu fib2 : [nat] --> [nat] = 
+letu fib2 : [int] --> [int] = 
   fix (fun f -> fun x ->
     let [v] = x in
-      case or (v = min) (v = (succ min)) of 
+      case or (v = 0) (v = 1) of 
         inl(true) ->
-          [succ min]
+          [1]
       | inr(false) ->
           copy f as f1, f2 in
-          addu (f1 [pred v]) (f2 [pred (pred v)]))
+          addu (f1 [v - 1]) (f2 [v - 2]))
 
-letu mulu : [nat] --> [nat] --> [nat] =
+letu mulu : [int] --> [int] --> [int] =
   fun x ->
-  fix (fun (mul : [nat] --> [nat]) -> fun (y : [nat]) ->
+  fix (fun (mul : [int] --> [int]) -> fun (y : [int]) ->
     let [vy] = y in
-    case vy = min of
-      inl(true) -> [min]
+    case vy = 0 of
+      inl(true) -> [0]
     | inr(false) -> 
-       addu x (mul [pred vy])
+       addu x (mul [vy - 1])
   )
 
-letu fact2 : [nat] --> [nat] = 
+letu fact2 : [int] --> [int] = 
   fix (fun f -> fun x ->
     let [v] = x in
-      case v = min of 
+      case v = 0 of 
         inl(true) ->
-          [succ min]
+          [1]
       | inr(false) ->
-          mulu [v] (f [pred v]))
+          mulu [v] (f [v-1]))
 
 letu f : (['a] --> ['a]) --> ['a] --> ['a] = 
   fun f -> fun x ->
     let [v] = x in
-      case leq v (succ min) of 
+      case leq v 1 of 
         inl(true) ->
-          [succ min]
+          [1]
       | inr(false) ->
           copy f as f1, f2 in
-          let [w1] = f1 [pred v] in
-          let [w2] = f2 [pred (pred v)] in
+          let [w1] = f1 [v-1] in
+          let [w2] = f2 [v-2] in
             [add w1 w2]
 
-letu fib : [nat] --> [nat] = fix f
+letu fib : [int] --> [int] = fix f
 
 letu g : (['a] --> ['a]) --> ['a] --> ['a] = 
   fun f -> fun x ->
     let [v] = x in
       case v = min of 
         inl(true) ->
-          [succ min]
+          [1]
       | inr(false) ->
-          let [w1] = f [pred v] in
+          let [w1] = f [v-1] in
             [mul v w1]
 
-letu fact : [nat] --> [nat] = fix g            
+letu fact : [int] --> [int] = fix g
 
 letu g_tr : (['a] --> ['a] --> ['a]) --> ['a] --> ['a] --> ['a] = 
   fun f -> fun x -> fun accu ->
     let [v] = x in
     let [acc] = accu in
-      case v = min of 
+      case v = 0 of 
         inl(true) ->
           [acc]
       | inr(false) ->
-          f [pred v] [mul v acc]
+          f [v-1] [mul v acc]
 
-letw t = let [x] = fib [min] in print " "; print_dec x
-letw t = let [x] = fib [succ min] in print " "; print_dec x
-letw t = let [x] = fib [succ (succ min)] in print " "; print_dec x
-letw t = let [x] = fib [succ (succ (succ min))] in print " "; print_dec x
-letw t = let [x] = fib [succ (succ (succ (succ min)))] in print " "; print_dec x
-letw t = let [x] = fib [succ (succ (succ (succ (succ min))))] in print " "; print_dec x
-letw t = let [x] = fib [succ (succ (succ (succ (succ (succ min)))))] in print " "; print_dec x
-letw t = let [x] = fib [succ (succ (succ (succ (succ (succ (succ min))))))] in print " "; print_dec x
+letw t = let [x] = fib [0] in let z = print " " in print x
+letw t = let [x] = fib [1] in let z = print " " in print x
+letw t = let [x] = fib [2] in let z = print " " in print x
+letw t = let [x] = fib [3] in let z = print " " in print x
+letw t = let [x] = fib [4] in let z = print " " in print x
+letw t = let [x] = fib [5] in let z = print " " in print x
+letw t = let [x] = fib [6] in let z = print " " in print x
+letw t = let [x] = fib [7] in let z = print " " in print x
 
-letw t = let [x] = fib2 [min] in print " "; print_dec x
-letw t = let [x] = fib2 [succ min] in print " "; print_dec x
-letw t = let [x] = fib2 [succ (succ min)] in print " "; print_dec x
-letw t = let [x] = fib2 [succ (succ (succ min))] in print " "; print_dec x
-letw t = let [x] = fib2 [succ (succ (succ (succ min)))] in print " "; print_dec x
-letw t = let [x] = fib2 [succ (succ (succ (succ (succ min))))] in print " "; print_dec x
-letw t = let [x] = fib2 [succ (succ (succ (succ (succ (succ min)))))] in print " "; print_dec x
-letw t = let [x] = fib2 [succ (succ (succ (succ (succ (succ (succ min))))))] in print " "; print_dec x
+letw t = let [x] = fib2 [0] in let z = print " " in print_dec x
+letw t = let [x] = fib2 [1] in let z = print " " in print_dec x
+letw t = let [x] = fib2 [2] in let z = print " " in print_dec x
+letw t = let [x] = fib2 [3] in let z = print " " in print_dec x
+letw t = let [x] = fib2 [4] in let z = print " " in print_dec x
+letw t = let [x] = fib2 [5] in let z = print " " in print_dec x
+letw t = let [x] = fib2 [6] in let z = print " " in print_dec x
+letw t = let [x] = fib2 [7] in let z = print " " in print_dec x
+letw t = let [x] = fib2 [8] in let z = print " " in print_dec x
 
-letw t = let [x] = fact [min] in print " "; print_dec x
-letw t = let [x] = fact [succ min] in print " "; print_dec x
-letw t = let [x] = fact [succ (succ min)] in print " "; print_dec x
-letw t = let [x] = fact [succ (succ (succ min))] in print " "; print_dec x
-letw t = let [x] = fact [succ (succ (succ (succ min)))] in print " "; print_dec x
-letw t = let [x] = fact [succ (succ (succ (succ (succ min))))] in print " "; print_dec x
+letw t = let [x] = fact [0] in let z = print " " in print_dec x
+letw t = let [x] = fact [1] in let z = print " " in print_dec x
+letw t = let [x] = fact [2] in let z = print " " in print_dec x
+letw t = let [x] = fact [3] in let z = print " " in print_dec x
+letw t = let [x] = fact [4] in let z = print " " in print_dec x
+letw t = let [x] = fact [5] in let z = print " " in print_dec x

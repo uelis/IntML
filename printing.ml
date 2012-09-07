@@ -96,7 +96,7 @@ let string_of_type (ty: Type.t): string =
       | Type.Var ->  
           Buffer.add_char buf '\'';
           Buffer.add_string buf (name_of_typevar t)
-      | Type.NatW -> Buffer.add_string buf "nat"
+      | Type.NatW -> Buffer.add_string buf "int"
       | Type.ZeroW -> Buffer.add_char buf '0'
       | Type.OneW -> Buffer.add_char buf '1'
       | Type.MuW(alpha, t) ->
@@ -217,7 +217,7 @@ let string_of_term_const (c: term_const) : string =
   | Cprint s -> "print(" ^ s ^ ")"
   | Cmin -> "min"
   | Cbot -> "bot()"
-  | Cintconst i -> Printf.sprintf "intconst %i" i
+  | Cintconst i -> Printf.sprintf "%i" i
   | Cintadd -> "intadd"
   | Cintsub -> "intsub"
   | Cintmul -> "intmul"
