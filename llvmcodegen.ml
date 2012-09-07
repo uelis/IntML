@@ -7,21 +7,90 @@
 open Term
 open Compile
 
-
 let unTensorW a =
   match Type.finddesc a with
     | Type.TensorW(a1, a2) -> a1, a2
     | _ -> assert false
 
-type encoded_value = {
-  payload : Llvm.llvalue list;
-  attrib: Llvm.llvalue list;
-  attrib_bitlen: int
-}
-  
+let rec list_init (n : int) (f : int -> 'a) : 'a list =
+   if n <= 0 then [] 
+   else f 0 :: (list_init (n-1) (fun i -> f (i+1)))
+
+let part n l =
+  let rec part_rev n l =
+    if n = 0 then ([], l) else
+      let (h,t) = part_rev (n-1) l in
+      match t with
+        | [] -> raise Not_found
+        | x::t' -> (x::h, t')
+  in 
+  let (h, t) = part_rev n l in
+    (List.rev h, t)
+
 let context = Llvm.global_context ()
 let builder = Llvm.builder context
 
+(* Encapsulate bit vectors to make it easy to change the llvm-encoding. *)
+module Bitvector :
+sig 
+  type t
+  val length : t -> int
+  val null : int -> t
+  val concat : t -> t -> t
+  val takedrop : int -> t -> t * t
+  val extractvalue : t -> int -> Llvm.llvalue
+  val insertvalue : t -> int -> Llvm.llvalue -> t
+  val of_list: Llvm.llvalue list -> t
+
+  val build_phi: t * Llvm.llbasicblock -> t * Llvm.llbasicblock -> Llvm.llbuilder -> t
+  val replace_all_uses_within : Llvm.llvalue -> Llvm.llvalue -> t -> t 
+  val value_replacement : t -> t -> (Llvm.llvalue * Llvm.llvalue) list
+end = 
+struct
+  type t = { bits : Llvm.llvalue list }
+
+  let i1 = Llvm.i1_type context
+
+  let length b = List.length b.bits
+
+  let null len = { bits = list_init len (fun _ -> Llvm.const_null i1) }
+
+  let concat b1 b2 = { bits = b1.bits @ b2.bits }
+
+  let takedrop n b1 = 
+    let l1, l2 = part n b1.bits in
+      { bits = l1 }, { bits = l2 }
+
+  let extractvalue b i =
+    match part i b.bits with
+      | _, x :: _ -> x
+      | _ -> assert false
+
+  let insertvalue b i v =
+    match part i b.bits with
+      | h, x :: t -> { bits = h @ (v :: t) }
+      | _ -> assert false
+
+  let of_list bl = { bits = bl }
+
+  let build_phi (x, blockx) (y, blocky) builder =
+    { bits = List.map 
+               (fun (xi,yi) -> Llvm.build_phi [(xi, blockx);
+                                               (yi, blocky)] "z" builder)
+               (List.combine x.bits y.bits) }
+
+  let replace_all_uses_within oldv newv b =
+    { bits = List.map (fun v -> if v == oldv then newv else v) b.bits } 
+
+  let value_replacement oldb newb = 
+      List.combine newb.bits oldb.bits
+end
+
+type encoded_value = {
+  payload : Llvm.llvalue list;
+  attrib: Bitvector.t
+}
+  
 let position_at_start block builder =
   let block_begin = Llvm.instr_begin block in
     Llvm.position_builder block_begin builder
@@ -65,21 +134,6 @@ let position_at_start block builder =
  * Payload: x.0, x.1, ..., x.(payload_size -1)
  * Attrib: x.a
  *)
-
-let rec list_init (n : int) (f : int -> 'a) : 'a list =
-   if n <= 0 then [] 
-   else f 0 :: (list_init (n-1) (fun i -> f (i+1)))
-
-let part n l =
-  let rec part_rev n l =
-    if n = 0 then ([], l) else
-      let (h,t) = part_rev (n-1) l in
-      match t with
-        | [] -> raise Not_found
-        | x::t' -> (x::h, t')
-  in 
-  let (h, t) = part_rev n l in
-    (List.rev h, t)
 
 let entry_points : (int, Llvm.llbasicblock) Hashtbl.t = Hashtbl.create 10                                                         
 let token_names : (int, encoded_value) Hashtbl.t = Hashtbl.create 10
@@ -128,6 +182,7 @@ let attrib_size (a: Type.t) : int =
           Type.Typetbl.add attrib_size_memo a size;
           size
   in a_s a
+       
 
 let build_concat 
       (v1 : Llvm.llvalue list) (l1 : int) 
@@ -149,14 +204,21 @@ let build_truncate_extend (enc : encoded_value) (a : Type.t) =
       match p with
         | [] -> Llvm.const_null (Llvm.i64_type context) :: (mk_payload [] (n-1)) 
         | x::xs -> x :: (mk_payload xs (n-1)) in
-  let rec mk_attrib p n =
-    if n = 0 then [] else 
-      match p with
-        | [] -> Llvm.const_null (Llvm.i1_type context) :: (mk_attrib [] (n-1)) 
-        | x::xs -> x :: (mk_attrib xs (n-1)) in
   let x_payload = mk_payload enc.payload a_payload_size in
-  let x_attrib = List.rev (mk_attrib (List.rev enc.attrib) a_attrib_bitlen) in
-    {payload = x_payload; attrib = x_attrib; attrib_bitlen = a_attrib_bitlen}
+  let x_attrib = 
+    let enc_attrib_bitlen = Bitvector.length enc.attrib in
+      if enc_attrib_bitlen = a_attrib_bitlen then
+        enc.attrib
+      else if enc_attrib_bitlen < a_attrib_bitlen then
+        (let leading_zeros = Bitvector.null (a_attrib_bitlen - enc_attrib_bitlen) in
+          Bitvector.concat leading_zeros enc.attrib)
+      else (* enc_attrib_bitlen > a_attrib_bitlen *) 
+        (let h, t = Bitvector.takedrop 
+                      (enc_attrib_bitlen - a_attrib_bitlen) 
+                      enc.attrib in
+           t) in
+    assert (Bitvector.length x_attrib = a_attrib_bitlen);
+    { payload = x_payload; attrib = x_attrib }
 
 let build_term 
       (the_module : Llvm.llmodule)
@@ -217,14 +279,12 @@ let build_term
           let ap = payload_size a in
           let msl = attrib_size a in
           let zero = Llvm.const_null (Llvm.i64_type context) in
-          let zero1 = Llvm.const_null (Llvm.i1_type context) in
           let rec mp n = if n = 0 then [] else zero::(mp (n-1)) in
-          let rec ma n = if n = 0 then [] else zero1::(ma (n-1)) in
-            {payload = mp ap; attrib = ma msl; attrib_bitlen = msl}
+            { payload = mp ap; attrib = Bitvector.null msl }
       | ConstW(Some a, Cintconst(i)) ->
           assert (Type.finddesc a = Type.NatW);
           let vali = Llvm.const_int (Llvm.i64_type context) i in
-            {payload = [vali]; attrib = []; attrib_bitlen = 0}
+            {payload = [vali]; attrib = Bitvector.null 0;}
       | AppW({desc = ConstW(Some a, Cintprint)}, t1) ->
           begin
             match Type.finddesc a with
@@ -234,7 +294,7 @@ let build_term
                       | Type.NatW ->
                           begin
                             match build_annotatedterm ctx t1 with
-                              | {payload = [x]; attrib = []} -> 
+                              | {payload = [x]; attrib = a} when Bitvector.length a = 0 -> 
                                   let i8a = Llvm.pointer_type (Llvm.i8_type context) in
                                   let i64 = Llvm.i64_type context in
                                   let formatstr = Llvm.build_global_string "%i" "format" builder in            
@@ -243,7 +303,7 @@ let build_term
                                   let printf = Llvm.declare_function "printf" printftype the_module in
                                   let args = Array.of_list [formatstrptr; x] in
                                     ignore (Llvm.build_call printf args "i" builder);
-                                    {payload = []; attrib = []; attrib_bitlen = 0}
+                                    {payload = []; attrib = Bitvector.null 0 }
                               | _ -> assert false
                           end
                       | _ -> assert false
@@ -254,7 +314,8 @@ let build_term
           when (binop = Cintadd || binop = Cintsub || binop = Cintmul || binop = Cintdiv) ->
           begin
             match build_annotatedterm ctx t1, build_annotatedterm ctx t2 with
-              | {payload = [x]; attrib = []},  {payload = [y]; attrib = []} ->
+              | {payload = [x]; attrib = ax },  {payload = [y]; attrib = ay } when   
+                  Bitvector.length ax = 0  && Bitvector.length ay = 0 ->
                   let res =
                     match binop with
                       | Cintadd -> Llvm.build_add x y "sum" builder 
@@ -263,15 +324,16 @@ let build_term
                       | Cintdiv -> Llvm.build_sdiv x y "sdiv" builder 
                       | _ -> assert false
                   in
-                    {payload = [res]; attrib = []; attrib_bitlen = 0}
+                    {payload = [res]; attrib = Bitvector.null 0}
               | _ -> assert false
           end
       | AppW({desc = AppW({desc = ConstW(Some a, Cinteq)}, t1)}, t2) ->
           begin
             match build_annotatedterm ctx t1, build_annotatedterm ctx t2 with
-              | {payload = [x]; attrib = []},  {payload = [y]; attrib = []} ->
+              | {payload = [x]; attrib = ax},  {payload = [y]; attrib = ay} when
+                  Bitvector.length ax = 0  && Bitvector.length ay = 0 ->
                   let eq = Llvm.build_icmp Llvm.Icmp.Ne x y "eq" builder in
-                    {payload = []; attrib = [eq]; attrib_bitlen = 1}
+                    {payload = []; attrib = Bitvector.of_list [eq]}
               | _ -> assert false
           end
       | ConstW(Some a, Cprint(s)) ->
@@ -284,21 +346,18 @@ let build_term
           let puts = Llvm.declare_function "puts" putstype the_module in
           let args = Array.make 1 strptr in
             ignore (Llvm.build_call puts args "i" builder);
-            {payload = []; attrib = []; attrib_bitlen = 0}
+            {payload = []; attrib = Bitvector.null 0}
       | ConstW(None, _) -> assert false
       | UnitW ->
-          {payload = []; attrib = []; attrib_bitlen = 0}
+          {payload = []; attrib = Bitvector.null 0}
       | TypeAnnot({ desc = PairW(t1, t2) }, Some a) ->
           begin
             match Type.finddesc a with
               | Type.TensorW(a1, a2) ->
                   let t1enc = build_annotatedterm ctx t1 in
                   let t2enc = build_annotatedterm ctx t2 in
-                  let len_t1a = attrib_size a1 in
-                  let len_t2a = attrib_size a2 in
-                  let len = len_t1a + len_t2a in
-                  let ta = build_concat (t1enc.attrib) len_t1a (t2enc.attrib) len_t2a in
-                    {payload = t1enc.payload @ t2enc.payload; attrib = ta; attrib_bitlen = len}
+                  let ta = Bitvector.concat t1enc.attrib t2enc.attrib in
+                    {payload = t1enc.payload @ t2enc.payload; attrib = ta}
               | _ -> assert false
           end
       | LetW({ desc = TypeAnnot(s, Some a) }, (x, y, t)) ->
@@ -311,18 +370,19 @@ let build_term
                   let len_sxa = attrib_size ax in
                   let len_sya = attrib_size ay in
                     assert (List.length senc.payload = len_sxp + len_syp);
-                    assert (senc.attrib_bitlen = len_sxa + len_sya);
+                    assert (Bitvector.length senc.attrib = len_sxa + len_sya);
                     let sxp, syp = part len_sxp senc.payload in
-                    let sxa, sya = build_split senc.attrib len_sxa len_sya in
-                      build_annotatedterm ((x, {payload = sxp; attrib = sxa; attrib_bitlen = len_sxa}) :: 
-                                           (y, {payload = syp; attrib = sya; attrib_bitlen = len_sya}) :: ctx)  t
+                    let sxa, sya = Bitvector.takedrop len_sxa senc.attrib in
+                      assert (Bitvector.length sya = len_sya);
+                      build_annotatedterm ((x, {payload = sxp; attrib = sxa }) :: 
+                                           (y, {payload = syp; attrib = sya }) :: ctx)  t
               | _ -> assert false
           end
       | TypeAnnot({ desc = InW(2, i, t) }, Some a) ->
           let tenc = build_annotatedterm ctx t in
           let branch = Llvm.const_int (Llvm.integer_type context 1) i in
-          let attrib_branch = build_concat tenc.attrib tenc.attrib_bitlen [branch] 1 in
-          let denc = { payload = tenc.payload; attrib = attrib_branch; attrib_bitlen = tenc.attrib_bitlen + 1} in
+          let attrib_branch = Bitvector.concat tenc.attrib (Bitvector.of_list [branch]) in
+          let denc = { payload = tenc.payload; attrib = attrib_branch} in
             build_truncate_extend denc a
       | CaseW({ desc = TypeAnnot(u, Some a) }, [(x, s); (y, t)]) -> 
           let uenc = build_annotatedterm ctx u in
@@ -330,45 +390,39 @@ let build_term
             match Type.finddesc a with
               | Type.SumW [ax; ay] -> ax, ay
               | _ -> assert false in
-          assert (uenc.attrib_bitlen > 0);
-          let xya, cond = build_split uenc.attrib (uenc.attrib_bitlen - 1) 1 in
-          let xyenc = {payload = uenc.payload; attrib = xya; attrib_bitlen = uenc.attrib_bitlen - 1} in
+          assert (Bitvector.length uenc.attrib > 0);
+          let xya, cond = Bitvector.takedrop (Bitvector.length (uenc.attrib) - 1) uenc.attrib in
+          let xyenc = {payload = uenc.payload; attrib = xya } in
           let xenc = build_truncate_extend xyenc ax in
           let yenc = build_truncate_extend xyenc ay in
           let func = Llvm.block_parent (Llvm.insertion_block builder) in
           let block_s = Llvm.append_block context "case_l" func in 
           let block_t = Llvm.append_block context "case_r" func in 
           let block_res = Llvm.append_block context "case_res" func in
-            begin
-            match cond with
-              | [] -> assert false
-              | [cond'] ->
-                  ignore (Llvm.build_cond_br cond' block_t block_s builder);
-                  Llvm.position_at_end block_s builder;
-                  (* may generate new blocks! *)
-                  let senc = build_annotatedterm ((x, xenc) :: ctx) s in
-                  let _ = Llvm.build_br block_res builder in
-                  let block_end_s = Llvm.insertion_block builder in
-                    Llvm.position_at_end block_t builder;
-                    let tenc = build_annotatedterm ((y, yenc) :: ctx) t in
-                    let _ = Llvm.build_br block_res builder in
-                    let block_end_t = Llvm.insertion_block builder in
-                      assert (senc.attrib_bitlen = tenc.attrib_bitlen);
-                      (* insert phi nodes in result *)
-                      Llvm.position_at_end block_res builder;
-                      let z_attrib =
-                        List.map 
-                          (fun (x,y) -> Llvm.build_phi [(x, block_end_s);
-                                                        (y, block_end_t)] "z" builder)
-                          (List.combine senc.attrib tenc.attrib) in
-                      let z_payload = 
-                        List.map 
-                          (fun (x,y) -> Llvm.build_phi [(x, block_end_s);
-                                                        (y, block_end_t)] "z" builder)
-                          (List.combine senc.payload tenc.payload) in
-                        {payload = z_payload; attrib = z_attrib; attrib_bitlen = senc.attrib_bitlen}
-              | _ -> assert false
-            end
+          let cond' = Bitvector.extractvalue cond 0 in
+            ignore (Llvm.build_cond_br cond' block_t block_s builder);
+            Llvm.position_at_end block_s builder;
+            (* may generate new blocks! *)
+            let senc = build_annotatedterm ((x, xenc) :: ctx) s in
+            let _ = Llvm.build_br block_res builder in
+            let block_end_s = Llvm.insertion_block builder in
+              Llvm.position_at_end block_t builder;
+              let tenc = build_annotatedterm ((y, yenc) :: ctx) t in
+              let _ = Llvm.build_br block_res builder in
+              let block_end_t = Llvm.insertion_block builder in
+                assert ((Bitvector.length senc.attrib) = (Bitvector.length tenc.attrib));
+                (* insert phi nodes in result *)
+                Llvm.position_at_end block_res builder;
+                let z_attrib = Bitvector.build_phi 
+                                 (senc.attrib, block_end_s) 
+                                 (tenc.attrib, block_end_t) 
+                                 builder in
+                let z_payload = 
+                  List.map 
+                    (fun (x,y) -> Llvm.build_phi [(x, block_end_s);
+                                                  (y, block_end_t)] "z" builder)
+                    (List.combine senc.payload tenc.payload) in
+                  {payload = z_payload; attrib = z_attrib}
       | FoldW((alpha, a), t) ->
           (* - malloc deklarieren
            * - store aufrufen
@@ -387,29 +441,27 @@ let build_term
           let a_struct_members = Array.append (Array.make len_p i64) (Array.make len_a i1) in
           let a_struct = Llvm.packed_struct_type context a_struct_members in
           assert (len_p = List.length tenc.payload);
-          assert (len_a = List.length tenc.attrib);
+          assert (len_a = Bitvector.length tenc.attrib);
           let struct_content = 
-            List.combine
+            (List.combine (list_init len_p (fun i -> i)) tenc.payload) @
+            (list_init len_a (fun i -> (len_p + i, Bitvector.extractvalue tenc.attrib i)))
+(*            List.combine
               (list_init (len_p + len_a) (fun i -> i)) 
-              (tenc.payload @ tenc.attrib) in
+              (tenc.payload @ tenc.attrib)*)
+          in
           let t_struct = 
             List.fold_right 
               (fun (i,v) s -> Llvm.build_insertvalue s v i "tstruct" builder) 
               struct_content 
               (Llvm.undef a_struct)
           in
-(*
-          let t_struct = Llvm.const_packed_struct context 
-                           (Array.append 
-                              (Array.of_list tenc.payload) 
-                              (Array.of_list tenc.attrib)) in*)
           let mem_i8ptr = Llvm.build_call malloc (Array.of_list [Llvm.size_of a_struct]) 
                             "memi8" builder in
           let mem_a_struct_ptr = Llvm.build_bitcast mem_i8ptr (Llvm.pointer_type a_struct) 
                                    "memstruct" builder in
           ignore (Llvm.build_store t_struct mem_a_struct_ptr builder);
           let pl = Llvm.build_ptrtoint mem_a_struct_ptr i64 "memint" builder in
-            {payload = [pl]; attrib = []; attrib_bitlen = 0}
+            {payload = [pl]; attrib = Bitvector.null 0}
       | UnfoldW((alpha, a), t) ->
           let i64 = Llvm.i64_type context in
           let i1 = Llvm.i1_type context in
@@ -423,14 +475,13 @@ let build_term
           let a_struct = Llvm.packed_struct_type context a_struct_members in
             begin
               match build_annotatedterm ctx t with
-                | {payload = [tptrint]; attrib = []; attrib_bitlen = 0 } ->
+                | {payload = [tptrint]; attrib = a } when Bitvector.length a = 0 ->
                     let tptr = Llvm.build_inttoptr tptrint (Llvm.pointer_type a_struct) "tptr" builder in
                     let tstruct = Llvm.build_load tptr "tstruct" builder in
                     ignore (Llvm.build_call free (Array.of_list [tptrint]) "" builder);
                     let pl = list_init len_p (fun i -> Llvm.build_extractvalue tstruct i "p" builder) in
                     let at = list_init len_a (fun i -> Llvm.build_extractvalue tstruct (len_p + i) "p" builder) in
-                    let abl (* FIXME *) = List.length at in
-                      {payload = pl; attrib = at; attrib_bitlen = abl}
+                      {payload = pl; attrib = Bitvector.of_list at}
                 | _ -> assert false
             end
       | TypeAnnot(t, _) ->
@@ -462,8 +513,8 @@ let build_term
 let replace_in_token_names (oldv : Llvm.llvalue) (newv : Llvm.llvalue)  =
   let replace (token_name : encoded_value) =
     let payload = List.map (fun v -> if v == oldv then newv else v) token_name.payload in
-    let attrib = List.map (fun v -> if v == oldv then newv else v) token_name.attrib in
-      {payload = payload; attrib = attrib; attrib_bitlen = token_name.attrib_bitlen } in
+    let attrib = Bitvector.replace_all_uses_within oldv newv token_name.attrib in
+      { payload = payload; attrib = attrib } in
     (* TODO: inefficient *)
   let bindings = Hashtbl.fold (fun n token bdgs -> (n,token)::bdgs) token_names [] in
     Hashtbl.clear token_names;
@@ -484,6 +535,7 @@ let allocate_tables (is : instruction list) =
            let label = Printf.sprintf "L%i" n in
            let block = Llvm.append_block context label func in
              Hashtbl.add entry_points n block;
+             (* TODO: clean up *)
              let rec mk_p m = 
                if m = 0 then [] 
                else 
@@ -497,11 +549,11 @@ let allocate_tables (is : instruction list) =
                if m = 0 then [] 
                else 
                  let name = Printf.sprintf "a.%i.%i" n m in
-                 let t = (Llvm.integer_type context 1) in
+                 let t = Llvm.i1_type context in
                  let i = build_dummy t name builder in
                  i :: (mk_a (m-1)) in
              let xa = mk_a xs in
-               Hashtbl.add token_names n {payload = xp; attrib = xa; attrib_bitlen = xs}
+               Hashtbl.add token_names n { payload = xp; attrib = Bitvector.of_list xa }
     ) in
   let all_wires = Compile.wires is in
     List.iter 
@@ -523,7 +575,7 @@ let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
   let connect1 newenc dst =
     let oldenc = Hashtbl.find token_names dst in
 (*      Printf.printf "%i %i -> %i\n" oldenc.attrib_bitlen newenc.attrib_bitlen dst; *)
-      assert (oldenc.attrib_bitlen = newenc.attrib_bitlen);
+      assert ((Bitvector.length oldenc.attrib) = (Bitvector.length newenc.attrib));
       assert (List.length oldenc.payload = (List.length newenc.payload));
       Hashtbl.replace token_names dst newenc;
       List.iter 
@@ -536,23 +588,19 @@ let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
         (fun (n, o) -> 
            Llvm.replace_all_uses_with o n;
            replace_in_token_names o n
-        ) 
-        (List.combine newenc.attrib oldenc.attrib);
+        ) (Bitvector.value_replacement newenc.attrib oldenc.attrib);
   in
   let connect2 block1 new1enc block2 new2enc dst =
-    assert (new1enc.attrib_bitlen = new2enc.attrib_bitlen);
-    let newal = new1enc.attrib_bitlen in
+    assert ((Bitvector.length new1enc.attrib) = (Bitvector.length new2enc.attrib));
+(*    let newal = new1enc.attrib_bitlen in *)
     let dstblock = Hashtbl.find entry_points dst in
       position_at_start dstblock builder;
     let newp =
       List.map 
         (fun (n1, n2) -> Llvm.build_phi [(n1, block1); (n2, block2)] "xp" builder)
         (List.combine new1enc.payload new2enc.payload) in
-    let newa =
-      List.map 
-        (fun (n1, n2) -> Llvm.build_phi [(n1, block1); (n2, block2)] "xp" builder)
-        (List.combine new1enc.attrib new2enc.attrib) in
-      connect1 {payload = newp; attrib = newa; attrib_bitlen = newal} dst in
+    let newa = Bitvector.build_phi (new1enc.attrib, block1) (new2enc.attrib, block2) builder in
+      connect1 {payload = newp; attrib = newa } dst in
   let build_jump_argument w1 (x, t) w2 =
     let src_block = Hashtbl.find entry_points w1.src in
       Llvm.position_at_end src_block builder;
@@ -606,17 +654,14 @@ let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
            let senc = Hashtbl.find token_names w3.src in
            let tenc = build_term the_module [(x, senc)] [(x, w3.type_back)] t 
                         (Type.newty (Type.SumW[w1.type_forward; w2.type_forward])) in
-           let dal = tenc.attrib_bitlen - 1 in
-           let da, cond = build_split tenc.attrib dal 1 in
-           let denc12= {payload = tenc.payload; attrib = da; attrib_bitlen = dal }in
+           let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - 1) tenc.attrib in
+           let denc12= { payload = tenc.payload; attrib = da }in
            let denc1 = build_truncate_extend denc12 w1.type_forward in
            let denc2 = build_truncate_extend denc12 w2.type_forward in
-             match cond with
-               | [cond'] ->
-                   connect1 denc1 w1.dst;
-                   connect1 denc2 w2.dst;
-                   ignore (build_cond_br cond' w2.dst w1.dst);
-               | _ -> assert false
+           let cond' = Bitvector.extractvalue cond 0 in
+             connect1 denc1 w1.dst;
+             connect1 denc2 w2.dst;
+             ignore (build_cond_br cond' w2.dst w1.dst);
        end
    | Der(w1 (* \Tens A X *), w2 (* X *), f) ->
        let x, sigma, v, c = "x", "sigma", "v", "c" in
@@ -749,17 +794,14 @@ let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
            let senc = Hashtbl.find token_names w1.src in
            let tenc = build_term the_module [(x, senc)] [(x, w1.type_back)] t 
                         (Type.newty (Type.SumW[w2.type_forward; w3.type_forward])) in
-           let dal = tenc.attrib_bitlen - 1 in
-           let da, cond = build_split tenc.attrib dal 1 in
-           let denc23 = {payload = tenc.payload; attrib = da; attrib_bitlen = dal }in
+           let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - 1) tenc.attrib in
+           let denc23 = { payload = tenc.payload; attrib = da }in
            let denc2 = build_truncate_extend denc23 w2.type_forward in
            let denc3 = build_truncate_extend denc23 w3.type_forward in
-             match cond with
-               | [cond'] ->
-                   connect1 denc2 w2.dst;
-                   connect1 denc3 w3.dst;
-                   ignore (build_cond_br cond' w3.dst w2.dst)
-               | _ -> assert false
+           let cond' = Bitvector.extractvalue cond 0 in
+             connect1 denc2 w2.dst;
+             connect1 denc3 w3.dst;
+             ignore (build_cond_br cond' w3.dst w2.dst)
        end         
 
 let build_body (the_module : Llvm.llmodule) (c : circuit) =
