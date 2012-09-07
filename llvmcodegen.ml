@@ -83,7 +83,7 @@ struct
     { bits = List.map (fun v -> if v == oldv then newv else v) b.bits } 
 
   let value_replacement oldb newb = 
-      List.combine newb.bits oldb.bits
+      List.combine oldb.bits newb.bits
 end
 
 type encoded_value = {
@@ -579,16 +579,16 @@ let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
       assert (List.length oldenc.payload = (List.length newenc.payload));
       Hashtbl.replace token_names dst newenc;
       List.iter 
-        (fun (n, o) -> 
+        (fun (o, n) -> 
            Llvm.replace_all_uses_with o n;
            replace_in_token_names o n
         ) 
-        (List.combine newenc.payload oldenc.payload);
+        (List.combine oldenc.payload newenc.payload);
       List.iter 
-        (fun (n, o) -> 
+        (fun (o, n) -> 
            Llvm.replace_all_uses_with o n;
            replace_in_token_names o n
-        ) (Bitvector.value_replacement newenc.attrib oldenc.attrib);
+        ) (Bitvector.value_replacement oldenc.attrib newenc.attrib);
   in
   let connect2 block1 new1enc block2 new2enc dst =
     assert ((Bitvector.length new1enc.attrib) = (Bitvector.length new2enc.attrib));
