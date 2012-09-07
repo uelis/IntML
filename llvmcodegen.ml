@@ -42,6 +42,7 @@ sig
   val insertvalue : t -> int -> Llvm.llvalue -> t
   val of_list: Llvm.llvalue list -> t
 
+  (* TODO: document properly *)                                      
   val build_phi: t * Llvm.llbasicblock -> t * Llvm.llbasicblock -> Llvm.llbuilder -> t
   val replace_all_uses_within : Llvm.llvalue -> Llvm.llvalue -> t -> t 
   val value_replacement : t -> t -> (Llvm.llvalue * Llvm.llvalue) list
@@ -193,8 +194,7 @@ let build_split (z : Llvm.llvalue list) (len1 : int) (len2 : int)
       : Llvm.llvalue list * Llvm.llvalue list =
   part len1 z
 
-(* TODO: doc 
-* truncate or extend if necessary
+(* TODO: check that truncation is correctly applied! 
 * *)                      
 let build_truncate_extend (enc : encoded_value) (a : Type.t) =
   let a_payload_size = payload_size a in
@@ -220,6 +220,10 @@ let build_truncate_extend (enc : encoded_value) (a : Type.t) =
     assert (Bitvector.length x_attrib = a_attrib_bitlen);
     { payload = x_payload; attrib = x_attrib }
 
+(* TODO: 
+ * - restrict wc so that this compilation is always ok. (remove functions)
+ * - add loops
+ * *)                      
 let build_term 
       (the_module : Llvm.llmodule)
       (ctx: (var * encoded_value) list) 
