@@ -274,25 +274,6 @@ let build_term
                     {payload = []; attrib = [eq]; attrib_bitlen = 1}
               | _ -> assert false
           end
-(*      | AppW({desc = ConstW(Some a, Csucc)}, t1) ->
-          begin
-            match Type.finddesc a with
-              | Type.FunW(a1, a2) -> 
-                  begin
-                    match Type.finddesc a1 with
-                      | Type.NatW ->
-                          begin
-                            match build_annotatedterm ctx t1 with
-                              | {payload = [x]; attrib = None} -> 
-                                  let one = Llvm.const_int (Llvm.i64_type context) 1 in
-                                  let x' = Llvm.build_add x one "succ" builder in
-                                    {payload = [x']; attrib = None; attrib_bitlen = 0}
-                              | _ -> assert false
-                          end
-                      | _ -> assert false
-                  end
-              | _ -> assert false
-          end*)
       | ConstW(Some a, Cprint(s)) ->
           let i64 = Llvm.i64_type context in
           let str = Llvm.build_global_string s "s" builder in            
@@ -457,6 +438,10 @@ let build_term
       | AppW({desc = LambdaW((x, a), t1)}, t2) ->
           let t2enc = build_annotatedterm ctx t2 in
             build_annotatedterm ((x, t2enc) :: ctx) t1
+      | AppW({desc = AppW({desc = LambdaW((x, a), {desc = LambdaW((y, b), t1)})}, t2)}, t3) ->
+          let t3enc = build_annotatedterm ctx t3 in
+          let t2enc = build_annotatedterm ctx t2 in
+            build_annotatedterm ((y,t3enc) :: (x, t2enc) :: ctx) t1
       | _ -> 
           Printf.printf "%s\n" (Printing.string_of_termW t);
           failwith "TODO"
@@ -770,11 +755,11 @@ let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
            let denc2 = build_truncate_extend denc23 w2.type_forward in
            let denc3 = build_truncate_extend denc23 w3.type_forward in
              match cond with
-               | [] -> assert false
                | [cond'] ->
                    connect1 denc2 w2.dst;
                    connect1 denc3 w3.dst;
                    ignore (build_cond_br cond' w3.dst w2.dst)
+               | _ -> assert false
        end         
 
 let build_body (the_module : Llvm.llmodule) (c : circuit) =
