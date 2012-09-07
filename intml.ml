@@ -69,7 +69,7 @@ let rec llvm_compile (d: typed_decls) : unit =
                     let graph = circuit_of_termU [] [] t in
                     let _ = infer_types graph in 
                     let llvm_module = Llvmcodegen.llvm_circuit graph in
-(*                      Llvm.dump_module llvm_module; *)
+                      Llvm.dump_module llvm_module; 
                       ignore (Llvm_bitwriter.write_bitcode_file llvm_module (Printf.sprintf "%s.bc" f))
                  | _ -> ())
            | _ -> ());
