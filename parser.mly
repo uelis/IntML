@@ -178,6 +178,10 @@ termW:
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cintadd)), $1)), $3)) }
     | termW_app TokMinus termW_atom
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cintsub)), $1)), $3)) }
+    | termW_app TokTimes termW_atom
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cintmul)), $1)), $3)) }
+    | termW_app TokDiv termW_atom
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cintdiv)), $1)), $3)) }
     | termW_app
        { $1 } 
 

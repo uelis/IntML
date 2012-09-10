@@ -39,13 +39,13 @@ sig
   val concat : t -> t -> t
   val takedrop : int -> t -> t * t
   val extractvalue : t -> int -> Llvm.llvalue
-  val insertvalue : t -> int -> Llvm.llvalue -> t
+(*  val insertvalue : t -> int -> Llvm.llvalue -> t *)
   val of_list: Llvm.llvalue list -> t
 
-  val fff : Llvm.llvalue -> int -> t                                     
+  val fff : Llvm.llvalue -> int -> t
   (* TODO: document properly *)                                      
   val build_phi: t * Llvm.llbasicblock -> t * Llvm.llbasicblock -> Llvm.llbuilder -> t
-  val replace_all_uses_within : Llvm.llvalue -> Llvm.llvalue -> t -> t 
+  val replace_all_uses : Llvm.llvalue -> Llvm.llvalue -> t -> t 
   val value_replacement : t -> t -> (Llvm.llvalue * Llvm.llvalue) list
 end = 
 struct
@@ -53,7 +53,10 @@ struct
     vector : Llvm.llvalue option;
     len : int
   }
- 
+
+  let struct_type len =
+    Llvm.vector_type (Llvm.i1_type context) len
+
   let fff dummy l = 
     if l = 0 then { vector = None; len = 0 } 
     else { vector = Some dummy; len = l}
@@ -64,21 +67,29 @@ struct
     if len = 0 then 
       { vector = None; len = 0 }
     else 
-      { vector = Some (Llvm.const_null (Llvm.integer_type context len)); 
+      { vector = Some (Llvm.const_null (struct_type len)); 
         len = len }
 
+  let values_of_struct s len =
+    list_init len (fun i -> 
+                     Llvm.build_extractelement s (Llvm.const_int (Llvm.i32_type context) i) "i" builder)
+
+      (* bl darf nicht leer sein *)
+  let struct_of_list bl =
+    let len = List.length bl in
+    let s = Llvm.const_null (struct_type len) in
+    let ibl = List.combine (list_init len (fun i -> i)) bl in
+      List.fold_right (fun (i,v) s ->
+                         Llvm.build_insertelement s v (Llvm.const_int (Llvm.i32_type context) i) "x" builder)
+        ibl s
+ 
   let concat b1 b2 = 
     match b1.vector, b2.vector with
       | None , _ -> b2
       | _, None -> b1
-      | Some v1, Some v2 ->
-          let ilen = Llvm.integer_type context (b1.len + b2.len) in
-          let zh' = Llvm.build_zext v1 ilen "zhext" builder in
-          let cl2 = Llvm.const_int ilen b2.len in
-          let zh = Llvm.build_shl zh' cl2 "zh" builder in
-          let zl = Llvm.build_zext v2 ilen "zl" builder in
-             { vector = Some (Llvm.build_or zh zl "z" builder);
-               len = b1.len + b2.len }
+      | Some v1, Some v2 -> 
+          { vector = Some (struct_of_list ((values_of_struct v1 b1.len) @ (values_of_struct v2 b2.len))); 
+            len = b1.len + b2.len }
 
   let takedrop n b1 =
     if n = 0 then { vector = None; len = 0 } , b1 
@@ -87,21 +98,24 @@ struct
       match b1.vector with 
         | None -> assert false
         | Some z -> 
-            let ilen = Llvm.integer_type context b1.len in
-            let ilen1 = Llvm.integer_type context n in
-            let ilen2 = Llvm.integer_type context (b1.len - n) in
-            let x' = Llvm.build_lshr z (Llvm.const_int ilen (b1.len - n)) "xshr" builder in
-            let x = Llvm.build_trunc x' ilen1 "x" builder in
-            let y = Llvm.build_trunc z ilen2 "y" builder in
-              { vector = Some x; len = n },
-              { vector = Some y; len = b1.len - n }
+            let vs = values_of_struct z b1.len in
+            let h, t = part n vs in
+              { vector = Some (struct_of_list h); len = n },
+              { vector = Some (struct_of_list t); len = b1.len - n }
 
   let extractvalue b i =    
-    match takedrop (i+1) b with
-      | { vector = Some x }, _ -> 
-            Llvm.build_trunc x (Llvm.i1_type context) "v" builder
-      | _ -> assert false
+    match b.vector with
+      | Some v -> Llvm.build_extractelement v (Llvm.const_int (Llvm.i32_type context) i) "e" builder
+      | None -> assert false
 
+  let of_list bl =
+    let len = List.length bl in
+      if len = 0 then 
+        { vector = None; len = 0 }
+      else
+        { vector = Some (struct_of_list bl); len = len }
+
+(*        
   let insertvalue b i v =
     match takedrop i b with
       | h, ({ vector = Some x } as t) -> 
@@ -111,23 +125,7 @@ struct
           let x3 = Llvm.build_or x2 zv "z" builder in
             concat h { vector = Some x3; len = t.len }
       | _ -> assert false
-
-  let of_list bl =
-    match bl with
-      | [] -> { vector = None; len = 0}
-      | [v] -> { vector = Some v; len = 1}
-      | _ ->
-          let len = List.length bl in
-          let one = Llvm.const_int (Llvm.integer_type context len) 1 in
-          let vec =
-            List.fold_left 
-              (fun b v ->
-                 let zv = Llvm.build_zext v (Llvm.integer_type context len) "zv" builder in
-                 let bl = Llvm.build_shl b one "bl" builder in
-                   Llvm.build_or bl zv "b" builder)
-              (Llvm.const_null (Llvm.integer_type context len)) bl
-          in
-            { vector = Some vec; len = len } 
+ *)
 
   let build_phi (x, blockx) (y, blocky) builder =
     match x.vector, y.vector with
@@ -136,7 +134,7 @@ struct
             { vector = Some z; len = x.len }
       | _ -> assert false
 
-  let replace_all_uses_within oldv newv b =
+  let replace_all_uses oldv newv b =
     { vector = 
         (match b.vector with
           | None -> None
@@ -580,7 +578,7 @@ let build_term
 let replace_in_token_names (oldv : Llvm.llvalue) (newv : Llvm.llvalue)  =
   let replace (token_name : encoded_value) =
     let payload = List.map (fun v -> if v == oldv then newv else v) token_name.payload in
-    let attrib = Bitvector.replace_all_uses_within oldv newv token_name.attrib in
+    let attrib = Bitvector.replace_all_uses oldv newv token_name.attrib in
       { payload = payload; attrib = attrib } in
     (* TODO: inefficient *)
   let bindings = Hashtbl.fold (fun n token bdgs -> (n,token)::bdgs) token_names [] in
@@ -612,7 +610,7 @@ let allocate_tables (is : instruction list) =
                  i :: (mk_p (m-1)) in
              let xp = mk_p (payload_size a) in
              let xs = attrib_size a in
-             let t = Llvm.integer_type context xs in
+             let t = Llvm.vector_type  (Llvm.i1_type context) xs in
              let d = build_dummy t "att" builder in
                Hashtbl.add token_names n { payload = xp; attrib = Bitvector.fff d xs }
     ) in
