@@ -7,26 +7,6 @@
 open Term
 open Compile
 
-let unTensorW a =
-  match Type.finddesc a with
-    | Type.TensorW(a1, a2) -> a1, a2
-    | _ -> assert false
-
-let rec list_init (n : int) (f : int -> 'a) : 'a list =
-   if n <= 0 then [] 
-   else f 0 :: (list_init (n-1) (fun i -> f (i+1)))
-
-let part n l =
-  let rec part_rev n l =
-    if n = 0 then ([], l) else
-      let (h,t) = part_rev (n-1) l in
-      match t with
-        | [] -> raise Not_found
-        | x::t' -> (x::h, t')
-  in 
-  let (h, t) = part_rev n l in
-    (List.rev h, t)
-
 let context = Llvm.global_context ()
 let builder = Llvm.builder context
 
@@ -39,10 +19,9 @@ sig
   val concat : t -> t -> t
   val takedrop : int -> t -> t * t
   val extractvalue : t -> int -> Llvm.llvalue
-(*  val insertvalue : t -> int -> Llvm.llvalue -> t *)
   val of_list: Llvm.llvalue list -> t
 
-  (* TODO: document properly *)                                      
+  (* TODO: document properly *)
   val mk_dummy : int -> t * (Llvm.llvalue * Llvm.llvalue) list
   val build_phi: t * Llvm.llbasicblock -> t * Llvm.llbasicblock -> Llvm.llbuilder -> t
   val replace_all_uses : Llvm.llvalue -> Llvm.llvalue -> t -> t 
@@ -77,14 +56,14 @@ struct
         len = len }
 
   let values_of_struct s len =
-    list_init len (fun i -> 
+    Listutil.init len (fun i -> 
                      Llvm.build_extractelement s (Llvm.const_int (Llvm.i32_type context) i) "i" builder)
 
       (* bl darf nicht leer sein *)
   let struct_of_list bl =
     let len = List.length bl in
     let s = Llvm.const_null (struct_type len) in
-    let ibl = List.combine (list_init len (fun i -> i)) bl in
+    let ibl = List.combine (Listutil.init len (fun i -> i)) bl in
       List.fold_right (fun (i,v) s ->
                          Llvm.build_insertelement s v (Llvm.const_int (Llvm.i32_type context) i) "x" builder)
         ibl s
@@ -105,7 +84,7 @@ struct
         | None -> assert false
         | Some z -> 
             let vs = values_of_struct z b1.len in
-            let h, t = part n vs in
+            let h, t = Listutil.part n vs in
               { vector = Some (struct_of_list h); len = n },
               { vector = Some (struct_of_list t); len = b1.len - n }
 
@@ -120,18 +99,6 @@ struct
         { vector = None; len = 0 }
       else
         { vector = Some (struct_of_list bl); len = len }
-
-(*        
-  let insertvalue b i v =
-    match takedrop i b with
-      | h, ({ vector = Some x } as t) -> 
-          let x1 = Llvm.build_lshr x (Llvm.const_int (Llvm.integer_type context t.len) 1) "xr" builder in
-          let x2 = Llvm.build_shl x1 (Llvm.const_int (Llvm.integer_type context t.len) 1) "xrl" builder in
-          let zv = Llvm.build_zext v (Llvm.integer_type context t.len) "zl" builder in
-          let x3 = Llvm.build_or x2 zv "z" builder in
-            concat h { vector = Some x3; len = t.len }
-      | _ -> assert false
- *)
 
   let build_phi (x, blockx) (y, blocky) builder =
     match x.vector, y.vector with
@@ -162,14 +129,6 @@ type encoded_value = {
 let position_at_start block builder =
   let block_begin = Llvm.instr_begin block in
     Llvm.position_builder block_begin builder
-(*  match block_begin with
-    | Llvm.At_end(_) -> 
-        Llvm.position_builder block_begin builder
-    | Llvm.Before(i) -> 
-        if Llvm.instr_opcode i = Llvm.Opcode.PHI then
-          Llvm.position_builder (Llvm.instr_succ i) builder
-        else 
-          Llvm.position_builder block_begin builder*)
 
  (*
  * Payload:
@@ -259,7 +218,7 @@ let build_concat
 
 let build_split (z : Llvm.llvalue list) (len1 : int) (len2 : int) 
       : Llvm.llvalue list * Llvm.llvalue list =
-  part len1 z
+  Listutil.part len1 z
 
 (* TODO: check that truncation is correctly applied! 
 * *)                      
@@ -346,12 +305,6 @@ let build_term
     match t.Term.desc with
       | Var(x) -> 
           List.assoc x ctx
-      | ConstW(Some a, Cmin) ->
-          let ap = payload_size a in
-          let msl = attrib_size a in
-          let zero = Llvm.const_null (Llvm.i64_type context) in
-          let rec mp n = if n = 0 then [] else zero::(mp (n-1)) in
-            { payload = mp ap; attrib = Bitvector.null msl }
       | ConstW(Some a, Cintconst(i)) ->
           assert (Type.finddesc a = Type.NatW);
           let vali = Llvm.const_int (Llvm.i64_type context) i in
@@ -442,7 +395,7 @@ let build_term
                   let len_sya = attrib_size ay in
                     assert (List.length senc.payload = len_sxp + len_syp);
                     assert (Bitvector.length senc.attrib = len_sxa + len_sya);
-                    let sxp, syp = part len_sxp senc.payload in
+                    let sxp, syp = Listutil.part len_sxp senc.payload in
                     let sxa, sya = Bitvector.takedrop len_sxa senc.attrib in
                       assert (Bitvector.length sya = len_sya);
                       build_annotatedterm ((x, {payload = sxp; attrib = sxa }) :: 
@@ -514,10 +467,10 @@ let build_term
           assert (len_p = List.length tenc.payload);
           assert (len_a = Bitvector.length tenc.attrib);
           let struct_content = 
-            (List.combine (list_init len_p (fun i -> i)) tenc.payload) @
-            (list_init len_a (fun i -> (len_p + i, Bitvector.extractvalue tenc.attrib i)))
+            (List.combine (Listutil.init len_p (fun i -> i)) tenc.payload) @
+            (Listutil.init len_a (fun i -> (len_p + i, Bitvector.extractvalue tenc.attrib i)))
 (*            List.combine
-              (list_init (len_p + len_a) (fun i -> i)) 
+              (Listutil.init (len_p + len_a) (fun i -> i)) 
               (tenc.payload @ tenc.attrib)*)
           in
           let t_struct = 
@@ -550,8 +503,8 @@ let build_term
                     let tptr = Llvm.build_inttoptr tptrint (Llvm.pointer_type a_struct) "tptr" builder in
                     let tstruct = Llvm.build_load tptr "tstruct" builder in
                     ignore (Llvm.build_call free (Array.of_list [tptrint]) "" builder);
-                    let pl = list_init len_p (fun i -> Llvm.build_extractvalue tstruct i "p" builder) in
-                    let at = list_init len_a (fun i -> Llvm.build_extractvalue tstruct (len_p + i) "p" builder) in
+                    let pl = Listutil.init len_p (fun i -> Llvm.build_extractvalue tstruct i "p" builder) in
+                    let at = Listutil.init len_a (fun i -> Llvm.build_extractvalue tstruct (len_p + i) "p" builder) in
                       {payload = pl; attrib = Bitvector.of_list at}
                 | _ -> assert false
             end
@@ -627,6 +580,10 @@ let allocate_tables (is : instruction list) =
     ) all_wires
 
 let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
+  let unTensorW a =
+    match Type.finddesc a with
+      | Type.TensorW(a1, a2) -> a1, a2
+      | _ -> assert false in
   let build_br dst = 
     let dst_block = Hashtbl.find entry_points dst in
       Llvm.build_br dst_block builder in    

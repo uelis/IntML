@@ -83,7 +83,7 @@ letw print_dec : 'a -> 1 =
          let <z, f> = p in
          let <d, m> = divmod z ten in
          let f' = fun u -> (let z = print_upto10 m in f u) in
-           if d = min then 
+           if d = 0 then 
              (let z = f' <> in  return <>)
            else 
              continue <d, f'>
@@ -116,7 +116,7 @@ letu addu : ['a] --> ['b] --> ['a] =
   fun x ->
   fix (fun (add : ['b] --> ['a]) -> fun (y : ['b]) ->
     let [vy] = y in
-    case vy = min of
+    case vy = 0 of
       inl(true) -> 
        x
     | inr(false) -> 
@@ -169,7 +169,7 @@ letu fib : [int] --> [int] = fix f
 letu g : (['a] --> ['a]) --> ['a] --> ['a] = 
   fun f -> fun x ->
     let [v] = x in
-      case v = min of 
+      case v = 0 of 
         inl(true) ->
           [1]
       | inr(false) ->

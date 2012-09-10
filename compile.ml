@@ -156,7 +156,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
           let w = fresh_wire () in 
           let w' = fresh_wire () in 
             (w, [Der(flip w', w, 
-                     (sigma, mkConstW (Some (Type.newty Type.OneW)) Cmin));
+                     (sigma, mkUnitW));
                  LWeak(flip wx, w')])
       | HackU(_, t1) ->
           let w = fresh_wire () in
@@ -608,6 +608,17 @@ let rec out_k (t: Term.t) (n: int) : int * Term.t =
   | _ -> failwith "out_k"
 
 exception Not_Leq               
+
+let rec min (ty: Type.t) : Term.t =
+  match Type.finddesc ty with
+  | Type.Var -> mkUnitW
+  | Type.OneW -> mkUnitW
+  | Type.TensorW(a, b) -> mkPairW (min a) (min b)
+  | Type.SumW(a :: l) -> mkInW (1 + (List.length l)) 0 (min a)
+  | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
+  | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _->
+      failwith "internal: min" 
+
 (* If alpha <= beta then (embed alpha beta) is a corresponding 
  * embedding from alpha to beta.
  * The function raises Not_Leq if it discovers that alpha <= beta
@@ -632,11 +643,11 @@ let rec embed (a: Type.t) (b: Type.t) : Term.t =
           Term.mkLambdaW(("x", None), 
                          Term.mkPairW 
                            (Term.mkAppW (embed a b1) (Term.mkVar "x"))
-                           (Term.mkConstW (Some b2) Cmin))
+                           (min b2))
         with Not_Leq ->
           Term.mkLambdaW(("x", None), 
                          Term.mkPairW 
-                           (Term.mkConstW (Some b1) Cmin)
+                           (min b1)
                            (Term.mkAppW (embed a b2) (Term.mkVar "x")))
         end
     | Type.MuW(beta, b1) ->
@@ -663,12 +674,12 @@ let rec project (a: Type.t) (b: Type.t) : Term.t =
             ("x", None),
             Term.mkCaseW (Term.mkVar "x") 
               [("y", Term.mkAppW (project a b1) (Term.mkVar "y"));
-               ("y", Term.mkConstW (Some a) Cmin)])
+               ("y", min a)])
         with Not_Leq ->
           Term.mkLambdaW(
             ("x", None),
             Term.mkCaseW (Term.mkVar "x") 
-              [("y", Term.mkConstW (Some a) Cmin);
+              [("y", min a);
                ("y", Term.mkAppW (project a b2) (Term.mkVar "y"))])
         end 
     | Type.TensorW(b1, b2) ->

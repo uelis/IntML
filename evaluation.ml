@@ -22,49 +22,9 @@ and value =
   | IntdivV of value option
   | IntprintV
 
-let rec min (ty: Type.t) =
-  match Type.finddesc ty with
-  | Type.Var -> 
-      Printf.printf "warning: trying to evaluate polymophic min; instantiating variables with 1\n";
-      UnitV  
-  | Type.NatW -> IntV(0)
-  | Type.OneW -> UnitV
-  | Type.TensorW(a, b) -> PairV(min a, min b)
-  | Type.SumW(a :: l) -> InV(1 + (List.length l), 0, min a)
-  | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
-  | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _ | Type.MuW _ ->
-      failwith "internal: min" 
-
 type succOrMin =
   | Succ of value
   | Min of value
-
-let rec succmin (ty: Type.t) (v: value) : succOrMin =
-  match Type.finddesc ty, v with
-  | Type.Var, _ -> 
-      Printf.printf "warning: trying to evaluate polymophic succ; instantiating variables with 1\n";
-      Min(UnitV)  
-  | Type.NatW, IntV(n) -> Succ(IntV(n+1))
-  | Type.OneW, _ -> Min(UnitV)
-  | Type.TensorW(a, b), PairV(x, y) -> 
-     (match succmin b y with
-      | Succ(y') -> Succ(PairV(x, y'))
-      | Min(mb) -> 
-        (match succmin a x with
-         | Succ(x') -> Succ(PairV(x', mb))
-         | Min(ma) -> Min(PairV(ma, mb))
-        )
-     )
-  | Type.SumW(l), InV(n, i, x) ->
-     (match succmin (List.nth l i) x with
-      | Succ(x') -> Succ(InV(n, i, x'))
-      | Min(_) -> if (i < n - 1) then 
-                     Succ(InV(n, i + 1, min (List.nth l (i+1)))) 
-                  else Min(min (Type.find ty))
-     )
-  | _, _ -> 
-     Printf.printf "%s" (Printing.string_of_type ty);
-     failwith "internal: succmin"
 
 let rec eq (ty: Type.t) (v1: value) (v2: value) : bool =
   match Type.finddesc ty, v1, v2 with
@@ -86,7 +46,6 @@ let rec eval (t: Term.t) (sigma : env) : value =
         print_string s;
         flush stdout;
         UnitV
-    | ConstW(Some a, Cmin) -> min a
     | ConstW(_, Cintconst(i)) -> IntV(i)
     | ConstW(_, Cintprint) -> IntprintV
     | ConstW(_, Cinteq) -> InteqV(None)
@@ -95,9 +54,6 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | ConstW(_, Cintmul) -> IntmulV(None)
     | ConstW(_, Cintdiv) -> IntdivV(None)
     | ConstW(_, Cbot) ->  failwith "nontermination!"
-      (* Note: "bot" does not need to be annotated *)
-    | ConstW(None, s) ->
-        failwith ("Cannot evaluate unannotated constant '" ^ (Printing.string_of_term_const s) ^ "'.")
     | PairW(t1, t2) -> 
         let v1 = eval t1 sigma in
         let v2 = eval t2 sigma in

@@ -206,8 +206,6 @@ termW_atom:
        { mkTerm (InW(2, 1, $3)) }
     | TokKwPrint TokString
        { mkTerm (ConstW(None, Cprint $2)) } 
-    | TokKwMin
-       { mkTerm (ConstW(None, Cmin)) } 
     | TokNum
        { mkTerm (ConstW(None, Cintconst($1))) } 
     | TokLParen termW TokColon typeW TokRParen

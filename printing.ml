@@ -215,7 +215,6 @@ let abstract_string_of_typeU (ty: Type.t): string =
 let string_of_term_const (c: term_const) : string =
   match c with
   | Cprint s -> "print(" ^ s ^ ")"
-  | Cmin -> "min"
   | Cbot -> "bot()"
   | Cintconst i -> Printf.sprintf "%i" i
   | Cintadd -> "intadd"
@@ -306,18 +305,6 @@ let string_of_termW (term: Term.t): string =
          Buffer.add_string buf  x
       | UnitW -> 
           Buffer.add_string buf "U()"
-      | ConstW(Some a, Cmin) -> 
-          begin
-            match Type.finddesc a with
-              | Type.OneW -> 
-                  Buffer.add_string buf "()"
-              | Type.NatW -> 
-                  Buffer.add_string buf "0"
-              | _ ->
-                  Buffer.add_string buf "(min:";
-                  Buffer.add_string buf (string_of_type a);
-                  Buffer.add_string buf ")"
-          end
       | ConstW(_, s) -> 
           Buffer.add_string buf (string_of_term_const s)
       | PairW(t1, t2) -> 
