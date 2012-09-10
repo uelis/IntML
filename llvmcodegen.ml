@@ -42,11 +42,11 @@ sig
 (*  val insertvalue : t -> int -> Llvm.llvalue -> t *)
   val of_list: Llvm.llvalue list -> t
 
-  val fff : Llvm.llvalue -> int -> t
   (* TODO: document properly *)                                      
+  val mk_dummy : int -> t * (Llvm.llvalue * Llvm.llvalue) list
   val build_phi: t * Llvm.llbasicblock -> t * Llvm.llbasicblock -> Llvm.llbuilder -> t
   val replace_all_uses : Llvm.llvalue -> Llvm.llvalue -> t -> t 
-  val value_replacement : t -> t -> (Llvm.llvalue * Llvm.llvalue) list
+  val llvalue_replacement : t -> t -> (Llvm.llvalue * Llvm.llvalue) list
 end = 
 struct
   type t = { 
@@ -57,9 +57,15 @@ struct
   let struct_type len =
     Llvm.vector_type (Llvm.i1_type context) len
 
-  let fff dummy l = 
-    if l = 0 then { vector = None; len = 0 } 
-    else { vector = Some dummy; len = l}
+  let mk_dummy len = 
+    if len = 0 then 
+      { vector = None; len = 0 }, []
+    else 
+      let vi1 = Llvm.vector_type  (Llvm.i1_type context) len in
+      let dummy0 = Llvm.build_alloca vi1 "dummy" builder in
+      let dummy = Llvm.build_bitcast dummy0 vi1 "dummy" builder in
+        { vector = Some dummy; len = len },
+        [ (dummy, Llvm.const_null vi1) ]
               
   let length b = b.len
 
@@ -142,7 +148,7 @@ struct
       len = b.len
     } 
 
-  let value_replacement oldb newb = 
+  let llvalue_replacement oldb newb = 
    match oldb.vector, newb.vector with
      | Some ov, Some nv -> [(ov, nv)]
      | _ -> []
@@ -199,12 +205,12 @@ let position_at_start block builder =
 
 let entry_points : (int, Llvm.llbasicblock) Hashtbl.t = Hashtbl.create 10                                                         
 let token_names : (int, encoded_value) Hashtbl.t = Hashtbl.create 10
-let all_tokens : ((Llvm.llvalue * Llvm.llvalue) list) ref = ref []
+let token_zero_init : ((Llvm.llvalue * Llvm.llvalue) list) ref = ref []
 
 let clear_tables () =
   Hashtbl.clear entry_points;
   Hashtbl.clear token_names;
-  all_tokens := []
+  token_zero_init := []
 
 let rec payload_size (a: Type.t) : int = 
   let payload_size_memo = Type.Typetbl.create 5 in
@@ -574,7 +580,6 @@ let build_term
     build_annotatedterm ctx t_annotated
 
 
-
 let replace_in_token_names (oldv : Llvm.llvalue) (newv : Llvm.llvalue)  =
   let replace (token_name : encoded_value) =
     let payload = List.map (fun v -> if v == oldv then newv else v) token_name.payload in
@@ -590,7 +595,7 @@ let allocate_tables (is : instruction list) =
   let build_dummy ty name builder = 
      let i0 = Llvm.build_alloca ty name builder in
      let dummy = Llvm.build_bitcast i0 ty name builder in
-       all_tokens := (dummy, Llvm.const_null ty)::!all_tokens;
+       token_zero_init := (dummy, Llvm.const_null ty)::!token_zero_init;
        dummy
      in 
   let add_module n a =
@@ -610,9 +615,9 @@ let allocate_tables (is : instruction list) =
                  i :: (mk_p (m-1)) in
              let xp = mk_p (payload_size a) in
              let xs = attrib_size a in
-             let t = Llvm.vector_type  (Llvm.i1_type context) xs in
-             let d = build_dummy t "att" builder in
-               Hashtbl.add token_names n { payload = xp; attrib = Bitvector.fff d xs }
+             let dummy, zero_init = Bitvector.mk_dummy xs in
+               token_zero_init := zero_init @ !token_zero_init;
+               Hashtbl.add token_names n { payload = xp; attrib = dummy }
     ) in
   let all_wires = Compile.wires is in
     List.iter 
@@ -636,22 +641,16 @@ let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
 (*      Printf.printf "%i %i -> %i\n" oldenc.attrib_bitlen newenc.attrib_bitlen dst; *)
       assert ((Bitvector.length oldenc.attrib) = (Bitvector.length newenc.attrib));
       assert (List.length oldenc.payload = (List.length newenc.payload));
-      Hashtbl.replace token_names dst newenc;
+     Hashtbl.replace token_names dst newenc; 
       List.iter 
         (fun (o, n) -> 
            Llvm.replace_all_uses_with o n;
-           replace_in_token_names o n
-        ) 
-        (List.combine oldenc.payload newenc.payload);
-      List.iter 
-        (fun (o, n) -> 
-           Llvm.replace_all_uses_with o n;
-           replace_in_token_names o n
-        ) (Bitvector.value_replacement oldenc.attrib newenc.attrib);
+           replace_in_token_names o n) 
+        ((List.combine oldenc.payload newenc.payload) @
+         (Bitvector.llvalue_replacement oldenc.attrib newenc.attrib));
   in
   let connect2 block1 new1enc block2 new2enc dst =
     assert ((Bitvector.length new1enc.attrib) = (Bitvector.length new2enc.attrib));
-(*    let newal = new1enc.attrib_bitlen in *)
     let dstblock = Hashtbl.find entry_points dst in
       position_at_start dstblock builder;
     let newp =
@@ -875,7 +874,7 @@ let build_body (the_module : Llvm.llmodule) (c : circuit) =
          | _ -> ()
   ) entry_points;
   (* replace unreachable tokens by zero *)
-  List.iter (fun (t, z) -> Llvm.replace_all_uses_with t z) !all_tokens
+  List.iter (fun (t, z) -> Llvm.replace_all_uses_with t z) !token_zero_init
 
 
 (* Must be applied to circuit of type [A] *)    
