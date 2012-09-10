@@ -258,10 +258,7 @@ let build_term
   (* Add type annotations in various places *)
   let rec annotate_term (t: Term.t) : Term.t =
     match t.desc with
-      | Var(_) | UnitW | ConstW(Some _, _) -> t
-      | ConstW(None, c) -> 
-          let alpha = Type.newty Type.Var in
-            mkConstW (Some alpha) c
+      | Var(_) | UnitW | ConstW(_) -> t
       | TypeAnnot(t1, None) -> annotate_term t1
       | TypeAnnot(t1, Some a) -> mkTypeAnnot (annotate_term t1) (Some a)
       | PairW(t1, t2) -> 
@@ -305,36 +302,25 @@ let build_term
     match t.Term.desc with
       | Var(x) -> 
           List.assoc x ctx
-      | ConstW(Some a, Cintconst(i)) ->
-          assert (Type.finddesc a = Type.NatW);
+      | ConstW(Cintconst(i)) ->
           let vali = Llvm.const_int (Llvm.i64_type context) i in
             {payload = [vali]; attrib = Bitvector.null 0;}
-      | AppW({desc = ConstW(Some a, Cintprint)}, t1) ->
+      | AppW({desc = ConstW(Cintprint)}, t1) ->
           begin
-            match Type.finddesc a with
-              | Type.FunW(a1, a2) -> 
-                  begin
-                    match Type.finddesc a1 with
-                      | Type.NatW ->
-                          begin
-                            match build_annotatedterm ctx t1 with
-                              | {payload = [x]; attrib = a} when Bitvector.length a = 0 -> 
-                                  let i8a = Llvm.pointer_type (Llvm.i8_type context) in
-                                  let i64 = Llvm.i64_type context in
-                                  let formatstr = Llvm.build_global_string "%i" "format" builder in            
-                                  let formatstrptr = Llvm.build_in_bounds_gep formatstr (Array.make 2 (Llvm.const_null i64)) "forrmatptr" builder in
-                                  let printftype = Llvm.function_type (Llvm.i64_type context) (Array.of_list [i8a; i64]) in
-                                  let printf = Llvm.declare_function "printf" printftype the_module in
-                                  let args = Array.of_list [formatstrptr; x] in
-                                    ignore (Llvm.build_call printf args "i" builder);
-                                    {payload = []; attrib = Bitvector.null 0 }
-                              | _ -> assert false
-                          end
-                      | _ -> assert false
-                  end
+            match build_annotatedterm ctx t1 with
+              | {payload = [x]; attrib = a} when Bitvector.length a = 0 -> 
+                  let i8a = Llvm.pointer_type (Llvm.i8_type context) in
+                  let i64 = Llvm.i64_type context in
+                  let formatstr = Llvm.build_global_string "%i" "format" builder in            
+                  let formatstrptr = Llvm.build_in_bounds_gep formatstr (Array.make 2 (Llvm.const_null i64)) "forrmatptr" builder in
+                  let printftype = Llvm.function_type (Llvm.i64_type context) (Array.of_list [i8a; i64]) in
+                  let printf = Llvm.declare_function "printf" printftype the_module in
+                  let args = Array.of_list [formatstrptr; x] in
+                    ignore (Llvm.build_call printf args "i" builder);
+                    {payload = []; attrib = Bitvector.null 0 }
               | _ -> assert false
           end
-      | AppW({desc = AppW({desc = ConstW(Some a, binop)}, t1)}, t2) 
+      | AppW({desc = AppW({desc = ConstW(binop)}, t1)}, t2) 
           when (binop = Cintadd || binop = Cintsub || binop = Cintmul || binop = Cintdiv) ->
           begin
             match build_annotatedterm ctx t1, build_annotatedterm ctx t2 with
@@ -351,7 +337,7 @@ let build_term
                     {payload = [res]; attrib = Bitvector.null 0}
               | _ -> assert false
           end
-      | AppW({desc = AppW({desc = ConstW(Some a, Cinteq)}, t1)}, t2) ->
+      | AppW({desc = AppW({desc = ConstW(Cinteq)}, t1)}, t2) ->
           begin
             match build_annotatedterm ctx t1, build_annotatedterm ctx t2 with
               | {payload = [x]; attrib = ax},  {payload = [y]; attrib = ay} when
@@ -360,7 +346,7 @@ let build_term
                     {payload = []; attrib = Bitvector.of_list [eq]}
               | _ -> assert false
           end
-      | ConstW(Some a, Cprint(s)) ->
+      | ConstW(Cprint(s)) ->
           let i64 = Llvm.i64_type context in
           let str = Llvm.build_global_string s "s" builder in            
           let strptr = Llvm.build_in_bounds_gep str (Array.make 2 (Llvm.const_null i64)) "strptr" builder in
@@ -371,7 +357,6 @@ let build_term
           let args = Array.make 1 strptr in
             ignore (Llvm.build_call puts args "i" builder);
             {payload = []; attrib = Bitvector.null 0}
-      | ConstW(None, _) -> assert false
       | UnitW ->
           {payload = []; attrib = Bitvector.null 0}
       | TypeAnnot({ desc = PairW(t1, t2) }, Some a) ->

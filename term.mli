@@ -32,7 +32,7 @@ type t = { desc: t_desc;
            loc: Location.t }
 and t_desc =
   | Var of var
-  | ConstW of (Type.t option) * term_const
+  | ConstW of term_const
   | UnitW 
   | PairW of t * t
   | LetW of t * (var * var * t)          (* s, <x,y>t *)
@@ -56,7 +56,7 @@ and t_desc =
   | TypeAnnot of t * (Type.t option)
                    
 val mkVar : var -> t
-val mkConstW : Type.t option -> term_const -> t
+val mkConstW : term_const -> t
 val mkUnitW : t
 val mkPairW : t -> t -> t
 val mkLetW : t -> (var * var) * t -> t

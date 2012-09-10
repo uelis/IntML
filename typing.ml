@@ -75,40 +75,28 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         raise (Typing_error (Some t, " Variable '" ^ v ^ "' not bound.\n" ^
                              "Is it perhaps an upper class variable?"))
       end
-  | ConstW(a, Cprint s) ->
-      newty OneW, [] (* TODO*)
-  | ConstW(a, Cintconst(_)) ->
+  | ConstW(Cprint s) ->
+      newty OneW, []
+  | ConstW(Cintconst(_)) ->
       let intty = newty Type.NatW in
-      begin match a with
-             | Some a' -> a', [eq_expected_constraint t (a', intty)]
-             | None -> intty, []
-      end
-  | ConstW(a, Cintprint) ->
+        intty, []
+  | ConstW(Cintprint) ->
       let b = newty (FunW(newty Type.NatW, newty Type.OneW)) in
-      begin match a with
-             | Some a' -> a', [eq_expected_constraint t (a', b)]
-             | None -> b, []
-      end
-  | ConstW(a, Cintadd) | ConstW(a, Cintsub) | ConstW(a, Cintmul) | ConstW(a, Cintdiv) ->
+        b, []
+  | ConstW(Cintadd) | ConstW(Cintsub) | ConstW(Cintmul) | ConstW(Cintdiv) ->
       let intty = newty Type.NatW in        
       let b = newty (FunW(intty, newty (FunW(intty, intty)))) in
         b, []
-  | ConstW(a, Cinteq) ->
+  | ConstW(Cinteq) ->
       let intty = newty NatW in
       let one = newty OneW in
       let b = newty (FunW(intty, 
                           newty (FunW(intty, 
                                       newty (SumW([one; one])))))) in
-        begin match a with
-          | Some a' -> a', [eq_expected_constraint t (a', b)]
-          | None -> b, []
-        end
-  | ConstW(a, Cbot) ->
+        b, []
+  | ConstW(Cbot) ->
       let b = newty Var in
-        begin match a with
-          | Some a' -> a', []
-          | None -> b, []
-        end
+        b, []
   | UnitW ->
       newty OneW, []
   | PairW(t1, t2) ->
@@ -352,7 +340,7 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
         a,
         eq_expected_constraint t (a, ty) :: con
   | TrW _  |LambdaW (_, _) | AppW (_, _) | CaseW (_, _) | InW (_, _, _) 
-  | LetW (_, _) | LetBoxW(_,_) | PairW (_, _)|ConstW (_, _)|UnitW 
+  | LetW (_, _) | LetBoxW(_,_) | PairW (_, _)|ConstW (_)|UnitW 
   | FoldW _ | UnfoldW _ ->
       raise (Typing_error (Some t, "Upper class term expected."))
 

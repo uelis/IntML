@@ -42,18 +42,18 @@ let rec eval (t: Term.t) (sigma : env) : value =
   match t.desc with 
     | Var(x) -> List.assoc x sigma
     | UnitW -> UnitV 
-    | ConstW(_, Cprint s) -> 
+    | ConstW(Cprint s) -> 
         print_string s;
         flush stdout;
         UnitV
-    | ConstW(_, Cintconst(i)) -> IntV(i)
-    | ConstW(_, Cintprint) -> IntprintV
-    | ConstW(_, Cinteq) -> InteqV(None)
-    | ConstW(_, Cintadd) -> IntaddV(None)
-    | ConstW(_, Cintsub) -> IntsubV(None)
-    | ConstW(_, Cintmul) -> IntmulV(None)
-    | ConstW(_, Cintdiv) -> IntdivV(None)
-    | ConstW(_, Cbot) ->  failwith "nontermination!"
+    | ConstW(Cintconst(i)) -> IntV(i)
+    | ConstW(Cintprint) -> IntprintV
+    | ConstW(Cinteq) -> InteqV(None)
+    | ConstW(Cintadd) -> IntaddV(None)
+    | ConstW(Cintsub) -> IntsubV(None)
+    | ConstW(Cintmul) -> IntmulV(None)
+    | ConstW(Cintdiv) -> IntdivV(None)
+    | ConstW(Cbot) ->  failwith "nontermination!"
     | PairW(t1, t2) -> 
         let v1 = eval t1 sigma in
         let v2 = eval t2 sigma in
@@ -151,7 +151,7 @@ let eval_closed (t: Term.t) : Term.t option =
   let rec cv2termW (v: value) =
     match v with 
       | UnitV -> mkUnitW 
-      | IntV(i) -> mkConstW None (Cintconst(i))
+      | IntV(i) -> mkConstW (Cintconst(i))
       | InV(n, i, v1) -> mkInW n i (cv2termW v1)
       | PairV(v1, v2) -> mkPairW (cv2termW v1) (cv2termW v2)
       | FoldV((alpha, a), v) -> mkFoldW (alpha, a) (cv2termW v)

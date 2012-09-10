@@ -305,7 +305,7 @@ let string_of_termW (term: Term.t): string =
          Buffer.add_string buf  x
       | UnitW -> 
           Buffer.add_string buf "U()"
-      | ConstW(_, s) -> 
+      | ConstW(s) -> 
           Buffer.add_string buf (string_of_term_const s)
       | PairW(t1, t2) -> 
           Buffer.add_char buf '(';

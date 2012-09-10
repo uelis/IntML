@@ -286,7 +286,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
             U.unify w.type_back (tyTensor(sigma1, tym)); 
             (w, ins)
       | TrW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _)| InW (_, _, _)
-      | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_, _)|UnitW
+      | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_)|UnitW
       | FoldW _ | UnfoldW _ ->
           assert false 
   and compile_in_box (c: var) (sigma: var list) (gamma: ctx) (t: Term.t) =
@@ -613,8 +613,15 @@ let rec min (ty: Type.t) : Term.t =
   match Type.finddesc ty with
   | Type.Var -> mkUnitW
   | Type.OneW -> mkUnitW
+  | Type.NatW -> mkConstW (Cintconst(0))
   | Type.TensorW(a, b) -> mkPairW (min a) (min b)
   | Type.SumW(a :: l) -> mkInW (1 + (List.length l)) 0 (min a)
+  | Type.MuW(alpha,a) -> 
+      let mua = Type.newty (Type.MuW(alpha, a)) in
+      let unfolded = Type.subst (fun beta -> 
+                                   if Type.equals alpha beta then mua 
+                                   else beta) a in
+        min unfolded
   | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
   | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _->
       failwith "internal: min" 
@@ -928,7 +935,7 @@ let eqns_of_circuit (c : circuit) : equation list =
             if 0 = dst then (* output *)
               (x, in_k 0 (max_wire_src_dst + 1) (mkVar x))
             else (* wire must be unused because of weakening *)
-              (x, mkConstW None Cbot)
+              (x, mkConstW Cbot)
   in
   (* the term describing what happens to dart number k *)
   let rec part src wrs =
@@ -938,7 +945,7 @@ let eqns_of_circuit (c : circuit) : equation list =
               (src, action c.output.src)
             else 
               let x = fresh_var () in 
-                (src, (x, mkConstW None Cbot))
+                (src, (x, mkConstW Cbot))
       | w::rest ->
           if w.src = src then (src, action w.dst) else part src rest
   in
@@ -1189,7 +1196,7 @@ let message_passing_term (c: circuit): Term.t =
             if 0 = dst then (* output *)
               (x, in_k 0 (max_wire_src_dst + 1) (mkVar x))
             else (* wire must be unused because of weakening *)
-              (x, mkConstW None Cbot)
+              (x, mkConstW Cbot)
   in
   (* the term describing what happens to dart number k *)
   let rec part src wrs =
@@ -1199,7 +1206,7 @@ let message_passing_term (c: circuit): Term.t =
               action c.output.src  
             else 
               let x = fresh_var () in 
-                (x, mkConstW None Cbot)
+                (x, mkConstW Cbot)
       | w::rest ->
           if w.src = src then action w.dst else part src rest
   in

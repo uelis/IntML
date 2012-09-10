@@ -167,21 +167,21 @@ termW:
     | TokLet TokLBracket identifier TokRBracket TokEquals termU TokIn termW
        { mkTerm (LetBoxW($6, ($3, $8))) }
     | TokKwPrint termW
-       { mkTerm (AppW(mkTerm (ConstW(None, Cintprint)), $2)) }
+       { mkTerm (AppW(mkTerm (ConstW(Cintprint)), $2)) }
     | TokFold TokLAngle typeW TokDot typeW TokRAngle termW
        { mkTerm (FoldW(($3, $5), $7)) }
     | TokUnfold TokLAngle typeW TokDot typeW TokRAngle termW
        { mkTerm (UnfoldW(($3, $5), $7)) }
     | termW_app TokEquals termW_atom
-       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cinteq)), $1)), $3)) }
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cinteq)), $1)), $3)) }
     | termW_app TokPlus termW_atom
-       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cintadd)), $1)), $3)) }
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintadd)), $1)), $3)) }
     | termW_app TokMinus termW_atom
-       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cintsub)), $1)), $3)) }
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintsub)), $1)), $3)) }
     | termW_app TokTimes termW_atom
-       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cintmul)), $1)), $3)) }
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintmul)), $1)), $3)) }
     | termW_app TokDiv termW_atom
-       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(None, Cintdiv)), $1)), $3)) }
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintdiv)), $1)), $3)) }
     | termW_app
        { $1 } 
 
@@ -205,13 +205,11 @@ termW_atom:
     | TokKwInr TokLParen termW TokRParen
        { mkTerm (InW(2, 1, $3)) }
     | TokKwPrint TokString
-       { mkTerm (ConstW(None, Cprint $2)) } 
+       { mkTerm (ConstW(Cprint $2)) } 
     | TokNum
-       { mkTerm (ConstW(None, Cintconst($1))) } 
+       { mkTerm (ConstW(Cintconst($1))) } 
     | TokLParen termW TokColon typeW TokRParen
-       { match $2.desc with
-         | ConstW(None, c) -> {$2 with desc = ConstW(Some $4, c)}
-         | _ ->  mkTerm (TypeAnnot($2, Some $4)) }
+       { mkTerm (TypeAnnot($2, Some $4)) }
 
 typeW:
     | typeW_summand

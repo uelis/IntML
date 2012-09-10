@@ -30,7 +30,7 @@ type t =
       loc: Location.t }
 and t_desc =
   | Var of var
-  | ConstW of (Type.t option) * term_const 
+  | ConstW of term_const 
   | UnitW 
   | PairW of t * t
   | LetW of t * (var * var * t)        (* s, <x,y>t *)
@@ -54,7 +54,7 @@ and t_desc =
   | TypeAnnot of t * (Type.t option)
                    
 let mkVar x = { desc = Var(x); loc = None }
-let mkConstW ty n = { desc = ConstW(ty, n); loc = None }
+let mkConstW n = { desc = ConstW(n); loc = None }
 let mkUnitW = { desc = UnitW; loc = None}
 let mkPairW s t= { desc = PairW(s, t); loc = None }
 let mkLetW s ((x, y), t) = { desc = LetW(s, (x, y, t)); loc = None }
@@ -92,7 +92,7 @@ let rec free_vars (term: t) : var list =
   let abs x l = List.filter (fun z -> z <> x) l in
   match term.desc with
     | Var(v) -> [v]
-    | ConstW(_, _) | UnitW -> []
+    | ConstW(_) | UnitW -> []
     | InW(_,_,s) | FoldW(_, s) | UnfoldW(_, s) | TrW(s) 
     | BoxTermU(s) | HackU(_, s) -> free_vars s
     | PairW(s, t) | PairU (s, t) | AppW (s, t) | AppU(s, t) -> 
@@ -114,7 +114,7 @@ let rename_vars (f: var -> var) (term: t) : t =
   let rec rn term = 
     match term.desc with
     | Var(x) -> { term with desc = Var(f x) }
-    | ConstW(_, _) | UnitW -> term
+    | ConstW(_) | UnitW -> term
     | InW(n, k, s) -> { term with desc = InW(n, k, rn s) }
     | TrW(s) -> { term with desc = TrW(rn s) }
     | FoldW(ty, s) -> { term with desc = FoldW(ty, rn s) }
@@ -160,7 +160,7 @@ let map_type_annots (f: Type.t option -> Type.t option) (term: t) : t =
   let rec mta term = 
     match term.desc with
     | Var(_) | UnitW -> term 
-    | ConstW(ty, s) -> { term with desc = ConstW(f ty, s) }
+    | ConstW(s) -> { term with desc = ConstW(s) }
     | InW(n, k, s) -> { term with desc = InW(n, k, mta s) }
     | TrW(s) -> { term with desc = TrW(mta s) }
     | FoldW(ty, s) -> { term with desc = FoldW(ty, mta s) }
@@ -206,7 +206,7 @@ let head_subst (s: t) (x: var) (t: t) : t option =
             (substituted := true; s) (* substitute only once *)
           else 
             { term with desc = Var(apply sigma y) } 
-      | UnitW | ConstW(_, _) -> term
+      | UnitW | ConstW(_) -> term
       | InW(n, k, s) -> { term with desc = InW(n, k, sub sigma s) }
       | TrW(s) -> { term with desc = TrW(sub sigma s) }
       | FoldW(ty, s) -> { term with desc = FoldW(ty, sub sigma s) }
@@ -279,7 +279,7 @@ let freshen_type_vars t =
   let rec mta term = 
     match term.desc with
     | Var(_) | UnitW -> term 
-    | ConstW(ty, s) -> { term with desc = ConstW(f ty, s) }
+    | ConstW(s) -> { term with desc = ConstW(s) }
     | InW(n, k, s) -> { term with desc = InW(n, k, mta s) }
     | TrW(s) -> { term with desc = TrW(mta s) }
     | FoldW((alpha, a), s) -> 
