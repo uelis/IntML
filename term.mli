@@ -32,7 +32,7 @@ type t = { desc: t_desc;
            loc: Location.t }
 and t_desc =
   | Var of var
-  | ConstW of term_const
+  | ConstW of term_const 
   | UnitW 
   | PairW of t * t
   | LetW of t * (var * var * t)          (* s, <x,y>t *)
