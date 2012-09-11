@@ -99,11 +99,11 @@ let string_of_type (ty: Type.t): string =
       | Type.NatW -> Buffer.add_string buf "int"
       | Type.ZeroW -> Buffer.add_char buf '0'
       | Type.OneW -> Buffer.add_char buf '1'
-      | Type.MuW(alpha, t) ->
+      | Type.MuW(alpha, a) ->
           Buffer.add_string buf "mu<";
           s_typeW alpha;
           Buffer.add_char buf ',';
-          s_typeW t;
+          s_typeW a;
           Buffer.add_char buf '>'
       | Type.FunW _ | Type.SumW _ | Type.TensorW _ ->
           Buffer.add_char buf '(';

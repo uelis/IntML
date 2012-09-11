@@ -214,5 +214,4 @@ letw t = let [x] = fact [3] in let z = print " " in print_dec x
 letw t = let [x] = fact [4] in let z = print " " in print_dec x
 letw t = let [x] = fact [5] in let z = print " " in print_dec x
 
-
 letu tu = let [x] = fact2 [7] in [print x]
