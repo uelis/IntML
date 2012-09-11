@@ -295,7 +295,10 @@ let build_term
       | BoxTermU _| LambdaU (_, _)|AppU (_, _)|LetU (_, _)|PairU (_, _) -> assert false
   in
   (* Compile annotated term *)
-  let rec build_annotatedterm (ctx: (string * encoded_value) list) (t: Term.t) 
+  let rec build_annotatedterm 
+        (ctx: (string * encoded_value) list) 
+        (t: Term.t) 
+        (args: encoded_value list)
         : encoded_value =
 (*    print_string (Printing.string_of_termW t);
     print_string "\n";*)
@@ -305,9 +308,9 @@ let build_term
       | ConstW(Cintconst(i)) ->
           let vali = Llvm.const_int (Llvm.i64_type context) i in
             {payload = [vali]; attrib = Bitvector.null 0;}
-      | AppW({desc = ConstW(Cintprint)}, t1) ->
+      | ConstW(Cintprint) ->
           begin
-            match build_annotatedterm ctx t1 with
+            match List.hd args with
               | {payload = [x]; attrib = a} when Bitvector.length a = 0 -> 
                   let i8a = Llvm.pointer_type (Llvm.i8_type context) in
                   let i64 = Llvm.i64_type context in
@@ -320,30 +323,40 @@ let build_term
                     {payload = []; attrib = Bitvector.null 0 }
               | _ -> assert false
           end
-      | AppW({desc = AppW({desc = ConstW(binop)}, t1)}, t2) 
-          when (binop = Cintadd || binop = Cintsub || binop = Cintmul || binop = Cintdiv) ->
+      | ConstW(binop) when (binop = Cintadd || binop = Cintsub || 
+                            binop = Cintmul || binop = Cintdiv) ->
           begin
-            match build_annotatedterm ctx t1, build_annotatedterm ctx t2 with
-              | {payload = [x]; attrib = ax },  {payload = [y]; attrib = ay } when   
-                  Bitvector.length ax = 0  && Bitvector.length ay = 0 ->
-                  let res =
-                    match binop with
-                      | Cintadd -> Llvm.build_add x y "sum" builder 
-                      | Cintsub -> Llvm.build_sub x y "sub" builder 
-                      | Cintmul -> Llvm.build_mul x y "mul" builder 
-                      | Cintdiv -> Llvm.build_sdiv x y "sdiv" builder 
+            match args with
+              | t1enc :: t2enc :: args' ->
+                  begin
+                    match t1enc, t2enc with
+                      | {payload = [x]; attrib = ax },  {payload = [y]; attrib = ay } when   
+                          Bitvector.length ax = 0  && Bitvector.length ay = 0 ->
+                          let res =
+                            match binop with
+                              | Cintadd -> Llvm.build_add x y "add" builder 
+                              | Cintsub -> Llvm.build_sub x y "sub" builder 
+                              | Cintmul -> Llvm.build_mul x y "mul" builder 
+                              | Cintdiv -> Llvm.build_sdiv x y "sdiv" builder 
+                              | _ -> assert false
+                          in
+                            {payload = [res]; attrib = Bitvector.null 0}
                       | _ -> assert false
-                  in
-                    {payload = [res]; attrib = Bitvector.null 0}
+                  end
               | _ -> assert false
           end
-      | AppW({desc = AppW({desc = ConstW(Cinteq)}, t1)}, t2) ->
+      | ConstW(Cinteq)->
           begin
-            match build_annotatedterm ctx t1, build_annotatedterm ctx t2 with
-              | {payload = [x]; attrib = ax},  {payload = [y]; attrib = ay} when
-                  Bitvector.length ax = 0  && Bitvector.length ay = 0 ->
-                  let eq = Llvm.build_icmp Llvm.Icmp.Ne x y "eq" builder in
-                    {payload = []; attrib = Bitvector.of_list [eq]}
+            match args with
+              | t1enc :: t2enc :: args' ->
+                  begin
+                    match t1enc, t2enc with
+                      | {payload = [x]; attrib = ax},  {payload = [y]; attrib = ay} when
+                          Bitvector.length ax = 0  && Bitvector.length ay = 0 ->
+                          let eq = Llvm.build_icmp Llvm.Icmp.Ne x y "eq" builder in
+                            {payload = []; attrib = Bitvector.of_list [eq]}
+                      | _ -> assert false
+                  end
               | _ -> assert false
           end
       | ConstW(Cprint(s)) ->
@@ -363,8 +376,8 @@ let build_term
           begin
             match Type.finddesc a with
               | Type.TensorW(a1, a2) ->
-                  let t1enc = build_annotatedterm ctx t1 in
-                  let t2enc = build_annotatedterm ctx t2 in
+                  let t1enc = build_annotatedterm ctx t1 args in
+                  let t2enc = build_annotatedterm ctx t2 args in
                   let ta = Bitvector.concat t1enc.attrib t2enc.attrib in
                     {payload = t1enc.payload @ t2enc.payload; attrib = ta}
               | _ -> assert false
@@ -373,7 +386,7 @@ let build_term
           begin
             match Type.finddesc a with
               | Type.TensorW(ax, ay) ->
-                  let senc = build_annotatedterm ctx s in
+                  let senc = build_annotatedterm ctx s args in
                   let len_sxp = payload_size ax in
                   let len_syp = payload_size ay in
                   let len_sxa = attrib_size ax in
@@ -384,17 +397,17 @@ let build_term
                     let sxa, sya = Bitvector.takedrop len_sxa senc.attrib in
                       assert (Bitvector.length sya = len_sya);
                       build_annotatedterm ((x, {payload = sxp; attrib = sxa }) :: 
-                                           (y, {payload = syp; attrib = sya }) :: ctx)  t
+                                           (y, {payload = syp; attrib = sya }) :: ctx) t args
               | _ -> assert false
           end
       | TypeAnnot({ desc = InW(2, i, t) }, Some a) ->
-          let tenc = build_annotatedterm ctx t in
+          let tenc = build_annotatedterm ctx t args in
           let branch = Llvm.const_int (Llvm.integer_type context 1) i in
           let attrib_branch = Bitvector.concat tenc.attrib (Bitvector.of_list [branch]) in
           let denc = { payload = tenc.payload; attrib = attrib_branch} in
             build_truncate_extend denc a
       | CaseW({ desc = TypeAnnot(u, Some a) }, [(x, s); (y, t)]) -> 
-          let uenc = build_annotatedterm ctx u in
+          let uenc = build_annotatedterm ctx u args in
           let ax, ay = 
             match Type.finddesc a with
               | Type.SumW [ax; ay] -> ax, ay
@@ -412,11 +425,11 @@ let build_term
             ignore (Llvm.build_cond_br cond' block_t block_s builder);
             Llvm.position_at_end block_s builder;
             (* may generate new blocks! *)
-            let senc = build_annotatedterm ((x, xenc) :: ctx) s in
+            let senc = build_annotatedterm ((x, xenc) :: ctx) s args in
             let _ = Llvm.build_br block_res builder in
             let block_end_s = Llvm.insertion_block builder in
               Llvm.position_at_end block_t builder;
-              let tenc = build_annotatedterm ((y, yenc) :: ctx) t in
+              let tenc = build_annotatedterm ((y, yenc) :: ctx) t args in
               let _ = Llvm.build_br block_res builder in
               let block_end_t = Llvm.insertion_block builder in
                 assert ((Bitvector.length senc.attrib) = (Bitvector.length tenc.attrib));
@@ -433,10 +446,7 @@ let build_term
                     (List.combine senc.payload tenc.payload) in
                   {payload = z_payload; attrib = z_attrib}
       | FoldW((alpha, a), t) ->
-          (* - malloc deklarieren
-           * - store aufrufen
-           *)
-          let tenc = build_annotatedterm ctx t in
+          let tenc = build_annotatedterm ctx t args in
           let i64 = Llvm.i64_type context in
           let i1 = Llvm.i1_type context in
           let malloctype = Llvm.function_type 
@@ -453,17 +463,12 @@ let build_term
           assert (len_a = Bitvector.length tenc.attrib);
           let struct_content = 
             (List.combine (Listutil.init len_p (fun i -> i)) tenc.payload) @
-            (Listutil.init len_a (fun i -> (len_p + i, Bitvector.extractvalue tenc.attrib i)))
-(*            List.combine
-              (Listutil.init (len_p + len_a) (fun i -> i)) 
-              (tenc.payload @ tenc.attrib)*)
-          in
+            (Listutil.init len_a (fun i -> (len_p + i, Bitvector.extractvalue tenc.attrib i))) in
           let t_struct = 
             List.fold_right 
               (fun (i,v) s -> Llvm.build_insertvalue s v i "tstruct" builder) 
               struct_content 
-              (Llvm.undef a_struct)
-          in
+              (Llvm.undef a_struct) in
           let mem_i8ptr = Llvm.build_call malloc (Array.of_list [Llvm.size_of a_struct]) 
                             "memi8" builder in
           let mem_a_struct_ptr = Llvm.build_bitcast mem_i8ptr (Llvm.pointer_type a_struct) 
@@ -483,7 +488,7 @@ let build_term
           let a_struct_members = Array.append (Array.make len_p i64) (Array.make len_a i1) in
           let a_struct = Llvm.packed_struct_type context a_struct_members in
             begin
-              match build_annotatedterm ctx t with
+              match build_annotatedterm ctx t args with
                 | {payload = [tptrint]; attrib = a } when Bitvector.length a = 0 ->
                     let tptr = Llvm.build_inttoptr tptrint (Llvm.pointer_type a_struct) "tptr" builder in
                     let tstruct = Llvm.build_load tptr "tstruct" builder in
@@ -494,28 +499,23 @@ let build_term
                 | _ -> assert false
             end
       | TypeAnnot(t, _) ->
-          build_annotatedterm ctx t
-      | AppW({desc = LambdaW((x, a), t1)}, t2) ->
-          let t2enc = build_annotatedterm ctx t2 in
-            build_annotatedterm ((x, t2enc) :: ctx) t1
-      | AppW({desc = AppW({desc = LambdaW((x, a), {desc = LambdaW((y, b), t1)})}, t2)}, t3) ->
-          let t3enc = build_annotatedterm ctx t3 in
-          let t2enc = build_annotatedterm ctx t2 in
-            build_annotatedterm ((y,t3enc) :: (x, t2enc) :: ctx) t1
+          build_annotatedterm ctx t args
+      | AppW(t1, t2) ->
+          let t2enc = build_annotatedterm ctx t2 [] in
+            build_annotatedterm ctx t1 (t2enc :: args)
+      | LambdaW((x, a), t1) ->
+          (match args with
+             | [] -> failwith "all functions must be fully applied"
+             | t2enc :: args' ->
+                 build_annotatedterm ((x, t2enc) :: ctx) t1 args')
       | _ -> 
           Printf.printf "%s\n" (Printing.string_of_termW t);
           failwith "TODO"
   in
-(*        
- | AppW of t * t                        (* s, t *)
- | LambdaW of (var * Type.t option) * t (* <x>s *)
- | TrW of t                             (* t *)
- | LetBoxW of t * (var * t)             (* s, <x>t *)
- *)    
   let t_annotated = mkTypeAnnot (freshen_type_vars (annotate_term t)) (Some a) in
  (*   Printf.printf "%s\n" (Printing.string_of_termW t_annotated); *)
   let _ = Typing.principal_typeW type_ctx t_annotated in    
-    build_annotatedterm ctx t_annotated
+    build_annotatedterm ctx t_annotated []
 
 
 let replace_in_token_names (oldv : Llvm.llvalue) (newv : Llvm.llvalue)  =
