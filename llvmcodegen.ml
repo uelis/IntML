@@ -289,7 +289,7 @@ let build_term
       | LambdaW((x, a), t1) -> mkLambdaW ((x, a), annotate_term t1)
       | LoopW(t1, (x, t2)) -> 
           let alpha = Type.newty Type.Var in
-            mkLoopW (mkTypeAnnot (annotate_term t1) (Some alpha)) (x, annotate_term t2)
+            mkLoopW (annotate_term t1) (x, mkTypeAnnot (annotate_term t2) (Some alpha))
       | FoldW((alpha, a), t1) -> mkFoldW (alpha, a) (annotate_term t1)
       | UnfoldW((alpha, a), t1) -> mkUnfoldW (alpha, a) (annotate_term t1)
       | LetBoxW(_, _) -> assert false 
@@ -447,6 +447,36 @@ let build_term
                                                   (y, block_end_t)] "z" builder)
                     (List.combine senc.payload tenc.payload) in
                   {payload = z_payload; attrib = z_attrib}
+      | LoopW(u, (x, { desc = TypeAnnot(t, Some a) })) -> 
+          let ax, ay = 
+            match Type.finddesc a with
+              | Type.SumW [ax; ay] -> ax, ay
+              | _ -> assert false in
+          let block_init = Llvm.insertion_block builder in                             
+          let uenc = build_annotatedterm ctx u [] in
+          let func = Llvm.block_parent (Llvm.insertion_block builder) in
+          let block_loop = Llvm.append_block context "loop" func in 
+            let _ = Llvm.build_br block_loop builder in
+            Llvm.position_at_end block_loop builder;
+          let z_payload = 
+            List.map (fun x -> Llvm.build_phi [(x, block_init)] "z" builder)
+              uenc.payload in
+          let xenc = { payload = z_payload; attrib = uenc.attrib (* TODO *) } in
+          let tenc = build_annotatedterm ((x, xenc) :: ctx) t [] (* TODO *) in 
+          assert (Bitvector.length tenc.attrib > 0);
+          let xya, cond = Bitvector.takedrop (Bitvector.length (tenc.attrib) - 1) tenc.attrib in
+          let xyenc = {payload = tenc.payload; attrib = xya } in
+          let xenc = build_truncate_extend xyenc ax in
+          let yenc = build_truncate_extend xyenc ay in
+          let block_res = Llvm.append_block context "case_res" func in
+          let cond' = Bitvector.extractvalue cond 0 in
+            ignore (Llvm.build_cond_br cond' block_loop block_res builder);
+            let block_curr = Llvm.insertion_block builder in 
+            List.iter (fun (phinode, y) ->
+                         Llvm.add_incoming (y, block_curr) phinode)
+              (List.combine z_payload yenc.payload);
+            Llvm.position_at_end block_res builder;
+              xenc
       | FoldW((alpha, a), t) ->
           let tenc = build_annotatedterm ctx t args in
           let i64 = Llvm.i64_type context in
