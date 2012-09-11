@@ -534,8 +534,7 @@ let allocate_tables (is : instruction list) =
      let i0 = Llvm.build_alloca ty name builder in
      let dummy = Llvm.build_bitcast i0 ty name builder in
        token_zero_init := (dummy, Llvm.const_null ty)::!token_zero_init;
-       dummy
-     in 
+       dummy in 
   let add_module n a =
     (try ignore (Hashtbl.find entry_points n) with
        | Not_found ->
@@ -547,10 +546,8 @@ let allocate_tables (is : instruction list) =
              let rec mk_p m = 
                if m = 0 then [] 
                else 
-                 let name = Printf.sprintf "pl.%i.%i" n m in
-                 let t = Llvm.i64_type context in
-                 let i = build_dummy t name builder in
-                 i :: (mk_p (m-1)) in
+                 (build_dummy (Llvm.i64_type context) "dummy" builder) ::
+                 (mk_p (m-1)) in
              let xp = mk_p (payload_size a) in
              let xs = attrib_size a in
              let dummy, zero_init = Bitvector.mk_dummy xs in
@@ -583,14 +580,11 @@ let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
 (*      Printf.printf "%i %i -> %i\n" oldenc.attrib_bitlen newenc.attrib_bitlen dst; *)
       assert ((Bitvector.length oldenc.attrib) = (Bitvector.length newenc.attrib));
       assert (List.length oldenc.payload = (List.length newenc.payload));
-     Hashtbl.replace token_names dst newenc; 
-      List.iter 
-        (fun (o, n) -> 
-           Llvm.replace_all_uses_with o n;
-           replace_in_token_names o n) 
+      Hashtbl.replace token_names dst newenc; 
+      List.iter (fun (o, n) -> Llvm.replace_all_uses_with o n;
+                               replace_in_token_names o n) 
         ((List.combine oldenc.payload newenc.payload) @
-         (Bitvector.llvalue_replacement oldenc.attrib newenc.attrib));
-  in
+         (Bitvector.llvalue_replacement oldenc.attrib newenc.attrib)) in
   let connect2 block1 new1enc block2 new2enc dst =
     assert ((Bitvector.length new1enc.attrib) = (Bitvector.length new2enc.attrib));
     let dstblock = Hashtbl.find entry_points dst in
