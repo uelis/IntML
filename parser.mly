@@ -161,7 +161,7 @@ termW:
           TokKwInr TokLParen identifier TokRParen TokRightArrow termW
        { mkTerm (CaseW($2, [($6, $9); ($13, $16)])) }
     | TokLet identifier TokEquals termW TokLoop termW
-       { mkTerm (AppW (mkTerm (TrW (mkLambdaW(($2, None), mkCaseW (mkVar $2) [($2, mkInrW (mkVar $2)); ($2, $6)]))), $4)) }
+       { mkTerm (LoopW ($4, ($2, $6))) }
     | TokLet identifier TokEquals termW TokIn termW
        { mkTerm (AppW (mkTerm (LambdaW(($2, None), $6)), $4)) }
     | TokLet TokLBracket identifier TokRBracket TokEquals termU TokIn termW

@@ -280,14 +280,16 @@ let build_term
                  (mkTypeAnnot (annotate_term t1) (Some alpha)) 
                  [(x, annotate_term t2); (y, annotate_term t3)])
       | CaseW(_, _) -> assert false
-      | AppW({ desc=LetW(s, (x, y, t1)) }, t2) -> 
+(*      | AppW({ desc=LetW(s, (x, y, t1)) }, t2) -> 
           let fvt2 = free_vars t2 in
           let x' = variant_var_avoid x fvt2 in
           let y' = variant_var_avoid y fvt2 in
-          annotate_term (mkLetW s ((x', y'), mkAppW (subst (mkVar y') y (subst (mkVar x') x t1)) t2))
+          annotate_term (mkLetW s ((x', y'), mkAppW (subst (mkVar y') y (subst (mkVar x') x t1)) t2))*)
       | AppW(t1, t2) -> mkAppW (annotate_term t1) (annotate_term t2)
       | LambdaW((x, a), t1) -> mkLambdaW ((x, a), annotate_term t1)
-      | TrW(t1) -> mkTrW (annotate_term t1)
+      | LoopW(t1, (x, t2)) -> 
+          let alpha = Type.newty Type.Var in
+            mkLoopW (mkTypeAnnot (annotate_term t1) (Some alpha)) (x, annotate_term t2)
       | FoldW((alpha, a), t1) -> mkFoldW (alpha, a) (annotate_term t1)
       | UnfoldW((alpha, a), t1) -> mkUnfoldW (alpha, a) (annotate_term t1)
       | LetBoxW(_, _) -> assert false 

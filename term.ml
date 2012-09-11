@@ -40,7 +40,7 @@ and t_desc =
   | LambdaW of (var * (Type.t option)) * t 
   | FoldW of (Type.t * Type.t) * t
   | UnfoldW of (Type.t * Type.t) * t
-  | TrW of t                           (* t *)
+  | LoopW of t * (var * t)
   | LetBoxW of t * (var * t)             (* s, <x>t *)
   | PairU of t * t                     (* s, t *)
   | LetU of t * (var * var * t)        (* s, <x,y>t *)
@@ -64,7 +64,7 @@ let mkInrW t = { desc = InW(2, 1, t); loc = None }
 let mkCaseW s l = { desc = CaseW(s, l); loc = None }
 let mkAppW s t = { desc = AppW(s, t); loc = None }
 let mkLambdaW ((x, ty), t) = { desc = LambdaW((x, ty), t); loc = None }
-let mkTrW t = { desc = TrW(t); loc = None }
+let mkLoopW s (x ,t) = { desc = LoopW(s, (x,t)); loc = None }
 let mkFoldW (alpha, a) s = { desc = FoldW((alpha, a), s); loc = None }
 let mkUnfoldW (alpha, a) s = { desc = UnfoldW((alpha, a), s); loc = None }
 let mkPairU s t= { desc = PairU(s, t); loc = None }
@@ -93,7 +93,7 @@ let rec free_vars (term: t) : var list =
   match term.desc with
     | Var(v) -> [v]
     | ConstW(_) | UnitW -> []
-    | InW(_,_,s) | FoldW(_, s) | UnfoldW(_, s) | TrW(s) 
+    | InW(_,_,s) | FoldW(_, s) | UnfoldW(_, s) 
     | BoxTermU(s) | HackU(_, s) -> free_vars s
     | PairW(s, t) | PairU (s, t) | AppW (s, t) | AppU(s, t) -> 
         (free_vars s) @ (free_vars t)
@@ -101,7 +101,7 @@ let rec free_vars (term: t) : var list =
         (free_vars s) @ (abs x (abs y (free_vars t)))
     | LambdaW((x, _), t) | LambdaU((x, _), t) ->
         abs x (free_vars t) 
-    | LetBoxW(s, (x, t)) | LetBoxU(s, (x, t)) ->
+    | LetBoxW(s, (x, t)) | LetBoxU(s, (x, t)) | LoopW(s, (x, t)) ->
         (free_vars s) @ (abs x (free_vars t))
     | CaseW(s, l) ->
         (free_vars s) @ (List.fold_right (fun (x, t) fv -> (abs x (free_vars t)) @ fv) l [])
@@ -116,7 +116,7 @@ let rename_vars (f: var -> var) (term: t) : t =
     | Var(x) -> { term with desc = Var(f x) }
     | ConstW(_) | UnitW -> term
     | InW(n, k, s) -> { term with desc = InW(n, k, rn s) }
-    | TrW(s) -> { term with desc = TrW(rn s) }
+    | LoopW(s, (x, t)) -> { term with desc = LoopW(rn s, (f x, rn t)) }
     | FoldW(ty, s) -> { term with desc = FoldW(ty, rn s) }
     | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, rn s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(rn s) }
@@ -162,7 +162,7 @@ let map_type_annots (f: Type.t option -> Type.t option) (term: t) : t =
     | Var(_) | UnitW -> term 
     | ConstW(s) -> { term with desc = ConstW(s) }
     | InW(n, k, s) -> { term with desc = InW(n, k, mta s) }
-    | TrW(s) -> { term with desc = TrW(mta s) }
+    | LoopW(s, (x, t)) -> { term with desc = LoopW(mta s, (x, mta t)) }
     | FoldW(ty, s) -> { term with desc = FoldW(ty, mta s) }
     | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, mta s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
@@ -208,7 +208,7 @@ let head_subst (s: t) (x: var) (t: t) : t option =
             { term with desc = Var(apply sigma y) } 
       | UnitW | ConstW(_) -> term
       | InW(n, k, s) -> { term with desc = InW(n, k, sub sigma s) }
-      | TrW(s) -> { term with desc = TrW(sub sigma s) }
+      | LoopW(s, (x, t)) -> { term with desc = LoopW(sub sigma s, abs sigma (x, t)) }
       | FoldW(ty, s) -> { term with desc = FoldW(ty, sub sigma s) }
       | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, sub sigma s) }
       | BoxTermU(s) -> { term with desc = BoxTermU(sub sigma s) }
@@ -281,7 +281,7 @@ let freshen_type_vars t =
     | Var(_) | UnitW -> term 
     | ConstW(s) -> { term with desc = ConstW(s) }
     | InW(n, k, s) -> { term with desc = InW(n, k, mta s) }
-    | TrW(s) -> { term with desc = TrW(mta s) }
+    | LoopW(s, (x, t)) -> { term with desc = LoopW(mta s, (x, mta t)) }
     | FoldW((alpha, a), s) -> 
         { term with desc = FoldW((fv alpha, Type.subst fv a), mta s) }
     | UnfoldW((alpha, a), s) -> 
@@ -305,4 +305,13 @@ let freshen_type_vars t =
         { term with desc = CaseU(mta s, (x, mta t), (y, mta u)) } 
     | TypeAnnot(t, ty) -> { term with desc = TypeAnnot(mta t, f ty) }
   in mta t
+
+let mkTrW t = 
+  let x = "x" in
+  let y = "y" in
+  let t' = variant t in
+    mkLambdaW ((x, None), 
+               mkCaseW (mkAppW t' (mkInlW (mkVar x)))
+                 [(y, mkVar y);
+                  (y, mkLoopW (mkVar y) (y, mkAppW t' (mkInrW (mkVar y))))])
 

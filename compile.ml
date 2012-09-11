@@ -285,7 +285,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
             U.unify w.type_forward (tyTensor(sigma1, typ));
             U.unify w.type_back (tyTensor(sigma1, tym)); 
             (w, ins)
-      | TrW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _)| InW (_, _, _)
+      | LoopW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _)| InW (_, _, _)
       | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_)|UnitW
       | FoldW _ | UnfoldW _ ->
           assert false 

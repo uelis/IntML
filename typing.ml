@@ -163,14 +163,13 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         a_unfolded,
         eq_expected_constraint t (newty (MuW(alpha, a)), a1) ::
         con1
-  | TrW(t1) -> 
+  | LoopW(t1, (x, t2)) ->
       let a1, con1 = ptW c t1 in
-      let alpha, beta, gamma = newty Var, newty Var, newty Var in
-        newty (FunW(alpha, gamma)),
-        eq_expected_constraint t1 
-          (a1, newty (FunW(newty (SumW([alpha; beta])), 
-                           newty (SumW([gamma; beta]))))) :: 
-        con1
+      let alpha, beta = newty Var, newty Var in
+      let a2, con2 = ptW ((x, alpha)::c) t2 in
+        beta,
+        eq_expected_constraint t2 (a2, newty (SumW[beta; a1])) ::
+        con1 @ con2
   | LetBoxW(t1, (xc, t2)) ->
       (* TODO: should allow t1 to appear in context c. 
        * (compilation is not implemented for this, though) *)
@@ -339,7 +338,7 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
       let a, con = ptU c phi t in
         a,
         eq_expected_constraint t (a, ty) :: con
-  | TrW _  |LambdaW (_, _) | AppW (_, _) | CaseW (_, _) | InW (_, _, _) 
+  | LoopW _  |LambdaW (_, _) | AppW (_, _) | CaseW (_, _) | InW (_, _, _) 
   | LetW (_, _) | LetBoxW(_,_) | PairW (_, _)|ConstW (_)|UnitW 
   | FoldW _ | UnfoldW _ ->
       raise (Typing_error (Some t, "Upper class term expected."))

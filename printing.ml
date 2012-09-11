@@ -272,9 +272,13 @@ let string_of_termW (term: Term.t): string =
                        Buffer.add_string buf (Printf.sprintf "| in(%i, %i, %s) -> " n !k x);
                        k := !k + 1;
                        s_termW t) l
-      | TrW(t1) ->
-          Buffer.add_string buf "trace ";
-          s_termW t1
+      | LoopW(t1, (x, t2)) ->
+          Buffer.add_string buf "let ";
+          Buffer.add_string buf x;
+          Buffer.add_string buf " = ";
+          s_termW t1;
+          Buffer.add_string buf " loop ";
+          s_termW t2
       | FoldW((alpha, a), t1) ->
           Buffer.add_string buf "fold<";
           Buffer.add_string buf (string_of_type alpha);
@@ -328,7 +332,7 @@ let string_of_termW (term: Term.t): string =
       | TypeAnnot(t, _) ->
           s_termW_atom t
       | LambdaW(_, _) | LetW(_, _) | CaseW(_, _)
-      | TrW(_) | AppW(_, _) | FoldW _ | UnfoldW _ ->
+      | LoopW(_) | AppW(_, _) | FoldW _ | UnfoldW _ ->
           Buffer.add_char buf '(';
           s_termW t;
           Buffer.add_char buf ')'

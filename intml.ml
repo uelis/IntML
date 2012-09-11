@@ -132,7 +132,8 @@ try
           typed_decls
       end 
     in 
-      eval_loop typed_decls
+      if not (!opt_llvm_compile) then
+        eval_loop typed_decls
 with 
   | Typing.Typing_error(t, msg)-> Top.print_error (Top.term_loc t) msg
 

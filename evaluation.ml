@@ -13,8 +13,6 @@ and value =
   | InV of int * int * value
   | PairV of value * value
   | FunV of env * var * Term.t
-  | TrV of env * var * Term.t
-  | LoopV of env * var * Term.t
   | InteqV of value option
   | IntaddV of value option
   | IntsubV of value option
@@ -76,11 +74,14 @@ let rec eval (t: Term.t) (sigma : env) : value =
         let v2 = eval t2 sigma in
           appV v1 v2
     | LambdaW((x, _), t1) ->   FunV(sigma, x, t1)
-    | TrW(t1) ->
-       (match eval t1 sigma with
-        | FunV(tau, x, t1) -> TrV(tau, x, t1)
-        | _ -> failwith "Internal: Wrong application of trace."
-       )
+    | LoopW(t1, (x, t2)) ->
+        let v1 = eval t1 sigma in
+        let rec loop v = 
+          match eval t2 ((x, v) :: sigma) with
+            | InV(2, 0, v2) -> v2
+            | InV(2, 1, v2) -> loop v2
+            | _ -> failwith "Internal: evaluation of loop" in
+          loop v1
     | FoldW((alpha, a), t) ->
         let v = eval t sigma in
           FoldV((alpha, a), v)
@@ -101,12 +102,6 @@ let rec eval (t: Term.t) (sigma : env) : value =
 and appV (v1: value) (v2: value) : value =
   match v1 with
     | FunV(tau, x, t1) -> eval t1 ((x, v2) :: tau)
-    | TrV(tau, x, t1) -> appV (LoopV(tau, x, t1)) (InV(2, 0, v2))
-    | LoopV(tau, x, t1) ->     
-      (match (eval t1 ((x, v2)::tau)) with
-       | InV(2, 0, w) -> w
-       | InV(2, 1, w) -> appV v1 (InV(2, 1, w))
-       | _ -> failwith "Internal: Wrong application of loop.")
     | NatPredV -> 
         begin
           match v2 with

@@ -42,7 +42,7 @@ and t_desc =
   | LambdaW of (var * Type.t option) * t (* <x>s *)
   | FoldW of (Type.t * Type.t) * t
   | UnfoldW of (Type.t * Type.t) * t
-  | TrW of t                             (* t *)
+  | LoopW of t * (var * t) 
   | LetBoxW of t * (var * t)             (* s, <x>t *)
   | PairU of t * t                       (* s, t *)
   | LetU of t * (var * var * t)          (* s, <x,y>t *)
@@ -67,6 +67,7 @@ val mkCaseW : t -> (var * t) list -> t
 val mkAppW : t -> t -> t
 val mkLambdaW : (var * Type.t option) * t -> t
 val mkTrW : t -> t
+val mkLoopW : t -> (var * t) -> t
 val mkFoldW : Type.t * Type.t -> t -> t
 val mkUnfoldW : Type.t * Type.t -> t -> t
 val mkPairU : t -> t -> t
