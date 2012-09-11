@@ -1239,7 +1239,7 @@ let termW_of_circuit (c: circuit) : Term.t =
     )
 
 let compile_termU (t: Term.t) : Term.t * Type.t =
-(*  let t = Term.freshen_type_vars t in (* TODO: ??? *)*)
+  let t = Term.freshen_type_vars t in 
   let graph = circuit_of_termU [] [] t in
   let a = infer_types graph in 
   let compiled_term = termW_of_circuit graph in
