@@ -101,7 +101,8 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token <string> TokString 
 %token TokEof
 
-%left TokAdd
+%left TokPlus TokMinus
+%left TokTimes TokDiv
 
 %start decls
 %start top_query
@@ -172,16 +173,8 @@ termW:
        { mkTerm (FoldW(($3, $5), $7)) }
     | TokUnfold TokLAngle typeW TokDot typeW TokRAngle termW
        { mkTerm (UnfoldW(($3, $5), $7)) }
-    | termW_app TokEquals termW_atom
+    | termW_app TokEquals termW_app
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cinteq)), $1)), $3)) }
-    | termW_app TokPlus termW_atom
-       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintadd)), $1)), $3)) }
-    | termW_app TokMinus termW_atom
-       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintsub)), $1)), $3)) }
-    | termW_app TokTimes termW_atom
-       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintmul)), $1)), $3)) }
-    | termW_app TokDiv termW_atom
-       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintdiv)), $1)), $3)) }
     | termW_app
        { $1 } 
 
@@ -208,6 +201,14 @@ termW_atom:
        { mkTerm (ConstW(Cprint $2)) } 
     | TokNum
        { mkTerm (ConstW(Cintconst($1))) } 
+    | termW_atom TokPlus termW_atom
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintadd)), $1)), $3)) }
+    | termW_atom TokMinus termW_atom
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintsub)), $1)), $3)) }
+    | termW_atom TokTimes termW_atom
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintmul)), $1)), $3)) }
+    | termW_atom TokDiv termW_atom
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintdiv)), $1)), $3)) }
     | TokLParen termW TokColon typeW TokRParen
        { mkTerm (TypeAnnot($2, Some $4)) }
 
