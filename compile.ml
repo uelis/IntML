@@ -609,29 +609,34 @@ let rec out_k (t: Term.t) (n: int) : int * Term.t =
 
 exception Not_Leq               
 
-let rec min (ty: Type.t) : Term.t =
+let min (ty: Type.t) : Term.t =
+let rec min i (ty: Type.t) : Term.t =
+  if i > 10 then raise Not_Leq else
   match Type.finddesc ty with
   | Type.Var -> mkUnitW
   | Type.OneW -> mkUnitW
   | Type.NatW -> mkConstW (Cintconst(0))
-  | Type.TensorW(a, b) -> mkPairW (min a) (min b)
-  | Type.SumW(a :: l) -> mkInW (1 + (List.length l)) 0 (min a)
+  | Type.TensorW(a, b) -> mkPairW (min i a) (min i b)
+  | Type.SumW(a :: l) -> mkInW (1 + (List.length l)) 0 (min i a)
   | Type.MuW(alpha,a) -> 
       let mua = Type.newty (Type.MuW(alpha, a)) in
       let unfolded = Type.subst (fun beta -> 
                                    if Type.equals alpha beta then mua 
                                    else beta) a in
-        min unfolded
+        min (i+1) unfolded
   | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
   | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _->
       failwith "internal: min" 
+        in min 0 ty
 
 (* If alpha <= beta then (embed alpha beta) is a corresponding 
  * embedding from alpha to beta.
  * The function raises Not_Leq if it discovers that alpha <= beta
  * does not hold.
  * *)
-let rec embed (a: Type.t) (b: Type.t) : Term.t =
+let embed (a: Type.t) (b: Type.t) : Term.t =
+let rec embed i (a: Type.t) (b: Type.t) : Term.t =
+  if i > 10 then raise Not_Leq;
   if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
   else 
     match Type.finddesc b with
@@ -639,31 +644,33 @@ let rec embed (a: Type.t) (b: Type.t) : Term.t =
         begin try 
           Term.mkLambdaW(("x", None), 
                          Term.mkInlW 
-                           (Term.mkAppW (embed a b1) (Term.mkVar "x")))
+                           (Term.mkAppW (embed i a b1) (Term.mkVar "x")))
         with Not_Leq ->
           Term.mkLambdaW(("x", None), 
                          Term.mkInrW 
-                           (Term.mkAppW (embed a b2) (Term.mkVar "x")))
+                           (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
         end 
     | Type.TensorW(b1, b2) ->
         begin try 
           Term.mkLambdaW(("x", None), 
                          Term.mkPairW 
-                           (Term.mkAppW (embed a b1) (Term.mkVar "x"))
+                           (Term.mkAppW (embed i a b1) (Term.mkVar "x"))
                            (min b2))
         with Not_Leq ->
           Term.mkLambdaW(("x", None), 
                          Term.mkPairW 
                            (min b1)
-                           (Term.mkAppW (embed a b2) (Term.mkVar "x")))
+                           (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
         end
     | Type.MuW(beta, b1) ->
         let mub1 = Type.newty (Type.MuW(beta, b1)) in
         let unfolded = 
           Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
           Term.mkLambdaW(("x", None),
-                         Term.mkFoldW (beta,b1) (Term.mkAppW (embed a unfolded) (Term.mkVar "x")))
+                         Term.mkFoldW (beta,b1) (Term.mkAppW (embed (i+1) a unfolded) (Term.mkVar "x")))
     | _ -> raise Not_Leq
+             in
+  embed 0 a b
 
 (* If alpha <= beta then (embed alpha beta) is a corresponding 
  * embedding from beta to alpha. The functions (embed a b) and 
@@ -671,7 +678,9 @@ let rec embed (a: Type.t) (b: Type.t) : Term.t =
  * The function raises Not_Leq if it discovers that alpha <= beta
  * does not hold.
  * *)
-let rec project (a: Type.t) (b: Type.t) : Term.t =
+let project (a0: Type.t) (b0: Type.t) : Term.t =            
+let rec project i (a: Type.t) (b: Type.t) : Term.t =
+  if i > 10 then raise Not_Leq;
   if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
   else 
     match Type.finddesc b with
@@ -680,34 +689,41 @@ let rec project (a: Type.t) (b: Type.t) : Term.t =
           Term.mkLambdaW(
             ("x", None),
             Term.mkCaseW (Term.mkVar "x") 
-              [("y", Term.mkAppW (project a b1) (Term.mkVar "y"));
-               ("y", min a)])
+              [("y", Term.mkAppW (project i a b1) (Term.mkVar "y"));
+               ("y", mkLoopW mkUnitW ("x", mkInrW (mkVar "x")))])
         with Not_Leq ->
           Term.mkLambdaW(
             ("x", None),
             Term.mkCaseW (Term.mkVar "x") 
-              [("y", min a);
-               ("y", Term.mkAppW (project a b2) (Term.mkVar "y"))])
+              [("y",  mkLoopW mkUnitW ("x", mkInrW (mkVar "x")));
+               ("y", Term.mkAppW (project i a b2) (Term.mkVar "y"))])
         end 
     | Type.TensorW(b1, b2) ->
         begin try 
           Term.mkLambdaW(("x", None), 
                          Term.mkLetW (Term.mkVar "x") 
                            (("y", "z"), 
-                            Term.mkAppW (project a b1) (Term.mkVar "y")))
+                            Term.mkAppW (project i a b1) (Term.mkVar "y")))
         with Not_Leq ->
           Term.mkLambdaW(("x", None), 
                          Term.mkLetW (Term.mkVar "x") 
                            (("y", "z"), 
-                            Term.mkAppW (project a b2) (Term.mkVar "z")))
+                            Term.mkAppW (project i a b2) (Term.mkVar "z")))
         end 
     | Type.MuW(beta, b1) ->
         let mub1 = Type.newty (Type.MuW(beta, b1)) in
         let unfolded = 
           Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
           Term.mkLambdaW(("x", None),
-                         Term.mkAppW (project a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x")))
-    | _ -> raise Not_Leq
+                         Term.mkAppW (project (i+1) a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x")))
+    | _ -> 
+        raise Not_Leq in
+  try
+  project 0 a0 b0
+  with Not_Leq ->
+        Printf.printf "%s | %s \n" (Printing.string_of_type a0)(Printing.string_of_type b0);
+        flush stdout;
+        raise Not_Leq 
 
 type equation = int * (Term.var * Term.t)
 
