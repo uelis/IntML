@@ -23,7 +23,8 @@ sig
 
   (* TODO: document properly *)
   val mk_dummy : int -> t * (Llvm.llvalue * Llvm.llvalue) list
-  val build_phi: t * Llvm.llbasicblock -> t * Llvm.llbasicblock -> Llvm.llbuilder -> t
+  val build_phi: (t * Llvm.llbasicblock) list -> Llvm.llbuilder -> t
+  val add_incoming: t * Llvm.llbasicblock -> t -> unit
   val replace_all_uses : Llvm.llvalue -> Llvm.llvalue -> t -> t 
   val llvalue_replacement : t -> t -> (Llvm.llvalue * Llvm.llvalue) list
 end = 
@@ -100,12 +101,24 @@ struct
       else
         { vector = Some (struct_of_list bl); len = len }
 
-  let build_phi (x, blockx) (y, blocky) builder =
+  let build_phi vecblocks builder =
+    match vecblocks with
+      | ({ vector = Some vx; len = lx }, blockx) :: rest ->
+          let z = Llvm.build_phi [(vx, blockx)] "z" builder in
+            List.iter (function 
+                         | ({ vector = Some vy }, blocky) -> 
+                             Llvm.add_incoming (vy, blocky) z
+                         | _ -> assert false) rest;
+            { vector = Some z; len = lx }
+      | ({ vector = None }, blockx) :: rest ->
+          { vector = None; len = 0} 
+      | _ ->
+          assert false
+
+  let add_incoming (y, blocky) x =
     match x.vector, y.vector with
-      | Some vx, Some vy ->
-          let z = Llvm.build_phi [(vx, blockx); (vy, blocky)] "z" builder in
-            { vector = Some z; len = x.len }
-      | _ -> assert false
+      | Some vx, Some vy -> Llvm.add_incoming (vy, blocky) vx
+      | _ -> ()
 
   let replace_all_uses oldv newv b =
     { vector = 
@@ -438,8 +451,8 @@ let build_term
                 (* insert phi nodes in result *)
                 Llvm.position_at_end block_res builder;
                 let z_attrib = Bitvector.build_phi 
-                                 (senc.attrib, block_end_s) 
-                                 (tenc.attrib, block_end_t) 
+                                 [(senc.attrib, block_end_s); 
+                                  (tenc.attrib, block_end_t)]
                                  builder in
                 let z_payload = 
                   List.map 
@@ -452,8 +465,8 @@ let build_term
             match Type.finddesc a with
               | Type.SumW [ax; ay] -> ax, ay
               | _ -> assert false in
-          let block_init = Llvm.insertion_block builder in                             
           let uenc = build_annotatedterm ctx u [] in
+          let block_init = Llvm.insertion_block builder in                             
           let func = Llvm.block_parent (Llvm.insertion_block builder) in
           let block_loop = Llvm.append_block context "loop" func in 
             let _ = Llvm.build_br block_loop builder in
@@ -461,7 +474,8 @@ let build_term
           let z_payload = 
             List.map (fun x -> Llvm.build_phi [(x, block_init)] "z" builder)
               uenc.payload in
-          let xenc = { payload = z_payload; attrib = uenc.attrib (* TODO *) } in
+          let z_attrib = Bitvector.build_phi [(uenc.attrib, block_init)] builder in
+          let xenc = { payload = z_payload; attrib = z_attrib } in
           let tenc = build_annotatedterm ((x, xenc) :: ctx) t [] (* TODO *) in 
           assert (Bitvector.length tenc.attrib > 0);
           let xya, cond = Bitvector.takedrop (Bitvector.length (tenc.attrib) - 1) tenc.attrib in
@@ -472,9 +486,10 @@ let build_term
           let cond' = Bitvector.extractvalue cond 0 in
             ignore (Llvm.build_cond_br cond' block_loop block_res builder);
             let block_curr = Llvm.insertion_block builder in 
-            List.iter (fun (phinode, y) ->
+            List.iter (fun (y, phinode) ->
                          Llvm.add_incoming (y, block_curr) phinode)
-              (List.combine z_payload yenc.payload);
+              (List.combine yenc.payload z_payload);
+            Bitvector.add_incoming (yenc.attrib, block_curr) z_attrib;
             Llvm.position_at_end block_res builder;
               xenc
       | FoldW((alpha, a), t) ->
@@ -625,7 +640,7 @@ let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
       List.map 
         (fun (n1, n2) -> Llvm.build_phi [(n1, block1); (n2, block2)] "xp" builder)
         (List.combine new1enc.payload new2enc.payload) in
-    let newa = Bitvector.build_phi (new1enc.attrib, block1) (new2enc.attrib, block2) builder in
+    let newa = Bitvector.build_phi [(new1enc.attrib, block1); (new2enc.attrib, block2)] builder in
       connect1 {payload = newp; attrib = newa } dst in
   let build_jump_argument w1 (x, t) w2 =
     let src_block = Hashtbl.find entry_points w1.src in
