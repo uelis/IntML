@@ -26,6 +26,7 @@ type term_const =
   | Cintmul
   | Cintdiv
   | Cinteq
+  | Cintslt
   | Cintprint
 
 type t = { desc: t_desc;      

@@ -222,6 +222,7 @@ let string_of_term_const (c: term_const) : string =
   | Cintmul -> "intmul"
   | Cintdiv -> "intdiv"
   | Cinteq -> "inteq"
+  | Cintslt -> "intslt"
   | Cintprint -> "intprint"
 
 let string_of_termW (term: Term.t): string =

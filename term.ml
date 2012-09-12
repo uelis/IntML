@@ -23,6 +23,7 @@ type term_const =
   | Cintmul
   | Cintdiv
   | Cinteq
+  | Cintslt
   | Cintprint
 
 type t =

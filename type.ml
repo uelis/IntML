@@ -65,8 +65,8 @@ let rec subst (f: t -> t) (b: t) : t =
     | FunW(b1, b2) -> newty(FunW(subst f b1, subst f b2))
     | MuW(alpha, a) -> 
         let beta = newty Var in
-        let a' = subst (fun x -> if x = alpha then beta else x) a in 
-        newty(MuW(alpha, subst f a'))
+        let a' = subst (fun x -> if find x == find alpha then beta else x) a in 
+        newty(MuW(beta, subst f a'))
     | BoxU(a1, a2) -> newty(BoxU(subst f a1, subst f a2))
     | TensorU(b1, b2) -> newty(TensorU(subst f b1, subst f b2))
     | FunU(a1, b1, b2) -> newty(FunU(subst f a1, subst f b1, subst f b2))
@@ -89,8 +89,8 @@ let rec equals (u: t) (v: t) : bool =
             (* TODO: inefficient *)
             let gamma = newty Var in
             (equals 
-               (subst (fun x -> if x == alpha then gamma else x) a) 
-               (subst (fun x -> if x == beta then gamma else x) b) )
+               (subst (fun x -> if equals x alpha then gamma else x) a) 
+               (subst (fun x -> if equals x beta then gamma else x) b) )
         | FunU(u1, u2, u3), FunU(v1, v2, v3) ->
             (equals u1 v1) && (equals u2 v2) && (equals u3 v3)
         | SumW(lu), SumW(lv) ->            

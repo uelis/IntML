@@ -57,9 +57,6 @@ rule main = parse
   | "mu"       { TokMu }
   | "fold"     { TokFold }
   | "unfold"   { TokUnfold }
-  | "nil"      { TokKwNil }
-  | "cons"     { TokKwCons  }
-  | "match"    { TokKwMatch  }
   | "if"       { TokKwIf }
   | "then"     { TokKwThen }
   | "else"     { TokKwElse }

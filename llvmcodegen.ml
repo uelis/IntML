@@ -360,16 +360,21 @@ let build_term
                   end
               | _ -> assert false
           end
-      | ConstW(Cinteq)->
+      | ConstW(rel) when (rel = Cinteq || rel = Cintslt) ->
           begin
             match args with
               | t1enc :: t2enc :: args' ->
                   begin
                     match t1enc, t2enc with
                       | {payload = [x]; attrib = ax},  {payload = [y]; attrib = ay} when
-                          Bitvector.length ax = 0  && Bitvector.length ay = 0 ->
-                          let eq = Llvm.build_icmp Llvm.Icmp.Ne x y "eq" builder in
-                            {payload = []; attrib = Bitvector.of_list [eq]}
+                          Bitvector.length ax = 0  && Bitvector.length ay = 0 ->                          
+                          let res = 
+                            match rel with
+                              | Cinteq -> Llvm.build_icmp Llvm.Icmp.Ne x y "eq" builder 
+                              | Cintslt -> Llvm.build_icmp Llvm.Icmp.Sge x y "slt" builder 
+                              | _ -> assert false
+                          in
+                            {payload = []; attrib = Bitvector.of_list [res]}
                       | _ -> assert false
                   end
               | _ -> assert false

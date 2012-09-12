@@ -14,6 +14,7 @@ and value =
   | PairV of value * value
   | FunV of env * var * Term.t
   | InteqV of value option
+  | IntsltV of value option
   | IntaddV of value option
   | IntsubV of value option
   | IntmulV of value option
@@ -47,6 +48,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | ConstW(Cintconst(i)) -> IntV(i)
     | ConstW(Cintprint) -> IntprintV
     | ConstW(Cinteq) -> InteqV(None)
+    | ConstW(Cintslt) -> IntsltV(None)
     | ConstW(Cintadd) -> IntaddV(None)
     | ConstW(Cintsub) -> IntsubV(None)
     | ConstW(Cintmul) -> IntmulV(None)
@@ -110,9 +112,15 @@ and appV (v1: value) (v2: value) : value =
         end
     | InteqV(None) -> InteqV(Some v2)
     | InteqV(Some v3) -> 
-        (match v2, v3 with
-           | IntV(v2'), IntV(v3') -> 
-               if v2' = v3' then InV(2, 0, UnitV) else InV(2, 1, UnitV)
+        (match v3, v2 with
+           | IntV(v3'), IntV(v2') -> 
+               if v3' = v2' then InV(2, 0, UnitV) else InV(2, 1, UnitV)
+           | _ -> assert false)
+    | IntsltV(None) -> IntsltV(Some v2)
+    | IntsltV(Some v3) -> 
+        (match v3, v2 with
+           | IntV(v3'), IntV(v2') -> 
+               if v3' < v2' then InV(2, 0, UnitV) else InV(2, 1, UnitV)
            | _ -> assert false)
     | IntaddV(None) -> IntaddV(Some v2)
     | IntaddV(Some v3) -> 

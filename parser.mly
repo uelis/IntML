@@ -67,9 +67,6 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokFold
 %token TokUnfold
 %token TokKwNat
-%token TokKwNil
-%token TokKwCons
-%token TokKwMatch
 %token TokEquals
 %token TokKwIf
 %token TokKwThen
@@ -101,6 +98,8 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token <string> TokString 
 %token TokEof
 
+%left TokEquals 
+%left TokLAngle
 %left TokPlus TokMinus
 %left TokTimes TokDiv
 
@@ -175,6 +174,8 @@ termW:
        { mkTerm (UnfoldW(($3, $5), $7)) }
     | termW_app TokEquals termW_app
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cinteq)), $1)), $3)) }
+    | termW_app TokLAngle termW_app
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintslt)), $1)), $3)) }
     | termW_app
        { $1 } 
 

@@ -87,7 +87,7 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
       let intty = newty Type.NatW in        
       let b = newty (FunW(intty, newty (FunW(intty, intty)))) in
         b, []
-  | ConstW(Cinteq) ->
+  | ConstW(Cinteq) | ConstW(Cintslt) ->
       let intty = newty NatW in
       let one = newty OneW in
       let b = newty (FunW(intty, 
