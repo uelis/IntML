@@ -15,6 +15,7 @@ module Bitvector :
 sig 
   type t
   val length : t -> int
+  val undef : int -> t
   val null : int -> t
   val concat : t -> t -> t
   val takedrop : int -> t -> t * t
@@ -48,6 +49,13 @@ struct
         [ (dummy, Llvm.const_null vi1) ]
               
   let length b = b.len
+
+  let undef len = 
+    if len = 0 then 
+      { vector = None; len = 0 }
+    else 
+      { vector = Some (Llvm.undef (struct_type len)); 
+        len = len }
 
   let null len = 
     if len = 0 then 
@@ -241,7 +249,7 @@ let build_truncate_extend (enc : encoded_value) (a : Type.t) =
   let rec mk_payload p n =
     if n = 0 then [] else 
       match p with
-        | [] -> Llvm.const_null (Llvm.i64_type context) :: (mk_payload [] (n-1)) 
+        | [] -> Llvm.undef (Llvm.i64_type context) :: (mk_payload [] (n-1)) 
         | x::xs -> x :: (mk_payload xs (n-1)) in
   let x_payload = mk_payload enc.payload a_payload_size in
   let x_attrib = 
@@ -249,7 +257,7 @@ let build_truncate_extend (enc : encoded_value) (a : Type.t) =
       if enc_attrib_bitlen = a_attrib_bitlen then
         enc.attrib
       else if enc_attrib_bitlen < a_attrib_bitlen then
-        (let leading_zeros = Bitvector.null (a_attrib_bitlen - enc_attrib_bitlen) in
+        (let leading_zeros = Bitvector.undef (a_attrib_bitlen - enc_attrib_bitlen) in
           Bitvector.concat leading_zeros enc.attrib)
       else (* enc_attrib_bitlen > a_attrib_bitlen *) 
         (let h, t = Bitvector.takedrop 

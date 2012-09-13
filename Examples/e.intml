@@ -1,3 +1,6 @@
+letw return = fun x -> inl(x)
+letw continue = fun x -> inr(x)
+
 letw fixw = fun x ->
   case x of 
     inl(lx) -> 
@@ -66,7 +69,7 @@ letw not : 2 -> 2 =
   fun x -> if x then false else true
 letw and : 2 -> 2 -> 2 = 
   fun x -> fun y ->
-    if x then (if y then true else false) else false
+    if x then y else false
 letw or = fun (x : 2) -> fun (y : 2) ->
   if x then true else y
 
@@ -104,4 +107,4 @@ letu toDigits =
 
 letu e = toDigits eContFrac
 
-letu ttt = printlist e [12]
+letu ttt = printlist e [10]
