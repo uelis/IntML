@@ -636,7 +636,7 @@ let rec min i (ty: Type.t) : Term.t =
  * *)
 let embed (a: Type.t) (b: Type.t) : Term.t =
 let rec embed i (a: Type.t) (b: Type.t) : Term.t =
-  if i > 10 then raise Not_Leq;
+  if i > 1 then raise Not_Leq;
   if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
   else 
     match Type.finddesc b with
@@ -651,7 +651,8 @@ let rec embed i (a: Type.t) (b: Type.t) : Term.t =
                            (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
         end 
     | Type.TensorW(b1, b2) ->
-        begin try 
+        raise Not_Leq
+(*        begin try 
           Term.mkLambdaW(("x", None), 
                          Term.mkPairW 
                            (Term.mkAppW (embed i a b1) (Term.mkVar "x"))
@@ -661,7 +662,7 @@ let rec embed i (a: Type.t) (b: Type.t) : Term.t =
                          Term.mkPairW 
                            (min b1)
                            (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
-        end
+        end*)
     | Type.MuW(beta, b1) ->
         let mub1 = Type.newty (Type.MuW(beta, b1)) in
         let unfolded = 
@@ -680,7 +681,7 @@ let rec embed i (a: Type.t) (b: Type.t) : Term.t =
  * *)
 let project (a0: Type.t) (b0: Type.t) : Term.t =            
 let rec project i (a: Type.t) (b: Type.t) : Term.t =
-  if i > 10 then raise Not_Leq;
+  if i > 1 then raise Not_Leq;
   if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
   else 
     match Type.finddesc b with
@@ -698,7 +699,7 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
               [("y",  mkLoopW mkUnitW ("x", mkInrW (mkVar "x")));
                ("y", Term.mkAppW (project i a b2) (Term.mkVar "y"))])
         end 
-    | Type.TensorW(b1, b2) ->
+(*    | Type.TensorW(b1, b2) ->
         begin try 
           Term.mkLambdaW(("x", None), 
                          Term.mkLetW (Term.mkVar "x") 
@@ -709,7 +710,7 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
                          Term.mkLetW (Term.mkVar "x") 
                            (("y", "z"), 
                             Term.mkAppW (project i a b2) (Term.mkVar "z")))
-        end 
+        end *)
     | Type.MuW(beta, b1) ->
         let mub1 = Type.newty (Type.MuW(beta, b1)) in
         let unfolded = 
