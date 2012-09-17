@@ -31,7 +31,8 @@ letu cons : [int] --> ([int] --> [int]) --> ([int] --> [int]) =
   fun x -> fun xs ->
       fun i -> 
         let [iv] = i in
-        case iv = 0 of
+        let [c] = [iv=0]in
+        case c of
            inl(tt) -> x
          | inr(ff) -> xs [iv - 1]
 
@@ -87,11 +88,14 @@ letu ratTrans =
              let [dv] = d in
              let [iv] = i in
              let [qv] = [if dv = 0 then 1 else bv/dv] in
-             case and (or (signum cv = signum dv) (abs cv < abs dv)) 
+             let [c] = [
+              and (or (signum cv = signum dv) (abs cv < abs dv)) 
                       (and ((cv+dv)*qv < av+bv+1) 
-                           (av+bv < (cv+dv)*qv + (cv+dv))) of
+                           (av+bv < (cv+dv)*qv + (cv+dv)))] in
+             case c of
                 inl(tt) ->
-                   case iv = 0 of
+                   let [c1]=[iv=0] in
+                   case c1 of
                       inl(tt) -> [qv]
                     | inr(ff) -> ratTrans [cv] [dv] [av-qv*cv] [bv-qv*dv] xs [iv-1]
               | inr(ff) ->
@@ -105,7 +109,8 @@ letu toDigits =
           fun l ->
             fun i ->
               let [iv] = i in
-              case iv = 0 of
+              let [e] = [iv = 0] in
+              case e of
                  inl(tt) -> l [iv]
                | inr(ff) -> toDigits (ratTrans [10] [0] [0] [1] (tail l)) [iv-1])
 
