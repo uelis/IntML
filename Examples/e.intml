@@ -22,6 +22,10 @@ letw fixw = fun x ->
 letu fix = hack fixw
  as {mu 'c. 1 + 'b*'c}({'b}'a --o 'a) --o 'a
 
+  (*
+{mu 'x. 1 + 'a*'b*'x}({'z}({'y}['a] --o ['b]) --o 'u) --o
+{(mu 'x. 1 + 'a*'b*'x) * 'z}({'y}['a] --o ['b]) --o 'u
+  *)
 
 letu cons : [int] --> ([int] --> [int]) --> ([int] --> [int]) =  
   fun x -> fun xs ->
