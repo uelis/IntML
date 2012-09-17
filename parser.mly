@@ -67,6 +67,7 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokFold
 %token TokUnfold
 %token TokKwNat
+%token TokKwBool
 %token TokEquals
 %token TokKwIf
 %token TokKwThen
@@ -151,7 +152,7 @@ termW:
        { mkTerm (LambdaW(($2, None), $4)) }
     | TokLambda TokLParen identifier TokColon typeW TokRParen TokRightArrow termW 
        { mkTerm (LambdaW(($3, Some $5), $8)) }
-    | TokLet TokLAngle identifier TokComma identifier TokRAngle TokEquals termW TokIn termW
+    | TokLet TokLParen identifier TokComma identifier TokRParen TokEquals termW TokIn termW
       { mkTerm (LetW($8, ($3, $5, $10))) }
     | TokKwIf termW TokKwThen termW TokKwElse termW
       { mkTerm (CaseW($2, [(unusable_var, $4); (unusable_var, $6)])) }
@@ -176,6 +177,10 @@ termW:
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cinteq)), $1)), $3)) }
     | termW_app TokLAngle termW_app
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintslt)), $1)), $3)) }
+    | TokKwInl termW_atom
+       { mkTerm (InW(2, 0, $2)) }
+    | TokKwInr termW_atom
+       { mkTerm (InW(2, 1, $2)) }
     | termW_app
        { $1 } 
 
@@ -188,16 +193,12 @@ termW_app:
 termW_atom:
     | identifier
        { mkTerm (Term.Var($1)) }
-    | TokLAngle TokRAngle 
+    | TokLParen TokRParen 
        { mkTerm UnitW }
     | TokLParen termW TokRParen
        { $2 }
-    | TokLAngle termW TokComma termW TokRAngle 
+    | TokLParen termW TokComma termW TokRParen
        { mkTerm (PairW($2, $4)) }
-    | TokKwInl TokLParen termW TokRParen
-       { mkTerm (InW(2, 0, $3)) }
-    | TokKwInr TokLParen termW TokRParen
-       { mkTerm (InW(2, 1, $3)) }
     | TokKwPrint TokString
        { mkTerm (ConstW(Cprint $2)) } 
     | TokNum
@@ -260,7 +261,7 @@ termU:
        { mkTerm (LambdaU (($3, Some $5), $8)) }
     | TokKwHack termW TokAs typeU
        { mkTerm (HackU(Some $4, $2)) }
-    | TokLet TokLAngle identifier TokComma identifier TokRAngle TokEquals termU TokIn termU
+    | TokLet TokLParen identifier TokComma identifier TokRParen TokEquals termU TokIn termU
        { mkTerm (LetU($8, ($3, $5, $10))) }
     | TokLet TokLBracket identifier TokRBracket TokEquals termU TokIn termU
        { mkTerm (LetBoxU($6, ($3, $8))) }

@@ -64,6 +64,7 @@ rule main = parse
   | "min"      { TokKwMin }
   | "succ"     { TokKwSucc }
   | "pred"     { TokKwPred }
+  | "bool"     { TokKwBool }
   | "int"      { TokKwNat }
   | "eq"       { TokKwEq }
   | "hack"     { TokKwHack }

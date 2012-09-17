@@ -4,20 +4,20 @@ letw continue = fun x -> inr(x)
 letw fixw = fun x ->
   case x of 
     inl(lx) -> 
-      let <l,x> = lx in
+      let (l,x) = lx in
         case x of
           inl(bq) ->
-            let <b,q> = bq in
-              inl(<fold<'c.1+'b*'c> inr(<b,l>), inr(q)>)
+            let (b,q) = bq in
+              inl((fold<'c.1+'b*'c> inr(b,l), inr(q)))
         | inr(a) ->
             case unfold<'c.1+'b*'c> l of
               inl(nl) -> 
                  inr(a)
             | inr(cns) ->
-               let <hd, tl> = cns in
-                 inl(<tl, inl(<hd, a>)>)
+               let (hd, tl) = cns in
+                 inl(tl, inl(hd, a))
   | inr(q) -> 
-     inl(<fold<'c.1+'b*'c> inl(<>), inr(q)>)
+     inl(fold<'c.1+'b*'c> inl(), inr(q))
 
 letu fix = hack fixw
  as {mu 'c. 1 + 'b*'c}({'b}'a --o 'a) --o 'a
@@ -31,10 +31,8 @@ letu cons : [int] --> ([int] --> [int]) --> ([int] --> [int]) =
   fun x -> fun xs ->
       fun i -> 
         let [iv] = i in
-        let [c] = [iv=0]in
-        case c of
-           inl(tt) -> x
-         | inr(ff) -> xs [iv - 1]
+        let [c] = [iv=0] in
+        if c then x else xs [iv - 1]
 
 letu head =
   fun l -> l [0]
@@ -50,13 +48,14 @@ letu printlist =
   fix (fun p -> 
          fun i ->
            let [iv] = i in
-           case iv = jv of
-              inl(tt) -> [<>]
-            | inr(ff) -> 
+           let [b] = [iv = jv] in
+           if b then [()] 
+             else
                 let [xv] = l [iv] in 
                 let [u] = [print xv] in
                 let [u] = [print ""] in
-                  p [iv + 1]) [0]
+                  p [iv + 1]) 
+    [0]
 
 letu aux =
   fix (fun aux ->
@@ -68,8 +67,8 @@ letu eContFrac = cons [2] (aux [2])
 
 letw signum = fun x -> if x < 0 then 0-1 else if x = 0 then 0 else 1
 letw abs = fun x -> if x < 0 then 0-x else x
-letw true : 2 = inl(<>)
-letw false : 2 = inr(<>)
+letw true : 2 = inl()
+letw false : 2 = inr()
 letw not : 2 -> 2 =
   fun x -> if x then false else true
 letw and : 2 -> 2 -> 2 = 
@@ -92,13 +91,13 @@ letu ratTrans =
               and (or (signum cv = signum dv) (abs cv < abs dv)) 
                       (and ((cv+dv)*qv < av+bv+1) 
                            (av+bv < (cv+dv)*qv + (cv+dv)))] in
-             case c of
-                inl(tt) ->
+             if c then
                    let [c1]=[iv=0] in
-                   case c1 of
-                      inl(tt) -> [qv]
-                    | inr(ff) -> ratTrans [cv] [dv] [av-qv*cv] [bv-qv*dv] xs [iv-1]
-              | inr(ff) ->
+                   if c1 then
+                      [qv]
+                   else
+                      ratTrans [cv] [dv] [av-qv*cv] [bv-qv*dv] xs [iv-1]
+             else 
                    copy xs as xs1, xs2 in
                    let [xv] = xs1 [0] in
                     ratTrans [bv] [av+xv*bv] [dv] [cv+xv*dv] (tail xs2) [iv]
@@ -110,10 +109,8 @@ letu toDigits =
             fun i ->
               let [iv] = i in
               let [e] = [iv = 0] in
-              case e of
-                 inl(tt) -> l [iv]
-               | inr(ff) -> toDigits (ratTrans [10] [0] [0] [1] (tail l)) [iv-1])
+              if e then l [iv] else toDigits (ratTrans [10] [0] [0] [1] (tail l)) [iv-1])
 
 letu e = toDigits eContFrac
 
-letu ttt = printlist e [11]
+letu ttt = printlist e [8]

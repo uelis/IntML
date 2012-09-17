@@ -1,11 +1,11 @@
 letw return = fun x -> inl(x)
 letw continue = fun x -> inr(x)
 
-letw pi1 = fun x -> let <x1, x2> = x in x1
-letw pi2 = fun x -> let <x1, x2> = x in x2
+letw pi1 = fun x -> let (x1, x2) = x in x1
+letw pi2 = fun x -> let (x1, x2) = x in x2
 
-letw true : 2 = inl(<>)
-letw false : 2 = inr(<>)
+letw true : 2 = inl()
+letw false : 2 = inr()
 letw not : 2 -> 2 =
   fun x -> if x then false else true
 letw and : 2 -> 2 -> 2 = 
@@ -13,53 +13,51 @@ letw and : 2 -> 2 -> 2 =
     if x then (if y then true else false) else false
 letw or = fun (x : 2) -> fun (y : 2) ->
   if x then true else y
-letw pi1 = fun x -> let <x1, x2> = x in x1
-letw pi2 = fun x -> let <x1, x2> = x in x2
 
 (* working class addition *)
 letw add : 'a -> int -> 'a = 
   fun x -> fun y ->
-    let z = <x, y> 
+    let z = (x, y) 
     loop
-      let <x1, y1> = z in
+      let (x1, y1) = z in
       if or (y1 = 0) (x1 + 1 = x1) then return(x1)
-                 else continue(<x1 + 1, y1 - 1>)
+                 else continue(x1 + 1, y1 - 1)
 
 letw mul : int -> int -> int = 
   fun x -> fun y ->
-    let z = <0, y> 
+    let z = (0, y)
     loop
-      let <x1, y1> = z in
+      let (x1, y1) = z in
       if y1 = 0 then return(x1)
-                 else continue(<add x x1, y1 - 1>)
+                 else continue(add x x1, y1 - 1)
 
 (* working class subtraction *)
 letw sub : int -> int -> int = 
   fun x -> fun y ->
-    let z = <x, y> 
+    let z = (x, y) 
     loop
-      let <x1, y1> = z in
+      let (x1, y1) = z in
       if or (x1 = 0) (y1 = 0) then return(x1)
-                 else continue(<x1 - 1, y1 - 1>)
+                 else continue(x1 - 1, y1 - 1)
 
 letw leq : 'a -> 'b -> 2 =
   fun x -> fun y ->
-    let z = <x, y>
+    let z = (x, y)
     loop
-      let <x', y'> = z in
+      let (x', y') = z in
       if y' = 0 then
          if x' = 0 then return true else return false
       else 
-         if x' = 0 then return true else continue <x' - 1, y' - 1>
+         if x' = 0 then return true else continue (x' - 1, y' - 1)
 
 letw divmod : 'a -> 'b -> 'a * 'a = 
   fun x -> fun y ->
-    let z = <x, 0>
+    let z = (x, 0)
     loop
-      let <x', d> = z in
+      let (x', d) = z in
       if leq x' y then 
-         if leq y x' then return <d + 1, 0> else return <d, x'>
-      else continue <sub x' y, d + 1>
+         if leq y x' then return (d + 1, 0) else return (d, x')
+      else continue (sub x' y, d + 1)
 
 (* Print values of 'a as decimal numbers.
  * (uses function types!) *)
@@ -78,33 +76,33 @@ letw print_dec : 'a -> 1 =
         else if x = 8 then print "8" 
         else print "9" in
    fun x -> 
-      let p = <x, fun u -> u>
+      let p = (x, fun u -> u)
       loop 
-         let <z, f> = p in
-         let <d, m> = divmod z ten in
+         let (z, f) = p in
+         let (d, m) = divmod z ten in
          let f' = fun u -> (let z = print_upto10 m in f u) in
            if d = 0 then 
-             (let z = f' <> in  return <>)
+             (let z = f' () in  return ())
            else 
-             continue <d, f'>
+             continue (d, f')
 
 letw fixw = fun x ->
   case x of 
     inl(lx) -> 
-      let <l,x> = lx in
+      let (l,x) = lx in
         case x of
           inl(bq) ->
-            let <b,q> = bq in
-              inl(<fold<'c.1+'b*'c> inr(<b,l>), inr(q)>)
+            let (b,q) = bq in
+              inl(fold<'c.1+'b*'c> inr(b,l), inr(q))
         | inr(a) ->
             case unfold<'c.1+'b*'c> l of
               inl(nl) -> 
                  inr(a)
             | inr(cns) ->
-               let <hd, tl> = cns in
-                 inl(<tl, inl(<hd, a>)>)
+               let (hd, tl) = cns in
+                 inl(tl, inl(hd, a))
   | inr(q) -> 
-     inl(<fold<'c.1+'b*'c> inl(<>), inr(q)>)
+     inl(fold<'c.1+'b*'c> inl(), inr(q))
 
 letu fix = hack fixw
  as {mu 'c. 1 + 'b*'c}({'b}'a --o 'a) --o 'a
@@ -215,4 +213,4 @@ letw t = let [x] = fact [4] in let z = print " " in print_dec x
 letw t = let [x] = fact [5] in let z = print " " in print_dec x
 
 letu abx = [print (mul 31 4)]
-letu tu = let [x] = fact2 [7] in [print x]
+letu tu = let [x] = fib2 [33] in [print x]
