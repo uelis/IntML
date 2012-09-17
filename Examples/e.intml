@@ -51,7 +51,7 @@ letu printlist =
             | inr(ff) -> 
                 let [xv] = l [iv] in 
                 let [u] = [print xv] in
-                let [u] = [print "::"] in
+                let [u] = [print ""] in
                   p [iv + 1]) [0]
 
 letu aux =

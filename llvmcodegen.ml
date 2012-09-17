@@ -469,8 +469,10 @@ let build_term
                                  builder in
                 let z_payload = 
                   List.map 
-                    (fun (x,y) -> Llvm.build_phi [(x, block_end_s);
-                                                  (y, block_end_t)] "z" builder)
+                    (fun (x,y) -> 
+                       if x == y then x 
+                       else Llvm.build_phi [(x, block_end_s);
+                                            (y, block_end_t)] "z" builder)
                     (List.combine senc.payload tenc.payload) in
                   {payload = z_payload; attrib = z_attrib}
       | LoopW(u, (x, { desc = TypeAnnot(t, Some a) })) -> 
