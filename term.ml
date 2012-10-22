@@ -59,6 +59,8 @@ let mkConstW n = { desc = ConstW(n); loc = None }
 let mkUnitW = { desc = UnitW; loc = None}
 let mkPairW s t= { desc = PairW(s, t); loc = None }
 let mkLetW s ((x, y), t) = { desc = LetW(s, (x, y, t)); loc = None }
+let mkFstW s = mkLetW s (("x", "y"), mkVar "x")
+let mkSndW s = mkLetW s (("x", "y"), mkVar "y")
 let mkInW n k t = { desc = InW(n, k, t); loc = None }
 let mkInlW t = { desc = InW(2, 0, t); loc = None }
 let mkInrW t = { desc = InW(2, 1, t); loc = None }

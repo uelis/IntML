@@ -105,7 +105,7 @@ letw fixw = fun x ->
      inl(fold<'c.1+'b*'c> inl(), inr(q))
 
 letu fix = hack fixw
- as {mu 'c. 1 + 'b*'c}({'b}'a --o 'a) --o 'a
+ as {'c (* mu 'c. 1 + 'b*'c *)}({'b}'a --o 'a) --o 'a
 
 letu succu =
   fun x -> let [v] = x in [v + 1]
@@ -114,22 +114,16 @@ letu addu : ['a] --> ['b] --> ['a] =
   fun x ->
   fix (fun (add : ['b] --> ['a]) -> fun (y : ['b]) ->
     let [vy] = y in
-    case vy = 0 of
-      inl(true) -> 
-       x
-    | inr(false) -> 
-       succu (add [vy - 1])
+    if vy = 0 then x else succu (add [vy - 1])
   )
 
 letu fib2 : [int] --> [int] = 
-  fix (fun f -> fun x ->
-    let [v] = x in
-      case or (v = 0) (v = 1) of 
-        inl(true) ->
-          [1]
-      | inr(false) ->
-          copy f as f1, f2 in
-          addu (f1 [v - 1]) (f2 [v - 2]))
+  fix (fun f -> 
+    copy f as f1, f2 in
+      fun x ->
+        let [v] = x in
+        if or (v = 0) (v = 1) then [1] 
+        else addu (f1 [v - 1]) (f2 [v - 2]))
 
 letu mulu : [int] --> [int] --> [int] =
   fun x ->

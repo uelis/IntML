@@ -396,6 +396,13 @@ let solve_constraints (con: type_constraint list) : unit =
    * given inequations. The result maps each variable to a lower bound. *)
   let m = Type.Typetbl.create 10 in
   let rec join_lower_bounds (ineqs: (Type.t * Type.t) list) : unit = 
+    (*
+    Printf.printf "---\n";
+    List.iter (fun (a,b) -> Printf.printf "%s <= %s\n" 
+                              (Printing.string_of_type a)
+                              (Printing.string_of_type b)) ineqs;
+    Printf.printf "===\n";
+     *)
     match ineqs with
       | [] -> ()
       | (a, alpha) :: rest ->

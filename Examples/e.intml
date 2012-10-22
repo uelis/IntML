@@ -8,7 +8,7 @@ letw fixw = fun x ->
         case x of
           inl(bq) ->
             let (b,q) = bq in
-              inl((fold<'c.1+'b*'c> inr(b,l), inr(q)))
+              inl(fold<'c.1+'b*'c> inr(b,l), inr(q))
         | inr(a) ->
             case unfold<'c.1+'b*'c> l of
               inl(nl) -> 
@@ -113,4 +113,4 @@ letu toDigits =
 
 letu e = toDigits eContFrac
 
-letu ttt = printlist e [8]
+letu ttt = printlist e [11]

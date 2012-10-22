@@ -61,6 +61,8 @@ val mkConstW : term_const -> t
 val mkUnitW : t
 val mkPairW : t -> t -> t
 val mkLetW : t -> (var * var) * t -> t
+val mkFstW : t -> t
+val mkSndW : t -> t
 val mkInW : int -> int -> t -> t
 val mkInlW : t -> t
 val mkInrW : t -> t
@@ -101,6 +103,7 @@ val fresh_vars_for_missing_annots : t -> t
 (* head_subst s x t substitues s for the head occurrence of x.
  * returns None if t does not contain x. *)
 val head_subst: t -> var -> t -> t option
+(* TODO: (subst "<x,x>" "x" "x") should be incorrect *)
 val subst: t -> var -> t -> t
 
 val freshen_type_vars : t -> t

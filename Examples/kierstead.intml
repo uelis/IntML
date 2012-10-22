@@ -1,6 +1,6 @@
 (* We define an argument that distinguishes t1 and t2. *)
-letw true : 2 = inl(<>)
-letw false : 2 = inr(<>)
+letw true : 2 = inl()
+letw false : 2 = inr()
 (* Kierstead terms *)
 letu t1 = fun f -> copy f as f1, f2 in f1 (fun x -> f2 (fun y -> y))
 letu t2 = fun f -> copy f as f1, f2 in f1 (fun x -> f2 (fun y -> x))
