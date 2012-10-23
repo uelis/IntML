@@ -851,8 +851,8 @@ let build_connections (the_module : Llvm.llmodule) (connections : connection lis
       let senc = Hashtbl.find token_names src.anchor in
         build_term the_module [(x, senc)] [(x, src.message_type)] t dst.message_type in
   let connect src_block encoded_value dst =
-    let dsts = try Hashtbl.find sources_table dst.anchor with Not_found -> [] in
-      Hashtbl.replace sources_table dst.anchor ((encoded_value, src_block) :: dsts) in
+    let srcs = try Hashtbl.find sources_table dst.anchor with Not_found -> [] in
+      Hashtbl.replace sources_table dst.anchor ((encoded_value, src_block) :: srcs) in
   let build_br dst = 
     let dst_block = Hashtbl.find entry_points dst in
       Llvm.build_br dst_block builder in    
@@ -866,6 +866,8 @@ let build_connections (the_module : Llvm.llmodule) (connections : connection lis
                  match c with
                    | Unconnected -> ()
                    | Direct(src, (sigma, t) , dst) ->
+                       Printf.printf "----\n%s\n%s\n====\n\n" (Printing.string_of_termW sigma)
+                         (Printing.string_of_termW t);
                        let ev = encode_value src ("z", mkLetW (mkVar "z") (("sigma", "x"), mkPairW sigma t)) dst in
                        let current_block = Llvm.insertion_block builder in
                          connect current_block ev dst;
@@ -894,6 +896,8 @@ let build_connections (the_module : Llvm.llmodule) (connections : connection lis
       connections;
     (* connect blocks *)
     let connect_llvm newenc dst =
+      ()
+      (*
       let oldenc = Hashtbl.find token_names dst in
         (*      Printf.printf "%i %i -> %i\n" oldenc.attrib_bitlen newenc.attrib_bitlen dst; *)
         assert ((Bitvector.length oldenc.attrib) = (Bitvector.length newenc.attrib));
@@ -901,6 +905,7 @@ let build_connections (the_module : Llvm.llmodule) (connections : connection lis
         List.iter (fun (o, n) -> Llvm.replace_all_uses_with o n) 
           ((List.combine oldenc.payload newenc.payload) @
            (Bitvector.llvalue_replacement oldenc.attrib newenc.attrib)) 
+       *)
     in
     Hashtbl.iter (fun dst sources ->
                     match sources with
@@ -1241,5 +1246,5 @@ let llvm_circuit (c : Compile.circuit) =
     (* body *)
     build_body the_module c;
     Llvm.delete_block dummy; 
-    Llvm.dump_module the_module; 
+(*    Llvm.dump_module the_module; *)
     the_module
