@@ -578,6 +578,7 @@ let rec dot_of_circuit
           Buffer.add_string buf " -> ";
           Buffer.add_string buf (node_name dstins);
           Buffer.add_string buf (wire_style w);
+          Buffer.add_string buf (Printf.sprintf "[label=\"%i\"]" w.dst);
           Buffer.add_string buf ";\n ";
       with Not_found -> () (* Weakening *) in
       List.iter (fun srcins -> List.iter (edge srcins) (wires [srcins])) 

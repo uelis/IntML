@@ -866,13 +866,13 @@ let build_connections (the_module : Llvm.llmodule) (connections : connection lis
                  match c with
                    | Unconnected -> ()
                    | Direct(src, (sigma, t) , dst) ->
-                       Printf.printf "----\n%s\n%s\n====\n\n" (Printing.string_of_termW sigma)
-                         (Printing.string_of_termW t);
+                       Printf.printf "%i --> %i\n" src.anchor dst.anchor;
                        let ev = encode_value src ("z", mkLetW (mkVar "z") (("sigma", "x"), mkPairW sigma t)) dst in
                        let current_block = Llvm.insertion_block builder in
                          connect current_block ev dst;
                          ignore (build_br dst.anchor)
                    | Branch(src, (sigma, (s, (xl, tl, dst1), (xr, tr, dst2)))) ->
+                       Printf.printf "%i --> %i | %i\n" src.anchor dst1.anchor dst2.anchor;
                        begin
                          let t = mkLetW (mkVar "z") (("sigma", "x"), 
                                                      mkCaseW s 
