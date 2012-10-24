@@ -754,14 +754,14 @@ let trace (output : wire) (is : instruction list) : connection list =
   in
     trace_all {anchor = output.src; message_type = output.type_back}
 
-let build_connections (the_module : Llvm.llmodule) func (connections : connection list) (entry:int) (exit:int) : unit =
+let build_connections (the_module : Llvm.llmodule) (func : Llvm.llvalue) 
+      (connections : connection list) (entry:int) (exit:int) : unit =
   let blocks = Hashtbl.create 10 in
   let phi_nodes = Hashtbl.create 10 in    
   let get_block anchor =
     try
       Hashtbl.find blocks anchor
     with Not_found ->
-(*      let func = Llvm.block_parent (Llvm.insertion_block builder) in*)
       let label = Printf.sprintf "L%i" anchor in
       let block = Llvm.append_block context label func in
         Hashtbl.add blocks anchor block;
@@ -803,11 +803,11 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
                        ignore (Llvm.build_br (get_block src.anchor) builder);
                          connect_to (get_block src.anchor) senc src.anchor
                    | Direct(src, lets, (sigma, t) , dst) ->
-                       Printf.printf "%i --> %i\n" src.anchor dst.anchor;
+(*                       Printf.printf "%i --> %i\n" src.anchor dst.anchor;
                        Printf.printf "%s\n--\n%s\n===\n\n"
                          (Printing.string_of_termW sigma)
                          (Printing.string_of_termW (reduce t)); 
-                       flush stdout;
+                       flush stdout;*)
                        Llvm.position_at_end (get_block src.anchor) builder;
                        let senc = Hashtbl.find phi_nodes src.anchor in
                        let t = mkLetW (mkVar "z") (("sigma", "x"), mkLets lets (mkPairW sigma t)) in
@@ -817,16 +817,16 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
                          ignore (Llvm.build_br (get_block dst.anchor) builder);
                          connect_to src_block ev dst.anchor
                    | Branch(src, lets, (sigma, (s, (xl, tl, dst1), (xr, tr, dst2)))) ->
-                       Printf.printf "%i --> %i | %i\n" src.anchor dst1.anchor dst2.anchor;
-                       flush stdout; 
+(*                       Printf.printf "%i --> %i | %i\n" src.anchor dst1.anchor dst2.anchor;
+                       flush stdout; *)
                        begin
                          let t = mkLetW (mkVar "z") (("sigma", "x"), mkLets lets (
                                                      mkCaseW s 
                                                        [(xl, mkInlW (mkPairW sigma tl)) ;
                                                         (xr, mkInrW (mkPairW sigma tr)) ])) in
-                       Printf.printf "%s\n--\n%s\n===\n\n"
+(*                       Printf.printf "%s\n--\n%s\n===\n\n"
                          (Printing.string_of_termW sigma)
-                         (Printing.string_of_termW (reduce t)); 
+                         (Printing.string_of_termW (reduce t)); *)
                          let src_block = get_block src.anchor in
                            Llvm.position_at_end src_block builder;
                            let senc = Hashtbl.find phi_nodes src.anchor in
