@@ -28,6 +28,53 @@ sig
   val add_incoming: t * Llvm.llbasicblock -> t -> unit
 end = 
 struct
+  type t = { bits : Llvm.llvalue list }
+
+  let i1 = Llvm.i1_type context
+
+  let length b = List.length b.bits
+
+  let null len = { bits = Listutil.init len (fun _ -> Llvm.const_null i1) }
+
+  let undef len = { bits = Listutil.init len (fun _ -> Llvm.undef i1) }
+
+  let concat b1 b2 = { bits = b1.bits @ b2.bits }
+
+  let takedrop n b1 = 
+    let l1, l2 = Listutil.part n b1.bits in
+      { bits = l1 }, { bits = l2 }
+
+  let extractvalue b i =
+    match Listutil.part i b.bits with
+      | _, x :: _ -> x
+      | _, [] -> assert false
+
+  let of_list bl = { bits = bl }
+
+  let rec transpose l =
+         let rec split_list heads tails l =
+           match l with
+             | [] -> List.rev heads, List.rev tails
+             | [] :: _ -> assert false
+             | (h :: t) :: l' -> split_list (h :: heads) (t :: tails) l' 
+         in
+           match l with
+             | [] | [] :: _ -> []
+             | _ -> 
+                 let heads, tails = split_list [] [] l in
+                   heads :: transpose tails 
+
+  let build_phi srcs builder =
+    let l = List.map (fun (x,src) -> List.map (fun xi -> (xi, src)) x.bits) srcs in
+    let l' = transpose l in
+      { bits = List.map (fun isrcs -> Llvm.build_phi isrcs "z" builder) l' }
+
+  let add_incoming (y, blocky) x =
+    List.iter 
+      (fun (yi, xi) -> Llvm.add_incoming (yi, blocky) xi)
+      (List.combine y.bits x.bits)
+
+(*
   type t = { 
     vector : Llvm.llvalue option;
     len : int
@@ -115,6 +162,7 @@ struct
     match x.vector, y.vector with
       | Some vx, Some vy -> Llvm.add_incoming (vy, blocky) vx
       | _ -> ()
+ *) 
 end
 
 type encoded_value = {
