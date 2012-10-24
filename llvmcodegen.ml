@@ -183,15 +183,6 @@ let position_at_start block builder =
  * Attrib: x.a
  *)
 
-let entry_points : (int, Llvm.llbasicblock) Hashtbl.t = Hashtbl.create 10                                                         
-let token_names : (int, encoded_value) Hashtbl.t = Hashtbl.create 10
-let token_zero_init : ((Llvm.llvalue * Llvm.llvalue) list) ref = ref []
-
-let clear_tables () =
-  Hashtbl.clear entry_points;
-  Hashtbl.clear token_names;
-  token_zero_init := []
-
 let rec payload_size (a: Type.t) : int = 
   let payload_size_memo = Type.Typetbl.create 5 in
   let rec p_s a = 
@@ -581,96 +572,25 @@ let build_term
   let _ = Typing.principal_typeW type_ctx t_annotated in    
     build_annotatedterm ctx t_annotated []
 
-
-let replace_in_token_names (oldv : Llvm.llvalue) (newv : Llvm.llvalue)  =
-  let replace (token_name : encoded_value) =
-    let payload = List.map (fun v -> if v == oldv then newv else v) token_name.payload in 
-    let attrib = Bitvector.replace_all_uses oldv newv token_name.attrib in
-      { payload = payload; attrib = attrib } in
-    (* TODO: inefficient *)
-  let bindings = Hashtbl.fold (fun n token bdgs -> (n,token)::bdgs) token_names [] in
-    Hashtbl.clear token_names;
-    List.iter (fun (n, token) -> Hashtbl.add token_names n (replace token)) bindings
-
-let reduce (is : instruction list) : instruction list =    
-  let node_map_by_src = 
-    let rec build_dst_map i =
-      match i with
-        | [] -> IntMap.empty
-        | node :: rest -> 
-            List.fold_right (fun w map -> IntMap.add w.src node map) 
-              (wires [node]) (build_dst_map rest) 
-    in build_dst_map is in
-  let shortcut_redex w =
-    try
-    match IntMap.find w.dst node_map_by_src with 
-       | Tensor(w1, w2, w3) ->
-          (match IntMap.find w3.dst node_map_by_src with
-            | Tensor(w1', w2', w3') when w3'.dst = w3.src -> 
-                if w.dst = w1.src then {w with dst = w1'.dst}
-                else if w.dst = w2.src then {w with dst = w2'.dst}
-                else w
-            | _ -> w)
-       |  _ -> w 
-    with Not_found -> w in
-  let remove i = 
-    match i with 
-       | Tensor(w1, w2, w3) ->
-          (match IntMap.find w3.dst node_map_by_src with
-            | Tensor(w1', w2', w3') when w3'.dst = w3.src -> 
-                (try 
-                  ignore (IntMap.find w1.dst node_map_by_src);
-                  ignore (IntMap.find w2.dst node_map_by_src);
-                  false
-                with Not_found -> true)
-            | _ -> true)
-       |  _ -> true in 
-  let ris = List.filter remove 
-      (List.map (map_wires_instruction shortcut_redex) is) in
-   Printf.printf "%i => %i\n" (List.length is) (List.length ris); flush stdout; ris
-
-
-let allocate_tables (is : instruction list) =
-  clear_tables();
-  let build_dummy ty name builder = 
-     let i0 = Llvm.build_alloca ty name builder in
-     let dummy = Llvm.build_bitcast i0 ty name builder in
-       token_zero_init := (dummy, Llvm.const_null ty)::!token_zero_init;
-       dummy in 
-  let add_module n a =
-    (try ignore (Hashtbl.find entry_points n) with
-       | Not_found ->
-           let func = Llvm.block_parent (Llvm.insertion_block builder) in
-           let label = Printf.sprintf "L%i" n in
-           let block = Llvm.append_block context label func in
-             Hashtbl.add entry_points n block;
-             (* TODO: clean up *)
-             let rec mk_p m = 
-               if m = 0 then [] 
-               else 
-                 (build_dummy (Llvm.i64_type context) "dummy" builder) ::
-                 (mk_p (m-1)) in
-             let xp = mk_p (payload_size a) in
-             let xs = attrib_size a in
-             let dummy, zero_init = Bitvector.mk_dummy xs in
-               token_zero_init := zero_init @ !token_zero_init;
-               Hashtbl.add token_names n { payload = xp; attrib = dummy }
-    ) in
-  let all_wires = Compile.wires is in
-    List.iter 
-      (fun w ->
-         add_module w.src w.type_back;
-         add_module w.dst w.type_forward;
-    ) all_wires
-
 type wire_end = { 
   anchor: int; 
   message_type: Type.t
 }
+
 type connection = 
     Dead_End of wire_end
   | Direct of wire_end * (Term.t * Term.t) * wire_end
   | Branch of wire_end * (Term.t * (Term.t * (Term.var * Term.t * wire_end) * (Term.var * Term.t * wire_end)))
+
+let mkFstWs t = 
+  match t.Term.desc with
+    | PairW(t1, t2) -> t1
+    | _ -> mkFstW t
+
+let mkSndWs t = 
+  match t.Term.desc with
+    | PairW(t1, t2) -> t2
+    | _ -> mkSndW t
 
 let trace (output : wire) (is : instruction list) : connection list =
   let unTensorW a =
@@ -715,7 +635,7 @@ let trace (output : wire) (is : instruction list) : connection list =
                                       (v', mkVar v', {anchor = w2.dst; message_type = w2.type_forward}))))
             end
         | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w1.src ->
-            trace src w2.dst (sigma, mkSndW v)
+            trace src w2.dst (sigma, mkSndWs v)
         | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w2.src ->
             trace src w1.dst (sigma, (mkPairW (let_tupleW sigma f) v))
         | Door(w1 (* X *), w2 (* \Tens A X *)) when dst = w1.src ->
@@ -723,17 +643,17 @@ let trace (output : wire) (is : instruction list) : connection list =
               match sigma.Term.desc with
                 | PairW(sigma', c) -> trace src w2.dst (sigma', mkPairW c v)
                 | _ -> 
-                    let sigma' = mkFstW sigma in
-                    let c = mkSndW sigma in
-                    trace src w2.dst (sigma', mkPairW c  v) 
+                    let sigma' = mkFstWs sigma in
+                    let c = mkSndWs sigma in
+                    trace src w2.dst (sigma', mkPairW c v) 
             end
         | Door(w1 (* X *), w2 (* \Tens A X *)) when dst = w2.src ->
             begin
               match v.Term.desc with
                 | PairW(c, v') -> trace src w1.dst (mkPairW sigma c, v')
                 | _ -> 
-                    trace src w1.dst (mkPairW sigma (mkFstW v),
-                                      mkSndW v)
+                    trace src w1.dst (mkPairW sigma (mkFstWs v),
+                                      mkSndWs v)
             end
         | ADoor(w1 (* \Tens (A x B) X *), w2 (* \Tens B X *)) when dst = w1.src ->
             begin
@@ -741,9 +661,9 @@ let trace (output : wire) (is : instruction list) : connection list =
                 | PairW({ desc = PairW(d, c) }, v') -> 
                     trace src w2.dst (mkPairW sigma d, mkPairW c v')
                 | _ -> 
-                    let d = mkFstW (mkFstW v) in
-                    let c = mkSndW (mkFstW v) in
-                    let v' = mkSndW v in
+                    let d = mkFstWs (mkFstWs v) in
+                    let c = mkSndWs (mkFstWs v) in
+                    let v' = mkSndWs v in
                       trace src w2.dst (mkPairW sigma d, mkPairW c v')
             end
         | ADoor(w1 (* \Tens (A x B) X *), w2 (* \Tens B X *)) when dst = w2.src ->
@@ -752,10 +672,10 @@ let trace (output : wire) (is : instruction list) : connection list =
                 | PairW(sigma', d), PairW(c, v') -> 
                     trace src w1.dst (sigma', mkPairW (mkPairW d c) v')
                 | _ -> 
-                    let sigma' = mkFstW sigma in
-                    let d = mkSndW sigma in
-                    let c = mkFstW v in
-                    let v' = mkSndW v in
+                    let sigma' = mkFstWs sigma in
+                    let d = mkSndWs sigma in
+                    let c = mkFstWs v in
+                    let v' = mkSndWs v in
                       trace src w1.dst (sigma', mkPairW (mkPairW d c) v')
             end
         | LWeak(w1 (* \Tens A X *), 
@@ -769,8 +689,8 @@ let trace (output : wire) (is : instruction list) : connection list =
                   | PairW(c, v') -> 
                       trace src w2.dst (sigma, mkPairW (mkAppW (project b a) c) v')
                   | _ -> 
-                      let c = mkFstW v in
-                      let v' = mkSndW v in
+                      let c = mkFstWs v in
+                      let v' = mkSndWs v in
                         trace src w2.dst (sigma, mkPairW (mkAppW (project b a) c) v')
               end
         | LWeak(w1 (* \Tens A X *), 
@@ -784,8 +704,8 @@ let trace (output : wire) (is : instruction list) : connection list =
                   | PairW(c, v') -> 
                       trace src w1.dst (sigma, mkPairW (mkAppW (embed b a) c) v')
                   | _ -> 
-                      let c = mkFstW v in
-                      let v' = mkSndW v in
+                      let c = mkFstWs v in
+                      let v' = mkSndWs v in
                         trace src w1.dst (sigma, mkPairW (mkAppW (embed b a) c) v')
               end
         | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w3.src ->
@@ -796,13 +716,13 @@ let trace (output : wire) (is : instruction list) : connection list =
             trace src w2.dst (sigma, mkPairW v mkUnitW)
         | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w2.src ->
             (* <sigma, <v,w>> @ w2  |-->  <sigma, w> @ w3 *)
-            trace src w3.dst (sigma, mkSndW v)
+            trace src w3.dst (sigma, mkSndWs v)
         | Contr(w1, w2, w3) when dst = w2.src -> 
             (*  <sigma, <v,w>> @ w2         |-->  <sigma, <inl(v),w>> @ w1 *) 
-            trace src w1.dst (sigma, mkPairW (mkInlW (mkFstW v)) (mkSndW v))
+            trace src w1.dst (sigma, mkPairW (mkInlW (mkFstWs v)) (mkSndWs v))
         | Contr(w1, w2, w3) when dst = w3.src -> 
             (* <sigma, <v,w>> @ w3         |-->  <sigma, <inr(v),w>> @ w1 *)
-            trace src w1.dst (sigma, mkPairW (mkInrW (mkFstW v)) (mkSndW v))
+            trace src w1.dst (sigma, mkPairW (mkInrW (mkFstWs v)) (mkSndWs v))
         | Contr(w1, w2, w3) when dst = w1.src -> 
             (*   <sigma, <inl(v), w>> @ w1   |-->  <sigma, <v,w>> @ w2
              <sigma, <inr(v), w>> @ w1   |-->  <sigma, <v,w>> @ w3 *)
@@ -811,8 +731,8 @@ let trace (output : wire) (is : instruction list) : connection list =
                 | PairW({ desc = InW(2, 0, c) }, v') -> trace src w2.dst (sigma, mkPairW c v')
                 | PairW({ desc = InW(2, 1, d) }, v') -> trace src w3.dst (sigma, mkPairW d v')
                 | _ ->
-                    let v1 = mkFstW v in
-                    let v2 = mkSndW v in
+                    let v1 = mkFstWs v in
+                    let v2 = mkSndWs v in
                     let v' = Term.variant_var_avoid "v'" (Term.free_vars v2) in
 (*                      assert (Type.equals src.message_type w1.type_back); *)
                       Branch(src, 
@@ -843,7 +763,7 @@ let trace (output : wire) (is : instruction list) : connection list =
   in
     trace_all {anchor = output.src; message_type = output.type_back}
 
-let build_connections (the_module : Llvm.llmodule) func (connections : connection list) : unit =
+let build_connections (the_module : Llvm.llmodule) func (connections : connection list) (entry:int) (exit:int) : unit =
   let blocks = Hashtbl.create 10 in
   let phi_nodes = Hashtbl.create 10 in    
   let get_block anchor =
@@ -874,8 +794,9 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
       end
       (* add new phi node with (encoded_value, source) to block dst *)
   in
-    Llvm.position_at_end (get_block 1228) builder;
-    connect_to (get_block 1228) { payload = []; attrib = Bitvector.null 0 } (*TODO*) 1228;
+    (* make entry block *)
+    Llvm.position_at_end (get_block entry) builder;
+    connect_to (get_block entry) { payload = []; attrib = Bitvector.null 0 } entry;
     (* build unconnected blocks *)
     List.iter (fun c ->
                  match c with
@@ -887,6 +808,9 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
                          connect_to (get_block src.anchor) senc src.anchor
                    | Direct(src, (sigma, t) , dst) ->
                        Printf.printf "%i --> %i\n" src.anchor dst.anchor;
+                       Printf.printf "%s\n--\n%s\n===\n\n"
+                         (Printing.string_of_termW sigma)
+                         (Printing.string_of_termW t); 
                        flush stdout;
                        Llvm.position_at_end (get_block src.anchor) builder;
                        let senc = Hashtbl.find phi_nodes src.anchor in
@@ -904,354 +828,34 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
                                                      mkCaseW s 
                                                        [(xl, mkInlW (mkPairW sigma tl)) ;
                                                         (xr, mkInrW (mkPairW sigma tr)) ]) in
+                       Printf.printf "%s\n--\n%s\n===\n\n"
+                         (Printing.string_of_termW sigma)
+                         (Printing.string_of_termW t); 
                          let src_block = get_block src.anchor in
                            Llvm.position_at_end src_block builder;
                            let senc = Hashtbl.find phi_nodes src.anchor in
                            let tenc = build_term the_module [("z", senc)] [("z", src.message_type)] t 
                                         (Type.newty (Type.SumW[dst1.message_type; dst2.message_type])) in
                            let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - 1) tenc.attrib in
-                           let denc12 = { payload = tenc.payload; attrib = da }in
+                           let denc12 = { payload = tenc.payload; attrib = da } in
                            let denc1 = build_truncate_extend denc12 dst1.message_type in
                            let denc2 = build_truncate_extend denc12 dst2.message_type in
                            let cond' = Bitvector.extractvalue cond 0 in
                            let src_block = Llvm.insertion_block builder in
-                             ignore (Llvm.build_cond_br cond' (get_block dst1.anchor) 
-                                       (get_block dst2.anchor) builder);
+                             ignore (Llvm.build_cond_br cond' (get_block dst2.anchor) 
+                                       (get_block dst1.anchor) builder);
                              connect_to src_block denc1 dst1.anchor;
                              connect_to src_block denc2 dst2.anchor
                        end)                         
-      connections (*;
-    (* connect blocks *)
-    let connect_llvm newenc dst =
-      ()
-      (*
-      let oldenc = Hashtbl.find token_names dst in
-        (*      Printf.printf "%i %i -> %i\n" oldenc.attrib_bitlen newenc.attrib_bitlen dst; *)
-        assert ((Bitvector.length oldenc.attrib) = (Bitvector.length newenc.attrib));
-        assert (List.length oldenc.payload = (List.length newenc.payload));
-        List.iter (fun (o, n) -> Llvm.replace_all_uses_with o n) 
-          ((List.combine oldenc.payload newenc.payload) @
-           (Bitvector.llvalue_replacement oldenc.attrib newenc.attrib)) 
-       *)
-    in
-    Hashtbl.iter (fun dst sources ->
-                    match sources with
-                      | [] -> ()
-                      | [(ev, src)] ->
-                          connect_llvm ev dst
-                      | _ -> 
-                          let dstblock = Hashtbl.find entry_points dst in
-                            position_at_start dstblock builder;
-                              (* Payloads need to be transposed:
-                               * [[x1,src1; x2,src1];[x1,src2; x2,src2];[x1,srcr3; x2,srcr3]] 
-                               * ->
-                               * [[x1,src1; x1,src2; x1,src3];[x2,src1; x2,src2; x3,src3]] *)
-                            let payloads = List.map (fun (ev, src_block) ->
-                                                       List.map (fun v -> (v, src_block)) 
-                                                         ev.payload) 
-                                             sources in
-                            let attribs = List.map (fun (ev, src_block) -> (ev.attrib, src_block))
-                                             sources in
-                              (* [[1;2;3];[4;5;6];[7;8;9]] ->
-                               * [[1;4;7];[2;5;8];[3;6;9]] *)
-                            let rec transpose l =
-                              let rec split_list heads tails l =
-                                match l with
-                                  | [] -> List.rev heads, List.rev tails
-                                  | [] :: _ -> assert false
-                                  | (h :: t) :: l' -> split_list (h :: heads) (t :: tails) l' 
-                              in
-                                match l with
-                                  | [] | [] :: _ -> []
-                                  | _ -> 
-                                      let heads, tails = split_list [] [] l in
-                                        heads :: transpose tails in
-                            let newp = List.map (fun srcs -> Llvm.build_phi srcs "x" builder) (transpose payloads) in
-                            let newa = Bitvector.build_phi attribs builder in
-                              connect_llvm {payload = newp; attrib = newa } dst)
-      sources_table *)
+      connections;
+    (* make return *)
+    Llvm.position_at_end (get_block exit) builder;
+    ignore (Llvm.build_ret_void builder)
 
-let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
-  let unTensorW a =
-    match Type.finddesc a with
-      | Type.TensorW(a1, a2) -> a1, a2
-      | _ -> assert false in
-  let build_br dst = 
-    let dst_block = Hashtbl.find entry_points dst in
-      Llvm.build_br dst_block builder in    
-  let build_cond_br cond tdst fdst= 
-    let tdst_block = Hashtbl.find entry_points tdst in
-    let fdst_block = Hashtbl.find entry_points fdst in
-      Llvm.build_cond_br cond tdst_block fdst_block builder in
-    (* w1 and w2 are attached with src to same node. Message arrives on w1,
-     * is passed to w2 *)
-  let connect1 newenc dst =
-    let oldenc = Hashtbl.find token_names dst in
-(*      Printf.printf "%i %i -> %i\n" oldenc.attrib_bitlen newenc.attrib_bitlen dst; *)
-      assert ((Bitvector.length oldenc.attrib) = (Bitvector.length newenc.attrib));
-      assert (List.length oldenc.payload = (List.length newenc.payload));
-      Hashtbl.replace token_names dst newenc; 
-      List.iter (fun (o, n) -> replace_in_token_names o n) 
-        ((List.combine oldenc.payload newenc.payload) @
-         (Bitvector.llvalue_replacement oldenc.attrib newenc.attrib));
-      List.iter (fun (o, n) -> Llvm.replace_all_uses_with o n) 
-        ((List.combine oldenc.payload newenc.payload) @
-         (Bitvector.llvalue_replacement oldenc.attrib newenc.attrib)) in
-  let connect2 block1 new1enc block2 new2enc dst =
-    assert ((Bitvector.length new1enc.attrib) = (Bitvector.length new2enc.attrib));
-    let dstblock = Hashtbl.find entry_points dst in
-      position_at_start dstblock builder;
-    let newp =
-      List.map 
-        (fun (n1, n2) -> Llvm.build_phi [(n1, block1); (n2, block2)] "xp" builder)
-        (List.combine new1enc.payload new2enc.payload) in
-    let newa = Bitvector.build_phi [(new1enc.attrib, block1); (new2enc.attrib, block2)] builder in
-      connect1 {payload = newp; attrib = newa } dst in
-  let build_jump_argument w1 (x, t) w2 =
-    let src_block = Hashtbl.find entry_points w1.src in
-      Llvm.position_at_end src_block builder;
-      let senc = Hashtbl.find token_names w1.src in
-      build_term the_module [(x, senc)] [(x, w1.type_back)] t w2.type_forward in
-  (* build actual jump with argument *)
-  let build_jwa w1 (x, t) w2 =
-    let denc = build_jump_argument w1 (x, t) w2 in
-      ignore (build_br w2.dst);
-      connect1 denc w2.dst
-  in
-(*  let node_name ins =
-        match ins with
-          | Axiom(w1, _) -> 
-              Printf.sprintf "\"Axiom({%i,%i})\"" w1.src w1.dst
-          | Tensor(w1, w2, w3) -> 
-              Printf.sprintf "\"Tensor({%i,%i},{%i,%i},{%i,%i})\"" 
-                w1.src w1.dst w2.src w2.dst w3.src w3.dst
-          | Der(w1, w2, _) -> 
-              Printf.sprintf "\"Der({%i,%i},{%i,%i})\"" 
-                w1.src w1.dst w2.src w2.dst 
-          | Contr(w1, w2, w3) -> 
-              Printf.sprintf "\"Contr({%i,%i},{%i,%i},{%i,%i})\"" 
-                w1.src w1.dst w2.src w2.dst w3.src w3.dst
-          | Door(w1, w2) -> 
-              Printf.sprintf "\"Door({%i,%i},{%i,%i})\"" 
-                w1.src w1.dst w2.src w2.dst
-          | ADoor(w1, w2) -> 
-              Printf.sprintf "\"ADoor({%i,%i},{%i,%i})\"" 
-                w1.src w1.dst w2.src w2.dst
-          | LWeak(w1, w2) -> 
-              Printf.sprintf "\"LWeak({%i,%i},{%i,%i})\"" 
-                w1.src w1.dst w2.src w2.dst
-          | Epsilon(w1, w2, w3) -> 
-              Printf.sprintf "\"Epsilon({%i,%i},{%i,%i},{%i,%i})\"" 
-                w1.src w1.dst w2.src w2.dst w3.src w3.dst
-  in *)
-  match i with
-   | Axiom(w1 (* [f] *), f) ->
-       begin
-         let x, sigma, v = "x", "sigma", "v" in
-         let t = mkLetW (mkVar x) 
-                   ((sigma, v), (mkPairW (mkVar sigma) 
-                                   (mkAppW (let_tupleW (mkVar sigma) f) (mkVar v)))) in
-           build_jwa w1 (x, t) w1
-       end 
-   | Tensor(w1, w2, w3) -> 
-       let x, sigma, v = "x", "sigma", "v" in
-       (* <sigma, v> @ w1       |-->  <sigma, inl(v)> @ w3 *)
-       let src1 = Hashtbl.find entry_points w1.src in
-       let denc1 =
-         let t = mkLetW (mkVar x) 
-                   ((sigma, v), (mkPairW (mkVar sigma) (mkInlW (mkVar v)))) in
-            build_jump_argument w1 (x, t) w3 in
-       (* <sigma, v> @ w2       |-->  <sigma, inr(v)> @ w3 *)
-       let src2 = Hashtbl.find entry_points w2.src in
-       let denc2 =
-         let t = mkLetW (mkVar x) 
-                   ((sigma, v), (mkPairW (mkVar sigma) (mkInrW (mkVar v)))) in
-            build_jump_argument w2 (x, t) w3 in
-       (* insert phi *)         
-       connect2 src1 denc1 src2 denc2 w3.dst;
-       Llvm.position_at_end src1 builder;
-       ignore (build_br w3.dst);
-       Llvm.position_at_end src2 builder;
-       ignore (build_br w3.dst);
-       (* <sigma, inl(v)> @ w3  |-->  <sigma, v> @ w1
-          <sigma, inr(v)> @ w3  |-->  <sigma, v> @ w2 *)        
-       begin
-         let x, sigma, v, c = "x", "sigma", "v", "c" in
-         let t = mkLetW (mkVar x) 
-                   ((sigma, c), mkCaseW (mkVar c) 
-                         [(v, mkInlW (mkPairW (mkVar sigma) (mkVar v))) ;
-                          (v, mkInrW (mkPairW (mkVar sigma) (mkVar v))) ]) in
-         let src3_block = Hashtbl.find entry_points w3.src in
-           Llvm.position_at_end src3_block builder;
-           let senc = Hashtbl.find token_names w3.src in
-           let tenc = build_term the_module [(x, senc)] [(x, w3.type_back)] t 
-                        (Type.newty (Type.SumW[w1.type_forward; w2.type_forward])) in
-           let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - 1) tenc.attrib in
-           let denc12= { payload = tenc.payload; attrib = da }in
-           let denc1 = build_truncate_extend denc12 w1.type_forward in
-           let denc2 = build_truncate_extend denc12 w2.type_forward in
-           let cond' = Bitvector.extractvalue cond 0 in
-             connect1 denc1 w1.dst;
-             connect1 denc2 w2.dst;
-             ignore (build_cond_br cond' w2.dst w1.dst);
-       end
-   | Der(w1 (* \Tens A X *), w2 (* X *), f) ->
-       let x, sigma, v, c = "x", "sigma", "v", "c" in
-       begin
-         let t = mkLetW (mkVar x) 
-                   ((sigma, x), mkLetW (mkVar x) 
-                                  ((c, v), (mkPairW (mkVar sigma) (mkVar v)))) in
-           build_jwa w1 (x, t) w2
-       end;
-       begin
-         let t = mkLetW (mkVar x) 
-                   ((sigma, v), (mkPairW (mkVar sigma) 
-                                   (mkPairW (let_tupleW (mkVar sigma) f) (mkVar v)))) in
-           build_jwa w2 (x, t) w1
-       end 
-   | Door(w1 (* X *), w2 (* \Tens A X *)) ->
-       let x, sigma, v, c = "x", "sigma", "v", "c" in
-       begin
-         let t = mkLetW (mkVar x) 
-                   ((x, v), mkLetW (mkVar x) 
-                              ((sigma, c), (mkPairW (mkVar sigma) (mkPairW (mkVar c) (mkVar v))))) in
-           build_jwa w1 (x, t) w2
-       end;
-       begin
-         let t = mkLetW (mkVar x) 
-                   ((sigma, x), mkLetW (mkVar x) 
-                                  ((c, v), (mkPairW (mkPairW (mkVar sigma) (mkVar c)) (mkVar v)))) in
-           build_jwa w2 (x, t) w1
-       end
-    | ADoor(w1 (* \Tens (A x B) X *), w2 (* \Tens B X *)) ->
-       let x, sigma, v, c, d, y = "x", "sigma", "v", "c", "d", "y" in
-        begin
-          let t = mkLetW (mkVar x) 
-                    ((sigma, x), mkLetW (mkVar x) 
-                                   ((x, v), mkLetW (mkVar x) 
-                                              ((d, c), (mkPairW (mkPairW (mkVar sigma) (mkVar d)) 
-                                                          (mkPairW (mkVar c) (mkVar v)))))) in
-            build_jwa w1 (x, t) w2
-        end;
-        begin
-          let t = mkLetW (mkVar x) 
-                    ((x, y), mkLetW (mkVar x) 
-                               ((sigma, d), mkLetW (mkVar y) 
-                                              ((c, v), (mkPairW (mkVar sigma) 
-                                                          (mkPairW (mkPairW (mkVar d) (mkVar c)) (mkVar v)))))) in
-            build_jwa w2 (x, t) w1
-        end
-    | LWeak(w1 (* \Tens A X *), 
-            w2 (* \Tens B X *)) (* B <= A *) ->
-       let x, sigma, v, y, c = "x", "sigma", "v", "y", "c" in
-       begin
-         let _, a_token = unTensorW w1.type_back in
-         let a, _ = unTensorW a_token in
-         let _, b_token = unTensorW w2.type_forward in
-         let b, _ = unTensorW b_token in
-         let t = mkLetW (mkVar x) 
-                   ((sigma, y), mkLetW (mkVar y) 
-                                  ((c, v), (mkPairW (mkVar sigma) 
-                                              (mkPairW (mkAppW (project b a) (mkVar c)) 
-                                                 (mkVar v))))) in
-            build_jwa w1 (x, t) w2
-       end;
-       begin
-         let _, a_token = unTensorW w1.type_forward in
-         let a, _ = unTensorW a_token in
-         let _, b_token = unTensorW w2.type_back in
-         let b, _ = unTensorW b_token in
-         let t = mkLetW (mkVar x) 
-                   ((sigma, y), mkLetW (mkVar y) 
-                                  ((c, v), (mkPairW (mkVar sigma) 
-                                              (mkPairW (mkAppW (embed b a) (mkVar c)) 
-                                                 (mkVar v))))) in
-            build_jwa w2 (x, t) w1
-       end
-   | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) ->
-       let x, sigma, v, c = "x", "sigma", "v", "c" in
-       (*   <sigma, *> @ w3      |-->  <sigma, *> @ w1 *)
-       begin
-         let t = mkLetW (mkVar x) 
-                   ((sigma, v), (mkPairW (mkVar sigma) mkUnitW)) in
-           build_jwa w3 (x, t) w1
-       end;
-       (* <sigma, v> @ w1      |-->  <sigma, <v,*>> @ w2 *)
-       begin
-         let t = mkLetW (mkVar x) ((sigma, v),
-                    (mkPairW (mkVar sigma) (mkPairW (mkVar v) mkUnitW))) in
-            build_jwa w1 (x, t) w2
-       end;
-       (* <sigma, <v,w>> @ w2  |-->  <sigma, w> @ w3 *)
-       begin
-         let t = mkLetW (mkVar x) 
-                   ((sigma, x), mkLetW (mkVar x) 
-                                  ((c, v), (mkPairW (mkVar sigma) (mkVar v)))) in
-            build_jwa w2 (x, t) w3
-       end
-   | Contr(w1, w2, w3) -> 
-       (*  <sigma, <v,w>> @ w2         |-->  <sigma, <inl(v),w>> @ w1 *) 
-       let x, sigma, v, y, c, d = "x", "sigma", "v", "y", "c", "d" in
-       let src2 = Hashtbl.find entry_points w2.src in
-       let denc2 =
-         let t = mkLetW (mkVar x) 
-                   ((sigma, v), mkLetW (mkVar v) 
-                                  ((d, y), (mkPairW (mkVar sigma) 
-                                              (mkPairW (mkInlW (mkVar d)) (mkVar y))))) in
-            build_jump_argument w2 (x, t) w1 in
-       (* <sigma, <v,w>> @ w3         |-->  <sigma, <inr(v),w>> @ w1 *)
-       let src3 = Hashtbl.find entry_points w3.src in
-       let denc3 =
-         let t = mkLetW (mkVar x) 
-                   ((sigma, v), mkLetW (mkVar v) 
-                                  ((d, y), (mkPairW (mkVar sigma) 
-                                              (mkPairW (mkInrW (mkVar d)) (mkVar y))))) in
-            build_jump_argument w3 (x, t) w1 in
-       connect2 src2 denc2 src3 denc3 w1.dst;
-       Llvm.position_at_end src2 builder;
-       ignore (build_br w1.dst);
-       Llvm.position_at_end src3 builder;
-       ignore (build_br w1.dst);
-
-       (*   <sigma, <inl(v), w>> @ w1   |-->  <sigma, <v,w>> @ w2
-            <sigma, <inr(v), w>> @ w1   |-->  <sigma, <v,w>> @ w3 *)
-       begin
-         let t = mkLetW (mkVar x) 
-                   ((sigma, v), mkLetW (mkVar v) 
-                                  ((c, v), mkCaseW (mkVar c) 
-                         [(c, mkInlW (mkPairW (mkVar sigma) (mkPairW (mkVar c) (mkVar v)))) ;
-                          (d, mkInrW (mkPairW (mkVar sigma) (mkPairW (mkVar d) (mkVar v)))) ])) in
-         let src1_block = Hashtbl.find entry_points w1.src in
-           Llvm.position_at_end src1_block builder;
-           let senc = Hashtbl.find token_names w1.src in
-           let tenc = build_term the_module [(x, senc)] [(x, w1.type_back)] t 
-                        (Type.newty (Type.SumW[w2.type_forward; w3.type_forward])) in
-           let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - 1) tenc.attrib in
-           let denc23 = { payload = tenc.payload; attrib = da }in
-           let denc2 = build_truncate_extend denc23 w2.type_forward in
-           let denc3 = build_truncate_extend denc23 w3.type_forward in
-           let cond' = Bitvector.extractvalue cond 0 in
-             connect1 denc2 w2.dst;
-             connect1 denc3 w3.dst;
-             ignore (build_cond_br cond' w3.dst w2.dst)
-       end         
 
 let build_body (the_module : Llvm.llmodule) func (c : circuit) =
   let connections = trace c.output c.instructions in 
-    build_connections the_module func connections
-(*  List.iter (build_instruction the_module) c.instructions;*)
-  (* empty blocks become self-loops: *)
-(*  Hashtbl.iter 
-    (fun n block ->
-       match Llvm.instr_begin block with
-         | Llvm.At_end(_) -> 
-             Llvm.position_at_end block builder;
-             ignore (Llvm.build_br block builder)
-         | _ -> ()
-  ) entry_points;
-  (* replace unreachable tokens by zero *)
-  List.iter (fun (t, z) -> Llvm.replace_all_uses_with t z) !token_zero_init
- *)
+    build_connections the_module func connections c.output.src c.output.dst
 
 (* Must be applied to circuit of type [A] *)    
 let llvm_circuit (c : Compile.circuit) = 
@@ -1259,20 +863,5 @@ let llvm_circuit (c : Compile.circuit) =
   let void = Llvm.void_type context in
   let ft = Llvm.function_type void (Array.make 0 void) in
   let f = Llvm.declare_function "main" ft the_module in
-(*  let entry = Llvm.append_block context "entry" f in*)
-(*  let dummy = Llvm.append_block context "dummy" f in 
-    Llvm.position_at_end dummy builder;  *)
-(*    let c = {c with instructions = reduce c.instructions} in *)
-(*    allocate_tables c.instructions;*)
-    (* Entry module *)
-(*    Llvm.position_at_end entry builder; *)
-(*    ignore (Llvm.build_br (Hashtbl.find entry_points c.output.src) builder);
- *    *)
-    (* Exit module *)
-(*    Llvm.position_at_end (Hashtbl.find entry_points c.output.dst) builder;
-    ignore (Llvm.build_ret_void builder);*)
-    (* body *)
     build_body the_module f c;
-(*    Llvm.delete_block dummy; *)
-(*    Llvm.dump_module the_module; *)
     the_module
