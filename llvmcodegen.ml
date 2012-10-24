@@ -594,6 +594,10 @@ let mkSndWs t =
     | _ -> mkSndW t
 
 let trace (output : wire) (is : instruction list) : connection list =
+  (* Supply of fresh variable names. 
+   * (The instructions do not contain a free variable starting with "x")
+   *)
+  let fresh_var = Vargen.mkVarGenerator "x" ~avoid:[] in
   let unTensorW a =
     match Type.finddesc a with
       | Type.TensorW(a1, a2) -> a1, a2
@@ -611,18 +615,26 @@ let trace (output : wire) (is : instruction list) : connection list =
       match t.Term.desc with
         | PairW(x, y) -> (x, y), lets
         | _ -> 
-            let boundvars = List.fold_right (fun (_, (x,y)) bvs -> x::y::bvs) lets [] in
-            let vars = Term.free_vars sigma @ (Term.free_vars v) @ boundvars in
-            let x = Term.variant_var_avoid "x" vars in
-            let y = Term.variant_var_avoid "y" vars in
+            let x = fresh_var () in
+            let y = fresh_var () in
               (mkVar x, mkVar y), (t, (x, y)) :: lets in
+    let rec make_bindings t (vars, f) =
+      match vars with 
+        | [] -> [], mkUnitW, f
+        | x :: rest ->
+            let th = fresh_var () in
+            let tr = fresh_var () in
+            let f' = Term.rename_vars (fun u -> if u = x then tr else u) f in
+            let lets, t', f'' = make_bindings (mkVar th) (rest, f') in
+              lets @ [(t, (th, tr))], mkPairW t' (mkVar tr), f'' in
     try
       match IntMap.find dst node_map_by_src with
         | Axiom(w1 (* [f] *), f) when dst = w1.src ->
-(*            assert (Type.equals src.message_type w1.type_back); *)
-            Direct(src, lets, 
-                   (sigma, mkAppW (let_tupleW sigma f) v), 
-                    {anchor = w1.dst; message_type = w1.type_forward})
+            let newlets, sigma', f' = make_bindings sigma f in
+            trace src w1.dst (newlets @ lets) (sigma', mkAppW f' v)
+(*            Direct(src, newlets @ lets, 
+                   (sigma', mkAppW f' v), 
+                    {anchor = w1.dst; message_type = w1.type_forward})*)
         | Tensor(w1, w2, w3) when dst = w1.src -> 
             (* <sigma, v> @ w1       |-->  <sigma, inl(v)> @ w3 *)
             trace src w3.dst lets (sigma, mkInlW v)
@@ -647,7 +659,8 @@ let trace (output : wire) (is : instruction list) : connection list =
         | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w1.src ->
             trace src w2.dst lets (sigma, mkSndWs v)
         | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w2.src ->
-            trace src w1.dst lets (sigma, (mkPairW (let_tupleW sigma f) v))
+            let newlets, sigma', f' = make_bindings sigma f in
+            trace src w1.dst (newlets @ lets) (sigma', mkPairW f' v)
         | Door(w1 (* X *), w2 (* \Tens A X *)) when dst = w1.src ->
             let (sigma', c), lets' = unpair sigma lets in
               trace src w2.dst lets' (sigma', mkPairW c v)
