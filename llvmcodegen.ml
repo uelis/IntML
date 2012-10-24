@@ -561,10 +561,12 @@ let rec isValue (t: Term.t) : bool =
 
 let rec reduce (t : Term.t) : Term.t =
     match t.Term.desc with
-      | Var(_) | ConstW(_) | UnitW | LoopW(_) | FoldW(_) | UnfoldW(_) | LambdaW(_) -> t
+      | Var(_) | ConstW(_) | UnitW | LoopW(_) | FoldW(_) |  LambdaW(_) -> t
       | TypeAnnot(t, a) ->
           mkTypeAnnot (reduce t) a
       | InW(i, j, t) -> mkInW i j (reduce t)
+      | UnfoldW(_, {desc = FoldW(_, t)}) -> reduce t
+      | UnfoldW(_) -> t
       | PairW(t1, t2) ->
           mkPairW (reduce t1) (reduce t2)
       | LetW(t1, (x, y, t2)) ->
@@ -577,7 +579,7 @@ let rec reduce (t : Term.t) : Term.t =
                     let y' = fresh_var () in
                     let t' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) t2 in
                       reduce (Term.subst s1 x' (Term.subst s2 y' t'))
-                | _ -> mkLetW rt1 ((x, y), t2)
+                | _ -> mkLetW rt1 ((x, y), reduce t2)
             end
       | CaseW(s, [(u, su); (v, sv)]) ->
           let rs = reduce s in
@@ -843,7 +845,7 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
                        Printf.printf "%i --> %i\n" src.anchor dst.anchor;
                        Printf.printf "%s\n--\n%s\n===\n\n"
                          (Printing.string_of_termW sigma)
-                         (Printing.string_of_termW t); 
+                         (Printing.string_of_termW (reduce t)); 
                        flush stdout;
                        Llvm.position_at_end (get_block src.anchor) builder;
                        let senc = Hashtbl.find phi_nodes src.anchor in
@@ -863,7 +865,7 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
                                                         (xr, mkInrW (mkPairW sigma tr)) ])) in
                        Printf.printf "%s\n--\n%s\n===\n\n"
                          (Printing.string_of_termW sigma)
-                         (Printing.string_of_termW t); 
+                         (Printing.string_of_termW (reduce t)); 
                          let src_block = get_block src.anchor in
                            Llvm.position_at_end src_block builder;
                            let senc = Hashtbl.find phi_nodes src.anchor in
