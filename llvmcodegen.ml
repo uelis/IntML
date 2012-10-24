@@ -668,7 +668,7 @@ type wire_end = {
   message_type: Type.t
 }
 type connection = 
-    Unconnected
+    Dead_End of wire_end
   | Direct of wire_end * (Term.t * Term.t) * wire_end
   | Branch of wire_end * (Term.t * (Term.t * (Term.var * Term.t * wire_end) * (Term.var * Term.t * wire_end)))
 
@@ -825,7 +825,7 @@ let trace (output : wire) (is : instruction list) : connection list =
       if dst = output.dst then
         Direct(src, (sigma, v), {anchor = dst; message_type = output.type_forward}) 
       else 
-        Unconnected
+        Dead_End(src)
   in
   let sigma, x = "sigma", "x" in
   let entry_points = Hashtbl.create 10 in
@@ -834,7 +834,7 @@ let trace (output : wire) (is : instruction list) : connection list =
       let c = trace src src.anchor (mkVar sigma, mkVar x) in
         Hashtbl.add entry_points src.anchor ();
         match c with
-          | Unconnected -> []
+          | Dead_End(_) -> [c]
           | Direct(_, _, dst) ->
               c :: (if dst.anchor = output.dst then [] else trace_all dst)
           | Branch(_, (_, (_, (_, _, dst1), (_, _, dst2)))) ->
@@ -879,7 +879,11 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
     (* build unconnected blocks *)
     List.iter (fun c ->
                  match c with
-                   | Unconnected -> ()
+                   | Dead_End(src) -> 
+                       Llvm.position_at_end (get_block src.anchor) builder;
+                       let senc = Hashtbl.find phi_nodes src.anchor in
+                       ignore (Llvm.build_br (get_block src.anchor) builder);
+                         connect_to (get_block src.anchor) senc src.anchor
                    | Direct(src, (sigma, t) , dst) ->
                        Printf.printf "%i --> %i\n" src.anchor dst.anchor;
                        flush stdout;
@@ -890,7 +894,7 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
                                   [("z", senc)] [("z", src.message_type)] t dst.message_type in
                        let src_block = Llvm.insertion_block builder in
                          ignore (Llvm.build_br (get_block dst.anchor) builder);
-                         connect_to src_block ev dst.anchor;
+                         connect_to src_block ev dst.anchor
                    | Branch(src, (sigma, (s, (xl, tl, dst1), (xr, tr, dst2)))) ->
                        Printf.printf "%i --> %i | %i\n" src.anchor dst1.anchor dst2.anchor;
                        flush stdout;
