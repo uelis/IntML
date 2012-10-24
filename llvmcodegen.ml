@@ -551,12 +551,15 @@ let rec isValue (t: Term.t) : bool =
   match t.Term.desc with
     | Var(_) -> true
     | UnitW -> true
-    | ConstW(_) -> true
-    | FoldW(_) -> true
+    | ConstW(Cbot) | ConstW(Cprint(_)) | ConstW(Cintprint)-> false
+    | ConstW(Cintconst(_)) | ConstW(Cintadd) | ConstW(Cintsub) | ConstW(Cintmul)
+    | ConstW(Cintdiv) | ConstW(Cinteq) | ConstW(Cintslt) -> true
+    | FoldW(_, t) -> isValue t
     | InW(i, j, s) -> isValue s
     | PairW(t1, t2) -> isValue t1 && (isValue t2)
     | LambdaW(_) -> true
     | AppW(t1, t2) -> isValue t1 && (isValue t2)
+    | CaseW(s, [(u, su); (v, sv)]) -> isValue s && (isValue su) && (isValue sv)
     | _ -> false
 
 let rec reduce (t : Term.t) : Term.t =
