@@ -843,44 +843,65 @@ let trace (output : wire) (is : instruction list) : connection list =
   in
     trace_all {anchor = output.src; message_type = output.type_back}
 
-let build_connections (the_module : Llvm.llmodule) (connections : connection list) : unit =
-  let sources_table = Hashtbl.create 10 in
-  let encode_value src (x, t) dst =
-    let src_block = Hashtbl.find entry_points src.anchor in
-      Llvm.position_at_end src_block builder;
-      let senc = Hashtbl.find token_names src.anchor in
-        build_term the_module [(x, senc)] [(x, src.message_type)] t dst.message_type in
-  let connect src_block encoded_value dst =
-    let srcs = try Hashtbl.find sources_table dst.anchor with Not_found -> [] in
-      Hashtbl.replace sources_table dst.anchor ((encoded_value, src_block) :: srcs) in
-  let build_br dst = 
-    let dst_block = Hashtbl.find entry_points dst in
-      Llvm.build_br dst_block builder in    
-  let build_cond_br cond tdst fdst= 
-    let tdst_block = Hashtbl.find entry_points tdst in
-    let fdst_block = Hashtbl.find entry_points fdst in
-      Llvm.build_cond_br cond tdst_block fdst_block builder 
+let build_connections (the_module : Llvm.llmodule) func (connections : connection list) : unit =
+  let blocks = Hashtbl.create 10 in
+  let phi_nodes = Hashtbl.create 10 in    
+  let get_block anchor =
+    try
+      Hashtbl.find blocks anchor
+    with Not_found ->
+(*      let func = Llvm.block_parent (Llvm.insertion_block builder) in*)
+      let label = Printf.sprintf "L%i" anchor in
+      let block = Llvm.append_block context label func in
+        Hashtbl.add blocks anchor block;
+        block in
+  let connect_to src_block encoded_value dst =
+    try 
+      let phi = Hashtbl.find phi_nodes dst in
+        List.iter 
+          (fun (phix, x) -> Llvm.add_incoming (x, src_block) phix)
+          (List.combine phi.payload encoded_value.payload);
+        Bitvector.add_incoming (encoded_value.attrib, src_block) phi.attrib
+        (* add (encoded_value, source) to phi node *)
+    with Not_found ->
+      (* TODO: Bei Grad 1 braucht man keine Phi-Knoten *)
+      begin
+        position_at_start (get_block dst) builder;
+        let payload = List.map (fun x -> Llvm.build_phi [(x, src_block)] "g" builder) encoded_value.payload in
+        let attrib = Bitvector.build_phi [(encoded_value.attrib, src_block)] builder in
+        let phi = { payload = payload; attrib = attrib } in
+          Hashtbl.add phi_nodes dst phi
+      end
+      (* add new phi node with (encoded_value, source) to block dst *)
   in
+    Llvm.position_at_end (get_block 0) builder;
+    connect_to (get_block 0) { payload = []; attrib = Bitvector.null 0 } (*TODO*) 0;
     (* build unconnected blocks *)
     List.iter (fun c ->
                  match c with
                    | Unconnected -> ()
                    | Direct(src, (sigma, t) , dst) ->
                        Printf.printf "%i --> %i\n" src.anchor dst.anchor;
-                       let ev = encode_value src ("z", mkLetW (mkVar "z") (("sigma", "x"), mkPairW sigma t)) dst in
-                       let current_block = Llvm.insertion_block builder in
-                         connect current_block ev dst;
-                         ignore (build_br dst.anchor)
+                       flush stdout;
+                       Llvm.position_at_end (get_block src.anchor) builder;
+                       let senc = Hashtbl.find phi_nodes src.anchor in
+                       let t = mkLetW (mkVar "z") (("sigma", "x"), mkPairW sigma t) in
+                       let ev = build_term the_module 
+                                  [("z", senc)] [("z", src.message_type)] t dst.message_type in
+                       let src_block = Llvm.insertion_block builder in
+                         ignore (Llvm.build_br (get_block dst.anchor) builder);
+                         connect_to src_block ev dst.anchor;
                    | Branch(src, (sigma, (s, (xl, tl, dst1), (xr, tr, dst2)))) ->
                        Printf.printf "%i --> %i | %i\n" src.anchor dst1.anchor dst2.anchor;
+                       flush stdout;
                        begin
                          let t = mkLetW (mkVar "z") (("sigma", "x"), 
                                                      mkCaseW s 
                                                        [(xl, mkInlW (mkPairW sigma tl)) ;
                                                         (xr, mkInrW (mkPairW sigma tr)) ]) in
-                         let src_block = Hashtbl.find entry_points src.anchor in
+                         let src_block = get_block src.anchor in
                            Llvm.position_at_end src_block builder;
-                           let senc = Hashtbl.find token_names src.anchor in
+                           let senc = Hashtbl.find phi_nodes src.anchor in
                            let tenc = build_term the_module [("z", senc)] [("z", src.message_type)] t 
                                         (Type.newty (Type.SumW[dst1.message_type; dst2.message_type])) in
                            let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - 1) tenc.attrib in
@@ -888,12 +909,13 @@ let build_connections (the_module : Llvm.llmodule) (connections : connection lis
                            let denc1 = build_truncate_extend denc12 dst1.message_type in
                            let denc2 = build_truncate_extend denc12 dst2.message_type in
                            let cond' = Bitvector.extractvalue cond 0 in
-                           let current_block = Llvm.insertion_block builder in
-                             connect current_block denc1 dst1;
-                             connect current_block denc2 dst2;
-                             ignore (build_cond_br cond' dst1.anchor dst2.anchor)
+                           let src_block = Llvm.insertion_block builder in
+                             ignore (Llvm.build_cond_br cond' (get_block dst1.anchor) 
+                                       (get_block dst2.anchor) builder);
+                             connect_to src_block denc1 dst1.anchor;
+                             connect_to src_block denc2 dst2.anchor
                        end)                         
-      connections;
+      connections (*;
     (* connect blocks *)
     let connect_llvm newenc dst =
       ()
@@ -942,7 +964,7 @@ let build_connections (the_module : Llvm.llmodule) (connections : connection lis
                             let newp = List.map (fun srcs -> Llvm.build_phi srcs "x" builder) (transpose payloads) in
                             let newa = Bitvector.build_phi attribs builder in
                               connect_llvm {payload = newp; attrib = newa } dst)
-      sources_table
+      sources_table *)
 
 let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
   let unTensorW a =
@@ -1209,12 +1231,12 @@ let build_instruction (the_module : Llvm.llmodule) (i : instruction) : unit =
              ignore (build_cond_br cond' w3.dst w2.dst)
        end         
 
-let build_body (the_module : Llvm.llmodule) (c : circuit) =
+let build_body (the_module : Llvm.llmodule) func (c : circuit) =
   let connections = trace c.output c.instructions in 
-    build_connections the_module connections;
+    build_connections the_module func connections
 (*  List.iter (build_instruction the_module) c.instructions;*)
   (* empty blocks become self-loops: *)
-  Hashtbl.iter 
+(*  Hashtbl.iter 
     (fun n block ->
        match Llvm.instr_begin block with
          | Llvm.At_end(_) -> 
@@ -1224,7 +1246,7 @@ let build_body (the_module : Llvm.llmodule) (c : circuit) =
   ) entry_points;
   (* replace unreachable tokens by zero *)
   List.iter (fun (t, z) -> Llvm.replace_all_uses_with t z) !token_zero_init
-
+ *)
 
 (* Must be applied to circuit of type [A] *)    
 let llvm_circuit (c : Compile.circuit) = 
@@ -1232,19 +1254,20 @@ let llvm_circuit (c : Compile.circuit) =
   let void = Llvm.void_type context in
   let ft = Llvm.function_type void (Array.make 0 void) in
   let f = Llvm.declare_function "main" ft the_module in
-  let entry = Llvm.append_block context "entry" f in
-  let dummy = Llvm.append_block context "dummy" f in
-    Llvm.position_at_end dummy builder;
+(*  let entry = Llvm.append_block context "entry" f in*)
+(*  let dummy = Llvm.append_block context "dummy" f in 
+    Llvm.position_at_end dummy builder;  *)
 (*    let c = {c with instructions = reduce c.instructions} in *)
-    allocate_tables c.instructions;
+(*    allocate_tables c.instructions;*)
     (* Entry module *)
-    Llvm.position_at_end entry builder;
-    ignore (Llvm.build_br (Hashtbl.find entry_points c.output.src) builder);
+(*    Llvm.position_at_end entry builder; *)
+(*    ignore (Llvm.build_br (Hashtbl.find entry_points c.output.src) builder);
+ *    *)
     (* Exit module *)
-    Llvm.position_at_end (Hashtbl.find entry_points c.output.dst) builder;
-    ignore (Llvm.build_ret_void builder);
+(*    Llvm.position_at_end (Hashtbl.find entry_points c.output.dst) builder;
+    ignore (Llvm.build_ret_void builder);*)
     (* body *)
-    build_body the_module c;
-    Llvm.delete_block dummy; 
-(*    Llvm.dump_module the_module; *)
+    build_body the_module f c;
+(*    Llvm.delete_block dummy; *)
+    Llvm.dump_module the_module; 
     the_module
