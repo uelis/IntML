@@ -73,96 +73,6 @@ struct
     List.iter 
       (fun (yi, xi) -> Llvm.add_incoming (yi, blocky) xi)
       (List.combine y.bits x.bits)
-
-(*
-  type t = { 
-    vector : Llvm.llvalue option;
-    len : int
-  }
-
-  let struct_type len =
-    Llvm.vector_type (Llvm.i1_type context) len
-
-  let length b = b.len
-
-  let undef len = 
-    if len = 0 then 
-      { vector = None; len = 0 }
-    else 
-      { vector = Some (Llvm.undef (struct_type len)); 
-        len = len }
-
-  let null len = 
-    if len = 0 then 
-      { vector = None; len = 0 }
-    else 
-      { vector = Some (Llvm.const_null (struct_type len)); 
-        len = len }
-
-  let values_of_struct s len =
-    Listutil.init len (fun i -> 
-                     Llvm.build_extractelement s (Llvm.const_int (Llvm.i32_type context) i) "i" builder)
-
-      (* bl darf nicht leer sein *)
-  let struct_of_list bl =
-    let len = List.length bl in
-    let s = Llvm.const_null (struct_type len) in
-    let ibl = List.combine (Listutil.init len (fun i -> i)) bl in
-      List.fold_right (fun (i,v) s ->
-                         Llvm.build_insertelement s v (Llvm.const_int (Llvm.i32_type context) i) "x" builder)
-        ibl s
- 
-  let concat b1 b2 = 
-    match b1.vector, b2.vector with
-      | None , _ -> b2
-      | _, None -> b1
-      | Some v1, Some v2 -> 
-          { vector = Some (struct_of_list ((values_of_struct v1 b1.len) @ (values_of_struct v2 b2.len))); 
-            len = b1.len + b2.len }
-
-  let takedrop n b1 =
-    if n = 0 then { vector = None; len = 0 } , b1 
-    else if n = b1.len then b1, { vector = None; len = 0 } 
-    else 
-      match b1.vector with 
-        | None -> assert false
-        | Some z -> 
-            let vs = values_of_struct z b1.len in
-            let h, t = Listutil.part n vs in
-              { vector = Some (struct_of_list h); len = n },
-              { vector = Some (struct_of_list t); len = b1.len - n }
-
-  let extractvalue b i =    
-    match b.vector with
-      | Some v -> Llvm.build_extractelement v (Llvm.const_int (Llvm.i32_type context) i) "e" builder
-      | None -> assert false
-
-  let of_list bl =
-    let len = List.length bl in
-      if len = 0 then 
-        { vector = None; len = 0 }
-      else
-        { vector = Some (struct_of_list bl); len = len }
-
-  let build_phi vecblocks builder =
-    match vecblocks with
-      | ({ vector = Some vx; len = lx }, blockx) :: rest ->
-          let z = Llvm.build_phi [(vx, blockx)] "z" builder in
-            List.iter (function 
-                         | ({ vector = Some vy }, blocky) -> 
-                             Llvm.add_incoming (vy, blocky) z
-                         | _ -> assert false) rest;
-            { vector = Some z; len = lx }
-      | ({ vector = None }, blockx) :: rest ->
-          { vector = None; len = 0} 
-      | _ ->
-          assert false
-
-  let add_incoming (y, blocky) x =
-    match x.vector, y.vector with
-      | Some vx, Some vy -> Llvm.add_incoming (vy, blocky) vx
-      | _ -> ()
- *) 
 end
 
 type encoded_value = {
@@ -595,19 +505,19 @@ let build_term
   let _ = Typing.principal_typeW type_ctx t_annotated in    
     build_annotatedterm ctx t_annotated []
 
-let rec isValue (t: Term.t) : bool =
+let rec isPure (t: Term.t) : bool =
   match t.Term.desc with
     | Var(_) -> true
     | UnitW -> true
     | ConstW(Cbot) | ConstW(Cprint(_)) | ConstW(Cintprint)-> false
     | ConstW(Cintconst(_)) | ConstW(Cintadd) | ConstW(Cintsub) | ConstW(Cintmul)
-    | ConstW(Cintdiv) | ConstW(Cinteq) | ConstW(Cintslt) -> true
-    | FoldW(_, t) -> isValue t
-    | InW(i, j, s) -> isValue s
-    | PairW(t1, t2) -> isValue t1 && (isValue t2)
+    | ConstW(Cintdiv) (* questionable! *) | ConstW(Cinteq) | ConstW(Cintslt) -> true
+    | FoldW(_, t) -> isPure t
+    | InW(i, j, s) -> isPure s
+    | PairW(t1, t2) -> isPure t1 && (isPure t2)
     | LambdaW(_) -> true
-    | AppW(t1, t2) -> isValue t1 && (isValue t2)
-    | CaseW(s, [(u, su); (v, sv)]) -> isValue s && (isValue su) && (isValue sv)
+    | AppW(t1, t2) -> isPure t1 && (isPure t2)
+    | CaseW(s, [(u, su); (v, sv)]) -> isPure s && (isPure su) && (isPure sv)
     | _ -> false
 
 let rec reduce (t : Term.t) : Term.t =
@@ -624,7 +534,7 @@ let rec reduce (t : Term.t) : Term.t =
           let rt1 = reduce t1 in
             begin
               match rt1.Term.desc with
-                | PairW(s1, s2) when isValue rt1 ->
+                | PairW(s1, s2) when isPure rt1 ->
                     (* Need to be careful to avoid accidental capture. *)
                     let x' = fresh_var () in
                     let y' = fresh_var () in
@@ -636,16 +546,16 @@ let rec reduce (t : Term.t) : Term.t =
           let rs = reduce s in
             begin
             match rs.Term.desc with
-              | InW(2, 0, rs0) when isValue rs ->
+              | InW(2, 0, rs0) when isPure rs ->
                   reduce (Term.subst rs0 u su)
-              | InW(2, 1, rs1) when isValue rs ->
+              | InW(2, 1, rs1) when isPure rs ->
                   reduce (Term.subst rs1 v sv)
-              | LetW(t1, (x, y, {desc = InW(2, 0, rs0)})) when isValue rs0 ->
+              | LetW(t1, (x, y, {desc = InW(2, 0, rs0)})) when isPure rs0 ->
                     let x' = fresh_var () in
                     let y' = fresh_var () in
                   let rs0' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) rs0 in
                   mkLetW t1 ((x',y'), reduce (Term.subst rs0' u su))
-              | LetW(t1, (x, y, {desc = InW(2, 1, rs0)})) when isValue rs0 ->
+              | LetW(t1, (x, y, {desc = InW(2, 1, rs0)})) when isPure rs0 ->
                     let x' = fresh_var () in
                     let y' = fresh_var () in
                   let rs0' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) rs0 in
@@ -657,7 +567,7 @@ let rec reduce (t : Term.t) : Term.t =
           let rt2 = reduce t2 in
             begin
             match rt1.Term.desc with
-              | LambdaW((x, a), f) when isValue rt2 ->
+              | LambdaW((x, a), f) when isPure rt2 ->
                     let x' = fresh_var () in
                     let f' = Term.rename_vars (fun z -> if z = x then x' else z) f in
                       reduce (Term.subst rt2 x' f')

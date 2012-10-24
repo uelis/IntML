@@ -3,7 +3,7 @@
 #include <malloc.h>
 
 #define BLOCKSIZE 100
-#define NBLOCKS 100000
+#define NBLOCKS 10000000
 
 void *mem;
 void* freestack[NBLOCKS];
