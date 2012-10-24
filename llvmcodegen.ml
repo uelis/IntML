@@ -874,12 +874,13 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
       end
       (* add new phi node with (encoded_value, source) to block dst *)
   in
-    Llvm.position_at_end (get_block 0) builder;
-    connect_to (get_block 0) { payload = []; attrib = Bitvector.null 0 } (*TODO*) 0;
+    Llvm.position_at_end (get_block 1228) builder;
+    connect_to (get_block 1228) { payload = []; attrib = Bitvector.null 0 } (*TODO*) 1228;
     (* build unconnected blocks *)
     List.iter (fun c ->
                  match c with
                    | Dead_End(src) -> 
+                       Printf.printf "%i --> \n" src.anchor;
                        Llvm.position_at_end (get_block src.anchor) builder;
                        let senc = Hashtbl.find phi_nodes src.anchor in
                        ignore (Llvm.build_br (get_block src.anchor) builder);
@@ -1273,5 +1274,5 @@ let llvm_circuit (c : Compile.circuit) =
     (* body *)
     build_body the_module f c;
 (*    Llvm.delete_block dummy; *)
-    Llvm.dump_module the_module; 
+(*    Llvm.dump_module the_module; *)
     the_module
