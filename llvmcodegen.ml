@@ -22,12 +22,8 @@ sig
   val extractvalue : t -> int -> Llvm.llvalue
   val of_list: Llvm.llvalue list -> t
 
-  (* TODO: document properly *)
-  val mk_dummy : int -> t * (Llvm.llvalue * Llvm.llvalue) list
   val build_phi: (t * Llvm.llbasicblock) list -> Llvm.llbuilder -> t
   val add_incoming: t * Llvm.llbasicblock -> t -> unit
-  val replace_all_uses : Llvm.llvalue -> Llvm.llvalue -> t -> t 
-  val llvalue_replacement : t -> t -> (Llvm.llvalue * Llvm.llvalue) list
 end = 
 struct
   type t = { 
@@ -38,16 +34,6 @@ struct
   let struct_type len =
     Llvm.vector_type (Llvm.i1_type context) len
 
-  let mk_dummy len = 
-    if len = 0 then 
-      { vector = None; len = 0 }, []
-    else 
-      let vi1 = Llvm.vector_type  (Llvm.i1_type context) len in
-      let dummy0 = Llvm.build_alloca vi1 "dummy" builder in
-      let dummy = Llvm.build_bitcast dummy0 vi1 "dummy" builder in
-        { vector = Some dummy; len = len },
-        [ (dummy, Llvm.const_null vi1) ]
-              
   let length b = b.len
 
   let undef len = 
@@ -127,19 +113,6 @@ struct
     match x.vector, y.vector with
       | Some vx, Some vy -> Llvm.add_incoming (vy, blocky) vx
       | _ -> ()
-
-  let replace_all_uses oldv newv b =
-    { vector = 
-        (match b.vector with
-          | None -> None
-          | Some v -> Some (if v == oldv then newv else v));
-      len = b.len
-    } 
-
-  let llvalue_replacement oldb newb = 
-   match oldb.vector, newb.vector with
-     | Some ov, Some nv -> [(ov, nv)]
-     | _ -> []
 end
 
 type encoded_value = {
@@ -790,17 +763,17 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
     List.iter (fun c ->
                  match c with
                    | Dead_End(src) -> 
-                       Printf.printf "%i --> \n" src.anchor;
+(*                       Printf.printf "%i --> \n" src.anchor; *)
                        Llvm.position_at_end (get_block src.anchor) builder;
                        let senc = Hashtbl.find phi_nodes src.anchor in
                        ignore (Llvm.build_br (get_block src.anchor) builder);
                          connect_to (get_block src.anchor) senc src.anchor
                    | Direct(src, lets, (sigma, t) , dst) ->
-                       Printf.printf "%i --> %i\n" src.anchor dst.anchor;
+(*                       Printf.printf "%i --> %i\n" src.anchor dst.anchor;
                        Printf.printf "%s\n--\n%s\n===\n\n"
                          (Printing.string_of_termW sigma)
                          (Printing.string_of_termW t); 
-                       flush stdout;
+                       flush stdout;*)
                        Llvm.position_at_end (get_block src.anchor) builder;
                        let senc = Hashtbl.find phi_nodes src.anchor in
                        let t = mkLetW (mkVar "z") (("sigma", "x"), mkLets lets (mkPairW sigma t)) in
@@ -810,16 +783,16 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
                          ignore (Llvm.build_br (get_block dst.anchor) builder);
                          connect_to src_block ev dst.anchor
                    | Branch(src, lets, (sigma, (s, (xl, tl, dst1), (xr, tr, dst2)))) ->
-                       Printf.printf "%i --> %i | %i\n" src.anchor dst1.anchor dst2.anchor;
-                       flush stdout;
+(*                       Printf.printf "%i --> %i | %i\n" src.anchor dst1.anchor dst2.anchor;
+                       flush stdout;*)
                        begin
                          let t = mkLetW (mkVar "z") (("sigma", "x"), mkLets lets (
                                                      mkCaseW s 
                                                        [(xl, mkInlW (mkPairW sigma tl)) ;
                                                         (xr, mkInrW (mkPairW sigma tr)) ])) in
-                       Printf.printf "%s\n--\n%s\n===\n\n"
+(*                       Printf.printf "%s\n--\n%s\n===\n\n"
                          (Printing.string_of_termW sigma)
-                         (Printing.string_of_termW t); 
+                         (Printing.string_of_termW t); *)
                          let src_block = get_block src.anchor in
                            Llvm.position_at_end src_block builder;
                            let senc = Hashtbl.find phi_nodes src.anchor in
