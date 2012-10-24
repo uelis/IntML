@@ -577,10 +577,11 @@ type wire_end = {
   message_type: Type.t
 }
 
+type let_bindings = (Term.t * (Term.var * Term.var)) list 
 type connection = 
     Dead_End of wire_end
-  | Direct of wire_end * (Term.t * Term.t) * wire_end
-  | Branch of wire_end * (Term.t * (Term.t * (Term.var * Term.t * wire_end) * (Term.var * Term.t * wire_end)))
+  | Direct of wire_end * let_bindings * (Term.t * Term.t) * wire_end
+  | Branch of wire_end * let_bindings * (Term.t * (Term.t * (Term.var * Term.t * wire_end) * (Term.var * Term.t * wire_end)))
 
 let mkFstWs t = 
   match t.Term.desc with
@@ -605,145 +606,115 @@ let trace (output : wire) (is : instruction list) : connection list =
             List.fold_right (fun w map -> IntMap.add w.src node map) 
               (wires [node]) (build_dst_map rest) 
     in build_dst_map is in
-  let rec trace src dst (sigma, v) =
+  let rec trace src dst lets (sigma, v) =
+    let unpair t lets =
+      match t.Term.desc with
+        | PairW(x, y) -> (x, y), lets
+        | _ -> 
+            let boundvars = List.fold_right (fun (_, (x,y)) bvs -> x::y::bvs) lets [] in
+            let vars = Term.free_vars sigma @ (Term.free_vars v) @ boundvars in
+            let x = Term.variant_var_avoid "x" vars in
+            let y = Term.variant_var_avoid "y" vars in
+              (mkVar x, mkVar y), (t, (x, y)) :: lets in
     try
       match IntMap.find dst node_map_by_src with
         | Axiom(w1 (* [f] *), f) when dst = w1.src ->
 (*            assert (Type.equals src.message_type w1.type_back); *)
-            Direct(src, 
+            Direct(src, lets, 
                    (sigma, mkAppW (let_tupleW sigma f) v), 
                     {anchor = w1.dst; message_type = w1.type_forward})
         | Tensor(w1, w2, w3) when dst = w1.src -> 
             (* <sigma, v> @ w1       |-->  <sigma, inl(v)> @ w3 *)
-            trace src w3.dst (sigma, mkInlW v)
+            trace src w3.dst lets (sigma, mkInlW v)
         | Tensor(w1, w2, w3) when dst = w2.src -> 
             (* <sigma, v> @ w2       |-->  <sigma, inr(v)> @ w3 *)
-            trace src w3.dst (sigma, mkInrW v)
+            trace src w3.dst lets (sigma, mkInrW v)
         | Tensor(w1, w2, w3) when dst = w3.src -> 
             (* <sigma, inl(v)> @ w3  |-->  <sigma, v> @ w1
              <sigma, inr(v)> @ w3  |-->  <sigma, v> @ w2 *)
             begin
               match v.Term.desc with
-                | InW(2, 0, v') -> trace src w1.dst (sigma, v')
-                | InW(2, 1, v') -> trace src w2.dst (sigma, v')
+                | InW(2, 0, v') -> trace src w1.dst lets (sigma, v')
+                | InW(2, 1, v') -> trace src w2.dst lets (sigma, v')
                 | _ -> 
                     let v' = "v'" in 
 (*                      assert (Type.equals src.message_type w3.type_back);*)
-                      Branch(src, 
+                      Branch(src, lets,
                              (sigma, (v, 
                                       (v', mkVar v', {anchor = w1.dst; message_type = w1.type_forward}), 
                                       (v', mkVar v', {anchor = w2.dst; message_type = w2.type_forward}))))
             end
         | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w1.src ->
-            trace src w2.dst (sigma, mkSndWs v)
+            trace src w2.dst lets (sigma, mkSndWs v)
         | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w2.src ->
-            trace src w1.dst (sigma, (mkPairW (let_tupleW sigma f) v))
+            trace src w1.dst lets (sigma, (mkPairW (let_tupleW sigma f) v))
         | Door(w1 (* X *), w2 (* \Tens A X *)) when dst = w1.src ->
-            begin
-              match sigma.Term.desc with
-                | PairW(sigma', c) -> trace src w2.dst (sigma', mkPairW c v)
-                | _ -> 
-                    let sigma' = mkFstWs sigma in
-                    let c = mkSndWs sigma in
-                    trace src w2.dst (sigma', mkPairW c v) 
-            end
+            let (sigma', c), lets' = unpair sigma lets in
+              trace src w2.dst lets' (sigma', mkPairW c v)
         | Door(w1 (* X *), w2 (* \Tens A X *)) when dst = w2.src ->
-            begin
-              match v.Term.desc with
-                | PairW(c, v') -> trace src w1.dst (mkPairW sigma c, v')
-                | _ -> 
-                    trace src w1.dst (mkPairW sigma (mkFstWs v),
-                                      mkSndWs v)
-            end
+            let (c, v'), lets' = unpair v lets in
+              trace src w1.dst lets' (mkPairW sigma c, v')
         | ADoor(w1 (* \Tens (A x B) X *), w2 (* \Tens B X *)) when dst = w1.src ->
-            begin
-              match v.Term.desc with
-                | PairW({ desc = PairW(d, c) }, v') -> 
-                    trace src w2.dst (mkPairW sigma d, mkPairW c v')
-                | _ -> 
-                    let d = mkFstWs (mkFstWs v) in
-                    let c = mkSndWs (mkFstWs v) in
-                    let v' = mkSndWs v in
-                      trace src w2.dst (mkPairW sigma d, mkPairW c v')
-            end
+            let (dc, v'), lets' = unpair v lets in
+            let (d, c), lets'' = unpair dc lets' in
+              trace src w2.dst lets'' (mkPairW sigma d, mkPairW c v')
         | ADoor(w1 (* \Tens (A x B) X *), w2 (* \Tens B X *)) when dst = w2.src ->
-            begin
-              match sigma.Term.desc, v.Term.desc with
-                | PairW(sigma', d), PairW(c, v') -> 
-                    trace src w1.dst (sigma', mkPairW (mkPairW d c) v')
-                | _ -> 
-                    let sigma' = mkFstWs sigma in
-                    let d = mkSndWs sigma in
-                    let c = mkFstWs v in
-                    let v' = mkSndWs v in
-                      trace src w1.dst (sigma', mkPairW (mkPairW d c) v')
-            end
+            let (sigma', d), lets' = unpair sigma lets in
+            let (c, v'), lets'' = unpair v lets' in
+              trace src w1.dst lets' (sigma', mkPairW (mkPairW d c) v')
         | LWeak(w1 (* \Tens A X *), 
                 w2 (* \Tens B X *)) (* B <= A *) when dst = w1.src ->
             let _, a_token = unTensorW w1.type_back in
             let a, _ = unTensorW a_token in
             let _, b_token = unTensorW w2.type_forward in
             let b, _ = unTensorW b_token in
-              begin
-                match v.Term.desc with
-                  | PairW(c, v') -> 
-                      trace src w2.dst (sigma, mkPairW (mkAppW (project b a) c) v')
-                  | _ -> 
-                      let c = mkFstWs v in
-                      let v' = mkSndWs v in
-                        trace src w2.dst (sigma, mkPairW (mkAppW (project b a) c) v')
-              end
+            let (c, v'), lets' = unpair v lets in
+              trace src w2.dst lets' (sigma, mkPairW (mkAppW (project b a) c) v')
         | LWeak(w1 (* \Tens A X *), 
                 w2 (* \Tens B X *)) (* B <= A *) when dst = w2.src ->
             let _, a_token = unTensorW w1.type_forward in
             let a, _ = unTensorW a_token in
             let _, b_token = unTensorW w2.type_back in
             let b, _ = unTensorW b_token in
-              begin
-                match v.Term.desc with
-                  | PairW(c, v') -> 
-                      trace src w1.dst (sigma, mkPairW (mkAppW (embed b a) c) v')
-                  | _ -> 
-                      let c = mkFstWs v in
-                      let v' = mkSndWs v in
-                        trace src w1.dst (sigma, mkPairW (mkAppW (embed b a) c) v')
-              end
+            let (c, v'), lets' = unpair v lets in
+              trace src w1.dst lets' (sigma, mkPairW (mkAppW (embed b a) c) v')
         | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w3.src ->
             (*   <sigma, *> @ w3      |-->  <sigma, *> @ w1 *)
-            trace src w1.dst (sigma, mkUnitW)
+            trace src w1.dst lets (sigma, mkUnitW)
         | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w1.src ->
             (* <sigma, v> @ w1      |-->  <sigma, <v,*>> @ w2 *)
-            trace src w2.dst (sigma, mkPairW v mkUnitW)
+            trace src w2.dst lets (sigma, mkPairW v mkUnitW)
         | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w2.src ->
             (* <sigma, <v,w>> @ w2  |-->  <sigma, w> @ w3 *)
-            trace src w3.dst (sigma, mkSndWs v)
+            trace src w3.dst lets (sigma, mkSndWs v)
         | Contr(w1, w2, w3) when dst = w2.src -> 
             (*  <sigma, <v,w>> @ w2         |-->  <sigma, <inl(v),w>> @ w1 *) 
-            trace src w1.dst (sigma, mkPairW (mkInlW (mkFstWs v)) (mkSndWs v))
+            let (c, v'), lets' = unpair v lets in
+              trace src w1.dst lets' (sigma, mkPairW (mkInlW c) v')
         | Contr(w1, w2, w3) when dst = w3.src -> 
             (* <sigma, <v,w>> @ w3         |-->  <sigma, <inr(v),w>> @ w1 *)
-            trace src w1.dst (sigma, mkPairW (mkInrW (mkFstWs v)) (mkSndWs v))
+            let (c, v'), lets' = unpair v lets in
+              trace src w1.dst lets' (sigma, mkPairW (mkInrW c) v')
         | Contr(w1, w2, w3) when dst = w1.src -> 
             (*   <sigma, <inl(v), w>> @ w1   |-->  <sigma, <v,w>> @ w2
              <sigma, <inr(v), w>> @ w1   |-->  <sigma, <v,w>> @ w3 *)
             begin
-              match v.Term.desc with
-                | PairW({ desc = InW(2, 0, c) }, v') -> trace src w2.dst (sigma, mkPairW c v')
-                | PairW({ desc = InW(2, 1, d) }, v') -> trace src w3.dst (sigma, mkPairW d v')
+              let (c', v'), lets' = unpair v lets in
+              match c'.Term.desc with
+                | InW(2, 0, c) -> trace src w2.dst lets' (sigma, mkPairW c v')
+                | InW(2, 1, c) -> trace src w3.dst lets' (sigma, mkPairW c v')
                 | _ ->
-                    let v1 = mkFstWs v in
-                    let v2 = mkSndWs v in
-                    let v' = Term.variant_var_avoid "v'" (Term.free_vars v2) in
+                    let c = Term.variant_var_avoid "c" (Term.free_vars v') in
 (*                      assert (Type.equals src.message_type w1.type_back); *)
-                      Branch(src, 
-                             (sigma, (v1, 
-                                      (v', mkPairW (mkVar v') v2, {anchor = w2.dst; message_type = w2.type_forward}),
-                                      (v', mkPairW (mkVar v') v2, {anchor = w3.dst; message_type = w3.type_forward}))))
+                      Branch(src, lets', 
+                             (sigma, (c', 
+                                      (c, mkPairW (mkVar c) v', {anchor = w2.dst; message_type = w2.type_forward}),
+                                      (c, mkPairW (mkVar c) v', {anchor = w3.dst; message_type = w3.type_forward}))))
             end
         | _ -> assert false
     with Not_found -> 
       if dst = output.dst then
-        Direct(src, (sigma, v), {anchor = dst; message_type = output.type_forward}) 
+        Direct(src, lets, (sigma, v), {anchor = dst; message_type = output.type_forward}) 
       else 
         Dead_End(src)
   in
@@ -751,13 +722,13 @@ let trace (output : wire) (is : instruction list) : connection list =
   let entry_points = Hashtbl.create 10 in
   let rec trace_all src =
     if not (Hashtbl.mem entry_points src.anchor) then 
-      let c = trace src src.anchor (mkVar sigma, mkVar x) in
+      let c = trace src src.anchor [] (mkVar sigma, mkVar x) in
         Hashtbl.add entry_points src.anchor ();
         match c with
           | Dead_End(_) -> [c]
-          | Direct(_, _, dst) ->
+          | Direct(_, _, _, dst) ->
               c :: (if dst.anchor = output.dst then [] else trace_all dst)
-          | Branch(_, (_, (_, (_, _, dst1), (_, _, dst2)))) ->
+          | Branch(_, _, (_, (_, (_, _, dst1), (_, _, dst2)))) ->
               c :: trace_all dst1 @ trace_all dst2 
     else [] 
   in
@@ -794,6 +765,11 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
       end
       (* add new phi node with (encoded_value, source) to block dst *)
   in
+  let rec mkLets lets t =
+    match lets with
+      | [] -> t
+      | (s, (x, y)) :: lets' -> mkLets lets' (mkLetW s ((x, y), t)) 
+  in
     (* make entry block *)
     Llvm.position_at_end (get_block entry) builder;
     connect_to (get_block entry) { payload = []; attrib = Bitvector.null 0 } entry;
@@ -806,7 +782,7 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
                        let senc = Hashtbl.find phi_nodes src.anchor in
                        ignore (Llvm.build_br (get_block src.anchor) builder);
                          connect_to (get_block src.anchor) senc src.anchor
-                   | Direct(src, (sigma, t) , dst) ->
+                   | Direct(src, lets, (sigma, t) , dst) ->
                        Printf.printf "%i --> %i\n" src.anchor dst.anchor;
                        Printf.printf "%s\n--\n%s\n===\n\n"
                          (Printing.string_of_termW sigma)
@@ -814,20 +790,20 @@ let build_connections (the_module : Llvm.llmodule) func (connections : connectio
                        flush stdout;
                        Llvm.position_at_end (get_block src.anchor) builder;
                        let senc = Hashtbl.find phi_nodes src.anchor in
-                       let t = mkLetW (mkVar "z") (("sigma", "x"), mkPairW sigma t) in
+                       let t = mkLetW (mkVar "z") (("sigma", "x"), mkLets lets (mkPairW sigma t)) in
                        let ev = build_term the_module 
                                   [("z", senc)] [("z", src.message_type)] t dst.message_type in
                        let src_block = Llvm.insertion_block builder in
                          ignore (Llvm.build_br (get_block dst.anchor) builder);
                          connect_to src_block ev dst.anchor
-                   | Branch(src, (sigma, (s, (xl, tl, dst1), (xr, tr, dst2)))) ->
+                   | Branch(src, lets, (sigma, (s, (xl, tl, dst1), (xr, tr, dst2)))) ->
                        Printf.printf "%i --> %i | %i\n" src.anchor dst1.anchor dst2.anchor;
                        flush stdout;
                        begin
-                         let t = mkLetW (mkVar "z") (("sigma", "x"), 
+                         let t = mkLetW (mkVar "z") (("sigma", "x"), mkLets lets (
                                                      mkCaseW s 
                                                        [(xl, mkInlW (mkPairW sigma tl)) ;
-                                                        (xr, mkInrW (mkPairW sigma tr)) ]) in
+                                                        (xr, mkInrW (mkPairW sigma tr)) ])) in
                        Printf.printf "%s\n--\n%s\n===\n\n"
                          (Printing.string_of_termW sigma)
                          (Printing.string_of_termW t); 
