@@ -549,17 +549,14 @@ let rec reduce (t : Term.t) : Term.t =
                   reduce (Term.subst rs0 u su)
               | InW(2, 1, rs1) when isPure rs ->
                   reduce (Term.subst rs1 v sv)
-              | LetW(t1, (x, y, {desc = InW(2, 0, rs0)})) when isPure rs0 ->
-                    let x' = fresh_var () in
-                    let y' = fresh_var () in
-                  let rs0' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) rs0 in
-                  mkLetW t1 ((x',y'), reduce (Term.subst rs0' u su))
-              | LetW(t1, (x, y, {desc = InW(2, 1, rs0)})) when isPure rs0 ->
-                    let x' = fresh_var () in
-                    let y' = fresh_var () in
-                  let rs0' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) rs0 in
-                  mkLetW t1 ((x',y'), reduce (Term.subst rs0' v sv))
-              | _ -> mkCaseW rs [(u, su); (v, sv)]
+              | LetW(t1, (x, y, t2)) ->
+                  let x' = fresh_var () in
+                  let y' = fresh_var () in
+                  let t2' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) t2 in
+                    mkLetW t1 ((x',y'), reduce (mkCaseW t2' [(u, su); (v, sv)]))
+              | _ -> 
+                  Printf.printf "%s\n" (Printing.string_of_termW rs);
+                  mkCaseW rs [(u, su); (v, sv)]
             end
       | AppW(t1, t2) ->
           let rt1 = reduce t1 in
@@ -567,9 +564,7 @@ let rec reduce (t : Term.t) : Term.t =
             begin
             match rt1.Term.desc with
               | LambdaW((x, a), f) when isPure rt2 ->
-                    let x' = fresh_var () in
-                    let f' = Term.rename_vars (fun z -> if z = x then x' else z) f in
-                      reduce (Term.subst rt2 x' f')
+                  reduce (Term.subst rt2 x f)
               | _ -> 
                   mkAppW rt1 rt2
             end
