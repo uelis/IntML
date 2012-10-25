@@ -5,7 +5,7 @@ open Unify
 open Typing
 
 (* Conveniencene function for n-ary let on WC level *)          
-let let_tupleW (t: Term.t) ((sigma: var list), (f: Term.t)) : Term.t =
+let let_tupleW (t: var) ((sigma: var list), (f: Term.t)) : Term.t =
   (* TODO: document *)
   let rec remove_shadow sigma =
     match sigma with
@@ -15,12 +15,11 @@ let let_tupleW (t: Term.t) ((sigma: var list), (f: Term.t)) : Term.t =
                  (List.map (fun y -> if x = y then Term.unusable_var else y) 
                     rest)
   in 
-  let rec let_tuple t (sigma, f) =
+  let rec let_tuple x (sigma, f) =
     match sigma with 
       | [] -> f
       | z :: rest ->
-          (* TODO TODO *)
-          mkLetW  t (("x1", z), let_tuple (mkVar "x1") (rest, f)) 
+          mkLetW  (mkVar x) ((x, z), let_tuple x (rest, f)) 
   in let_tuple t (remove_shadow sigma, f)       
 
 let unTensorW a =
@@ -326,7 +325,7 @@ let infer_types (c : circuit) : Type.t =
           let s' = List.map variant_var s in
           let tyfapp = principal_typeW
                                 [(x, sigma); (y, alpha)] 
-                                (mkAppW (let_tupleW (mkVar x) (s', f')) (mkVar y)) in 
+                                (mkAppW (let_tupleW x (s', f')) (mkVar y)) in 
             Typing.eq_constraint 
               w1.type_forward 
               (Type.newty (Type.TensorW(sigma, tyfapp))) ::
@@ -369,7 +368,7 @@ let infer_types (c : circuit) : Type.t =
             (* ensure "x" is fresh *)
             let f' = variant f in
             let s' = List.map variant_var s in
-            let tyf = principal_typeW [(x, sigma2)] (let_tupleW (mkVar x) (s', f')) in 
+            let tyf = principal_typeW [(x, sigma2)] (let_tupleW x (s', f')) in 
             Typing.eq_constraint
               w1.type_forward (tensor sigma2 (tensor tyf alpha2)) ::
             Typing.eq_constraint
@@ -791,7 +790,7 @@ let eqns_of_circuit (c : circuit) : equation list =
             | Axiom(w1, f) when w1.src = dst -> 
                 to_dart w1.src 
                   (mkPairW (mkVar sigma) 
-                     (mkAppW (let_tupleW (mkVar sigma) f) (mkVar v)))
+                     (mkAppW (let_tupleW sigma f) (mkVar v)))
             | Tensor(w1, w2, w3) when w1.src = dst ->
                 to_dart w3.src (mkPairW (mkVar sigma) (mkInlW (mkVar v)))
             | Tensor(w1, w2, w3) when w2.src = dst ->
@@ -816,7 +815,7 @@ let eqns_of_circuit (c : circuit) : equation list =
                 (x, mkLetW (mkVar x) ((sigma, v),
                   in_k w1.src (max_wire_src_dst + 1) 
                     (mkPairW (mkVar sigma) 
-                       (mkPairW (let_tupleW (mkVar sigma) f) (mkVar v)))
+                       (mkPairW (let_tupleW sigma f) (mkVar v)))
                 ))
             | Contr(w1 (* \Tens{A+B} X *), 
                     w2 (* \Tens A X *), 
@@ -1058,7 +1057,7 @@ let message_passing_term (c: circuit): Term.t =
             | Axiom(w1, f) when w1.src = dst -> 
                 to_dart w1.src 
                   (mkPairW (mkVar sigma) 
-                     (mkAppW (let_tupleW (mkVar sigma) f) (mkVar v)))
+                     (mkAppW (let_tupleW sigma f) (mkVar v)))
             | Tensor(w1, w2, w3) when w1.src = dst ->
                 to_dart w3.src (mkPairW (mkVar sigma) (mkInlW (mkVar v)))
             | Tensor(w1, w2, w3) when w2.src = dst ->
@@ -1083,7 +1082,7 @@ let message_passing_term (c: circuit): Term.t =
                 (x, mkLetW (mkVar x) ((sigma, v),
                   in_k w1.src (max_wire_src_dst + 1) 
                     (mkPairW (mkVar sigma) 
-                       (mkPairW (let_tupleW (mkVar sigma) f) (mkVar v)))
+                       (mkPairW (let_tupleW sigma f) (mkVar v)))
                 ))
             | Contr(w1 (* \Tens{A+B} X *), 
                     w2 (* \Tens A X *), 

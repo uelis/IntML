@@ -7,8 +7,7 @@
 open Term
 open Compile
 
-  (* TODO TODO variables named o do not appear in circuits *)
-let fresh_var = Vargen.mkVarGenerator "o" ~avoid:[]
+let fresh_var = Vargen.mkVarGenerator "x" ~avoid:[]
 let context = Llvm.global_context ()
 let builder = Llvm.builder context
 
@@ -850,7 +849,21 @@ let build_connections (the_module : Llvm.llmodule) (func : Llvm.llvalue)
 
 
 let build_body (the_module : Llvm.llmodule) func (c : circuit) =
-  let connections = trace c.output c.instructions in 
+  let instructions_fresh = 
+    let prep_var_y x = "y" ^ x in
+    let prep_y (sigma, f) =
+      (List.map prep_var_y sigma, rename_vars prep_var_y f) in
+    let rec i_fresh instructions = 
+      match instructions with
+        | [] -> []
+        | Der(w1, w2, (sigma, f)) :: rest -> 
+            Der(w1, w2, prep_y (sigma, f)) :: (i_fresh rest)
+        | Axiom(w, (sigma, f)) :: rest ->
+            Axiom(w, prep_y (sigma, f)) :: (i_fresh rest)
+        | node :: rest -> 
+            node :: (i_fresh rest) in
+      i_fresh c.instructions in
+  let connections = trace c.output instructions_fresh in 
     build_connections the_module func connections c.output.src c.output.dst
 
 (* Must be applied to circuit of type [A] *)    
