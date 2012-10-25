@@ -90,7 +90,7 @@ module Unify(T : sig type t end) = struct
 
   let unify_with_cycle_check (e : typeEq) : unit =
     unify_raw e;
-    check_cycle e 
+    check_cycle e
 
   let unify_pairs (eqs: typeEq list): unit =
     List.iter unify_with_cycle_check eqs
