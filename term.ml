@@ -260,12 +260,17 @@ let head_subst (s: t) (x: var) (t: t) : t option =
     if (!substituted) then Some result else None
 
 let subst (s: t) (x: var) (t: t) : t =
+  (* rename x so that it is not free in s *)
+  let fv = free_vars s @ (free_vars t) in
+  let x' = variant_var_avoid x fv in
+  let t' = if x = x' then t else rename_vars 
+                                   (fun z -> if z = x then x' else z) t in
   let rec sub t = 
-    match head_subst s x t with
+    match head_subst s x' t with
       | None -> t
       | Some t' -> sub t'
   in
-    sub t
+    sub t'
 
 let freshen_type_vars t =
   let new_type_vars = Type.Typetbl.create 10 in
