@@ -555,7 +555,6 @@ let rec reduce (t : Term.t) : Term.t =
                   let t2' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) t2 in
                     mkLetW t1 ((x',y'), reduce (mkCaseW t2' [(u, su); (v, sv)]))
               | _ -> 
-                  Printf.printf "%s\n" (Printing.string_of_termW rs);
                   mkCaseW rs [(u, su); (v, sv)]
             end
       | AppW(t1, t2) ->
