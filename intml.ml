@@ -61,16 +61,13 @@ let rec llvm_compile (d: typed_decls) : unit =
     | TypedTermDeclU(f, t, ty) :: r -> 
         (* compile only terms of box type *)
         (match Type.finddesc ty with
-          | Type.BoxU(q, a) ->              
-              (match Type.finddesc q with
-                 | Type.OneW ->
+          | _ ->              
                     Printf.printf "*** Writing llvm bytecode for '%s' to file '%s.bc' ***\n" f f;
                     flush stdout;
                     let graph = circuit_of_termU [] [] t in
                     let _ = infer_types graph in 
                     let llvm_module = Llvmcodegen.llvm_circuit graph in
                       ignore (Llvm_bitwriter.write_bitcode_file llvm_module (Printf.sprintf "%s.bc" f))
-                 | _ -> ())
            | _ -> ());
         llvm_compile r
 

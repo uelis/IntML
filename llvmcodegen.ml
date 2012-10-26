@@ -1,9 +1,3 @@
-(* TODO: 
- * - rename nat => int
- * - operations on int (+,*,/,print)
- * - remove succ
- * - list-type
- *)
 open Term
 open Compile
 
@@ -539,9 +533,13 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
       | (s, (x, y)) :: lets' -> mkLets lets' (mkLetW s ((x, y), t)) 
   in
     (* make entry block *)
-  let entry_block = get_block ssa_func.Ssa.entry_block in
+  let entry_block = Llvm.append_block context "entry" func in
+    let packed_arg = Llvm.param func 0 in      
+    Llvm.set_value_name "packed_arg" packed_arg;
     Llvm.position_at_end entry_block builder;
-    connect_to entry_block { payload = []; attrib = Bitvector.null 0 }  ssa_func.Ssa.entry_block;
+    let arg = unpack_encoded_value packed_arg ssa_func.Ssa.argument_type in
+    ignore (Llvm.build_br (get_block ssa_func.Ssa.entry_block) builder);
+    connect_to entry_block arg ssa_func.Ssa.entry_block;
     (* build unconnected blocks *)
     let open Ssa in
     List.iter 
