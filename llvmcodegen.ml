@@ -152,16 +152,6 @@ let attrib_size (a: Type.t) : int =
           size
   in a_s a
        
-
-let build_concat 
-      (v1 : Llvm.llvalue list) (l1 : int) 
-      (v2 : Llvm.llvalue list) (l2 : int) : Llvm.llvalue list =
-  v1 @ v2
-
-let build_split (z : Llvm.llvalue list) (len1 : int) (len2 : int) 
-      : Llvm.llvalue list * Llvm.llvalue list =
-  Listutil.part len1 z
-
 (* TODO: check that truncation is correctly applied! 
 * *)                      
 let build_truncate_extend (enc : encoded_value) (a : Type.t) =
@@ -187,6 +177,36 @@ let build_truncate_extend (enc : encoded_value) (a : Type.t) =
            t) in
     assert (Bitvector.length x_attrib = a_attrib_bitlen);
     { payload = x_payload; attrib = x_attrib }
+
+let packing_type (a: Type.t) : Llvm.lltype =
+  let i1 = Llvm.i1_type context in
+  let i64 = Llvm.i64_type context in
+  let len_p = payload_size a in
+  let len_a = attrib_size a in
+  let struct_members = Array.append (Array.make len_p i64) (Array.make len_a i1) in
+  let struct_type = Llvm.packed_struct_type context struct_members in
+    struct_type 
+
+let pack_encoded_value (enc: encoded_value) (a: Type.t): Llvm.llvalue =
+  let len_p = payload_size a in
+  let len_a = attrib_size a in
+  let struct_type = packing_type a in
+  let struct_content = 
+    (List.combine (Listutil.init len_p (fun i -> i)) enc.payload) @
+    (Listutil.init len_a (fun i -> (len_p + i, Bitvector.extractvalue enc.attrib i))) in
+  let packed_enc = 
+    List.fold_right 
+      (fun (i,v) s -> Llvm.build_insertvalue s v i "packed" builder) 
+      struct_content 
+      (Llvm.undef struct_type) in
+    packed_enc
+
+let unpack_encoded_value (packed_enc: Llvm.llvalue) (a: Type.t) : encoded_value =      
+  let len_p = payload_size a in
+  let len_a = attrib_size a in
+  let pl = Listutil.init len_p (fun i -> Llvm.build_extractvalue packed_enc i "p" builder) in
+  let at = Listutil.init len_a (fun i -> Llvm.build_extractvalue packed_enc (len_p + i) "p" builder) in
+    {payload = pl; attrib = Bitvector.of_list at}
 
 (* TODO: 
  * - restrict wc so that this compilation is always ok. (remove functions)
@@ -432,54 +452,35 @@ let build_term
       | FoldW((alpha, a), t) ->
           let tenc = build_annotatedterm ctx t args in
           let i64 = Llvm.i64_type context in
-          let i1 = Llvm.i1_type context in
           let malloctype = Llvm.function_type 
                              (Llvm.pointer_type (Llvm.i8_type context)) 
                              (Array.of_list [i64]) in
           let malloc = Llvm.declare_function "malloc" malloctype the_module in
           let mua = Type.newty (Type.MuW(alpha, a)) in
           let a_unfolded = Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
-          let len_p = payload_size a_unfolded in
-          let len_a = attrib_size a_unfolded in
-          let a_struct_members = Array.append (Array.make len_p i64) (Array.make len_a i1) in
-          let a_struct = Llvm.packed_struct_type context a_struct_members in
-          assert (len_p = List.length tenc.payload);
-          assert (len_a = Bitvector.length tenc.attrib);
-          let struct_content = 
-            (List.combine (Listutil.init len_p (fun i -> i)) tenc.payload) @
-            (Listutil.init len_a (fun i -> (len_p + i, Bitvector.extractvalue tenc.attrib i))) in
-          let t_struct = 
-            List.fold_right 
-              (fun (i,v) s -> Llvm.build_insertvalue s v i "tstruct" builder) 
-              struct_content 
-              (Llvm.undef a_struct) in
+          let a_struct = packing_type a_unfolded in
+          let tenc_packed = pack_encoded_value tenc a_unfolded in
           let mem_i8ptr = Llvm.build_call malloc (Array.of_list [Llvm.size_of a_struct]) 
                             "memi8" builder in
           let mem_a_struct_ptr = Llvm.build_bitcast mem_i8ptr (Llvm.pointer_type a_struct) 
                                    "memstruct" builder in
-          ignore (Llvm.build_store t_struct mem_a_struct_ptr builder);
+          ignore (Llvm.build_store tenc_packed mem_a_struct_ptr builder);
           let pl = Llvm.build_ptrtoint mem_a_struct_ptr i64 "memint" builder in
             {payload = [pl]; attrib = Bitvector.null 0}
       | UnfoldW((alpha, a), t) ->
           let i64 = Llvm.i64_type context in
-          let i1 = Llvm.i1_type context in
           let freetype = Llvm.function_type (Llvm.void_type context) (Array.of_list [i64]) in
           let free = Llvm.declare_function "free" freetype the_module in
           let mua = Type.newty (Type.MuW(alpha, a)) in
           let a_unfolded = Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
-          let len_p = payload_size a_unfolded in
-          let len_a = attrib_size a_unfolded in
-          let a_struct_members = Array.append (Array.make len_p i64) (Array.make len_a i1) in
-          let a_struct = Llvm.packed_struct_type context a_struct_members in
+          let a_struct = packing_type a_unfolded in
             begin
               match build_annotatedterm ctx t args with
                 | {payload = [tptrint]; attrib = a } when Bitvector.length a = 0 ->
                     let tptr = Llvm.build_inttoptr tptrint (Llvm.pointer_type a_struct) "tptr" builder in
                     let tstruct = Llvm.build_load tptr "tstruct" builder in
                     ignore (Llvm.build_call free (Array.of_list [tptrint]) "" builder);
-                    let pl = Listutil.init len_p (fun i -> Llvm.build_extractvalue tstruct i "p" builder) in
-                    let at = Listutil.init len_a (fun i -> Llvm.build_extractvalue tstruct (len_p + i) "p" builder) in
-                      {payload = pl; attrib = Bitvector.of_list at}
+                    unpack_encoded_value tstruct a_unfolded                      
                 | _ -> assert false
             end
       | TypeAnnot(t, _) ->
@@ -502,7 +503,7 @@ let build_term
     build_annotatedterm ctx t_annotated []
 
 let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue) 
-      (ssa_blocks : Ssa.block list) (entry:int) (exit:int) : unit =
+      (ssa_func : Ssa.func) : unit =
   let blocks = Hashtbl.create 10 in
   let phi_nodes = Hashtbl.create 10 in    
   let get_block name =
@@ -538,8 +539,9 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
       | (s, (x, y)) :: lets' -> mkLets lets' (mkLetW s ((x, y), t)) 
   in
     (* make entry block *)
-    Llvm.position_at_end (get_block entry) builder;
-    connect_to (get_block entry) { payload = []; attrib = Bitvector.null 0 } entry;
+  let entry_block = get_block ssa_func.Ssa.entry_block in
+    Llvm.position_at_end entry_block builder;
+    connect_to entry_block { payload = []; attrib = Bitvector.null 0 }  ssa_func.Ssa.entry_block;
     (* build unconnected blocks *)
     let open Ssa in
     List.iter 
@@ -551,27 +553,25 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                let senc = Hashtbl.find phi_nodes src.name in
                  ignore (Llvm.build_br (get_block src.name) builder);
                  connect_to (get_block src.name) senc src.name
-           | Direct(src, lets, body, dst) ->
+           | Direct(src, x, lets, body, dst) ->
                Llvm.position_at_end (get_block src.name) builder;
                let senc = Hashtbl.find phi_nodes src.name in
-               let t = Ssa.reduce (mkLetW (mkVar "z") (("sigma", "x"), mkLets lets body)) in
+               let t = Ssa.reduce (mkLets lets body) in
                let ev = build_term the_module 
-                          [("z", senc)] [("z", src.message_type)] t dst.message_type in
+                          [(x, senc)] [(x, src.message_type)] t dst.message_type in
                let src_block = Llvm.insertion_block builder in
                  ignore (Llvm.build_br (get_block dst.name) builder);
                  connect_to src_block ev dst.name
-           | Branch(src, lets, (s, (xl, bodyl, dst1), (xr, bodyr, dst2))) ->
+           | Branch(src, x, lets, (s, (xl, bodyl, dst1), (xr, bodyr, dst2))) ->
                begin
                  let t = reduce (
-                   mkLetW (mkVar "z") 
-                     (("sigma", "x"), 
                       mkLets lets ( mkCaseW s 
                                       [(xl, mkInlW bodyl) ;
-                                       (xr, mkInrW bodyr) ]))) in
+                                       (xr, mkInrW bodyr) ])) in
                  let src_block = get_block src.name in
                    Llvm.position_at_end src_block builder;
                    let senc = Hashtbl.find phi_nodes src.name in
-                   let tenc = build_term the_module [("z", senc)] [("z", src.message_type)] t
+                   let tenc = build_term the_module [(x, senc)] [(x, src.message_type)] t
                                 (Type.newty (Type.SumW[dst1.message_type; dst2.message_type])) in
                    let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - 1) tenc.attrib in
                    let denc12 = { payload = tenc.payload; attrib = da } in
@@ -583,23 +583,41 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                                (get_block dst1.name) builder);
                      connect_to src_block denc1 dst1.name;
                      connect_to src_block denc2 dst2.name
-               end)                         
-      ssa_blocks;
-    (* make return *)
-    Llvm.position_at_end (get_block exit) builder;
-    ignore (Llvm.build_ret_void builder)
-
+               end
+           | Return(src, x, lets, body, return_type) ->
+               Llvm.position_at_end (get_block src.name) builder;
+               let senc = Hashtbl.find phi_nodes src.name in
+               let t = Ssa.reduce (mkLets lets body) in
+               let ev = build_term the_module 
+                          [(x, senc)] [(x, src.message_type)] t return_type in
+(*               let pty = packing_type return_type in*)
+               let pev = pack_encoded_value ev return_type in
+                 ignore (Llvm.build_ret pev builder)
+                   (* TODO: actual return *)
+      )                         
+      ssa_func.blocks
 
 let build_body (the_module : Llvm.llmodule) func (c : circuit) =
-  let ssa_blocks = Ssa.trace c in 
-    build_ssa_blocks the_module func ssa_blocks c.output.src c.output.dst
+  let ssa_func = Ssa.trace c in
+    build_ssa_blocks the_module func ssa_func
 
 (* Must be applied to circuit of type [A] *)    
 let llvm_circuit (c : Compile.circuit) = 
   let the_module = Llvm.create_module context "intml" in
-  let void = Llvm.void_type context in
-  let ft = Llvm.function_type void (Array.make 0 void) in
-  let f = Llvm.declare_function "main" ft the_module in
-    build_body the_module f c;
+  let ssa_func = Ssa.trace c in
+  let arg_ty = packing_type ssa_func.Ssa.argument_type in
+  let ret_ty = packing_type ssa_func.Ssa.return_type in
+  let ft = Llvm.function_type ret_ty (Array.make 1 arg_ty) in
+  let func = Llvm.declare_function ssa_func.Ssa.func_name ft the_module in
+    build_ssa_blocks the_module func ssa_func;
+    (* make main function *)
+    let void_ty = Llvm.void_type context in
+    let main_ty = Llvm.function_type void_ty (Array.make 0 void_ty) in
+    let main = Llvm.declare_function "main" main_ty the_module in
+    let start_block = Llvm.append_block context "start" main in 
+    let args = Array.of_list [Llvm.undef arg_ty] in
+      Llvm.position_at_end start_block builder;
+      ignore (Llvm.build_call func args "ret" builder);
+      ignore (Llvm.build_ret_void builder);           
 (*    Llvm.dump_module the_module; *)
     the_module

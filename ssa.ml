@@ -8,8 +8,17 @@ type label = {
 type let_bindings = (Term.t * (Term.var * Term.var)) list 
 type block = 
     Unreachable of label
-  | Direct of label * let_bindings * Term.t * label
-  | Branch of label * let_bindings * (Term.t * (Term.var * Term.t * label) * (Term.var * Term.t * label))
+  | Direct of label * Term.var * let_bindings * Term.t * label
+  | Branch of label * Term.var * let_bindings * (Term.t * (Term.var * Term.t * label) * (Term.var * Term.t * label))
+  | Return of label * Term.var * let_bindings * Term.t * Type.t
+
+type func = {
+  func_name : string;
+  argument_type: Type.t;
+  entry_block : int;
+  blocks : block list;
+  return_type: Type.t;
+}
 
 let fresh_var = Vargen.mkVarGenerator "x" ~avoid:[]
 
@@ -89,7 +98,7 @@ let rec reduce (t : Term.t) : Term.t =
         Printf.printf "%s\n" (Printing.string_of_termW t);
         failwith "TODO"
 
-let trace (c: circuit) : block list =
+let trace (c: circuit) : func =
   (* Supply of fresh variable names. 
    * (The instructions do not contain a free variable starting with "x")
    *)
@@ -139,7 +148,7 @@ let trace (c: circuit) : block list =
       if not (IntMap.mem dst node_map_by_src) then
         begin
           if dst = c.output.dst then
-            Direct(src, lets, mkPairW sigma v, {name = dst; message_type = c.output.type_forward}) 
+            Return(src, "z", lets, mkPairW sigma v, c.output.type_forward) 
           else 
             (* unreachable *)
             Unreachable(src)
@@ -168,7 +177,7 @@ let trace (c: circuit) : block list =
                   | _ -> 
                       let v' = "v'" in 
                         (*                      assert (Type.equals src.message_type w3.type_back);*)
-                        Branch(src, lets,
+                        Branch(src, "z", lets,
                                (v, 
                                 (v', mkPairW sigma (mkVar v'), {name = w1.dst; message_type = w1.type_forward}), 
                                 (v', mkPairW sigma (mkVar v'), {name = w2.dst; message_type = w2.type_forward})))
@@ -236,7 +245,7 @@ let trace (c: circuit) : block list =
                     | _ ->
                         let c = fresh_var () in
                           (*                      assert (Type.equals src.message_type w1.type_back); *)
-                          Branch(src, lets', 
+                          Branch(src, "z", lets', 
                                  (c', 
                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w2.dst; message_type = w2.type_forward}),
                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w3.dst; message_type = w3.type_forward})))
@@ -246,16 +255,21 @@ let trace (c: circuit) : block list =
   let sigma, x = "sigma", "x" in
   let entry_points = Hashtbl.create 10 in
   let rec trace_all src =
-    if not (Hashtbl.mem entry_points src.name) then 
-      let block = trace src src.name [] (mkVar sigma, mkVar x) in
-        Hashtbl.add entry_points src.name ();
-        match block with
-          | Unreachable(_) -> [block]
-          | Direct(_, _, _, dst) ->
-              block :: (if dst.name = c.output.dst then [] else trace_all dst)
-          | Branch(_, _, (_, (_, _, dst1), (_, _, dst2))) ->
-              block :: trace_all dst1 @ trace_all dst2 
-              else [] 
-  in
-    trace_all {name = c.output.src; message_type = c.output.type_back}
-
+    if Hashtbl.mem entry_points src.name then []
+    else 
+      begin
+        let block = trace src src.name [(mkVar "z",(sigma,x))] (mkVar sigma, mkVar x) in
+          Hashtbl.add entry_points src.name ();
+          match block with
+            | Unreachable(_) | Return(_) -> [block]
+            | Direct(_, _, _, _, dst) ->
+                block :: trace_all dst
+            | Branch(_, _, _, (_, (_, _, dst1), (_, _, dst2))) ->
+                block :: trace_all dst1 @ trace_all dst2 
+      end in
+  let blocks = trace_all {name = c.output.src; message_type = c.output.type_back} in
+    { func_name = "f";
+      argument_type = c.output.type_back;
+      entry_block = c.output.src;
+      blocks = blocks;
+      return_type = c.output.type_forward }

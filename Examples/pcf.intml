@@ -207,4 +207,4 @@ letw t = let [x] = fact [4] in let z = print " " in print_dec x
 letw t = let [x] = fact [5] in let z = print " " in print_dec x
 
 (*letu abx = [print (mul 31 4)]*)
-letu tu = let [x] = fib2 [33] in [print x]
+letu tu = let [x] = fib2 [34] in [print x]
