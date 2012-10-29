@@ -138,7 +138,7 @@ let trace (c: circuit) : func =
               (mkVar x, mkVar y), (t, (x, y)) :: lets in
     let rec make_bindings t (vars, f) =
       match vars with 
-        | [] -> [], mkUnitW, f
+        | [] -> [], t, f
         | x :: rest ->
             let th = fresh_var () in
             let tr = fresh_var () in
