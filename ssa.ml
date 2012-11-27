@@ -175,6 +175,7 @@ let trace (c: circuit) : func =
                   | InW(2, 0, v') -> trace src w1.dst lets (sigma, v')
                   | InW(2, 1, v') -> trace src w2.dst lets (sigma, v')
                   | _ -> 
+                      (* Printf.printf "%s\n" (Printing.string_of_termW v); *)
                       let v' = "v'" in 
                         (*                      assert (Type.equals src.message_type w3.type_back);*)
                         Branch(src, "z", lets,

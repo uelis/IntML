@@ -114,3 +114,4 @@ letu toDigits =
 letu e = toDigits eContFrac
 
 letu ttt = printlist e [11]
+letu ttu = printlist eContFrac [2100   ]

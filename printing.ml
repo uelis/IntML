@@ -242,11 +242,11 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf " ) -> ";
           s_termW t1
       | LetW(t1, (x, y, t2)) ->
-          Buffer.add_string buf "let <";
+          Buffer.add_string buf "let (";
           Buffer.add_string buf x;
           Buffer.add_string buf ", "; 
           Buffer.add_string buf y; 
-          Buffer.add_string buf "> = "; 
+          Buffer.add_string buf ") = "; 
           s_termW t1;
           Buffer.add_string buf " in ";
           s_termW t2
@@ -314,15 +314,15 @@ let string_of_termW (term: Term.t): string =
       | Var(x) -> 
          Buffer.add_string buf  x
       | UnitW -> 
-          Buffer.add_string buf "<>"
+          Buffer.add_string buf "()"
       | ConstW(s) -> 
           Buffer.add_string buf (string_of_term_const s)
       | PairW(t1, t2) -> 
-          Buffer.add_char buf '<';
+          Buffer.add_char buf '(';
           s_termW t1;
           Buffer.add_string buf ", ";
           s_termW t2;
-          Buffer.add_char buf '>'
+          Buffer.add_char buf ')'
       | InW(2, 0, t1) -> 
           Buffer.add_string buf "inl(";
           s_termW t1;

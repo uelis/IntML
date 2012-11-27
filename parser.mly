@@ -286,7 +286,7 @@ termU_app:
 termU_atom:
     | identifier
        { mkTerm (Term.Var($1)) }
-    | TokLAngle termU TokComma termU TokRAngle 
+    | TokLParen termU TokComma termU TokRParen 
        { mkTerm (PairU($2, $4)) }
     | TokLBracket termW TokRBracket
        { mkTerm (BoxTermU($2)) }

@@ -243,7 +243,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
       | BoxTermU(t) ->
           let w = fresh_wire () in
             (w, [Axiom(w, 
-                       (sigma, mkLambdaW ((unusable_var, Some (Type.newty Type.OneW)), 
+                       (sigma, mkLambdaW (("memo", Some (Type.newty Type.OneW)), 
                                           fresh_vars_for_missing_annots t)))])
       | LetBoxU(s, (c, t)) ->
           let fv_s = free_vars s in

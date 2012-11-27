@@ -37,6 +37,8 @@ let rec eq (ty: Type.t) (v1: value) (v2: value) : bool =
          (m = n) && (i = j) && (eq (List.nth l i) v1' v2')
   | _ -> false
 
+let memtbl = Hashtbl.create 10
+
 let rec eval (t: Term.t) (sigma : env) : value =
   match t.desc with 
     | Var(x) -> List.assoc x sigma
@@ -75,7 +77,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
         let v1 = eval t1 sigma in
         let v2 = eval t2 sigma in
           appV v1 v2
-    | LambdaW((x, _), t1) ->   FunV(sigma, x, t1)
+    | LambdaW((x, _), t1) -> FunV(sigma, x, t1)
     | LoopW(t1, (x, t2)) ->
         let v1 = eval t1 sigma in
         let rec loop v = 
@@ -101,8 +103,14 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | LambdaU (_, _)|AppU (_, _)|LetU (_, _)|PairU (_, _)
       -> assert false
 
-and appV (v1: value) (v2: value) : value =
+and appV (v1: value) (v2: value) : value = 
   match v1 with
+    | FunV(tau, "ymemo'", t1) -> 
+(        try Hashtbl.find memtbl (v1, v2) with
+            Not_found ->
+              let v = eval t1 (("memo", v2) :: tau) in
+                Hashtbl.add memtbl (v1, v2) v;
+                 v)
     | FunV(tau, x, t1) -> eval t1 ((x, v2) :: tau)
     | NatPredV -> 
         begin
