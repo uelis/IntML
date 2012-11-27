@@ -1,0 +1,128 @@
+letw true : 2 = inl()
+letw false : 2 = inr()
+letw not : 2 -> 2 =
+  fun x -> if x then false else true
+letw and : 2 -> 2 -> 2 = 
+  fun x -> fun y ->
+    if x then (if y then true else false) else false
+letw or = fun (x : 2) -> fun (y : 2) ->
+  if x then true else y
+
+letw fixw = fun x ->
+  case x of 
+    inl(lx) -> 
+      let (l,x) = lx in
+        case x of
+          inl(bq) ->
+            let (b,q) = bq in
+              inl(fold<'c.1+'b*'c> inr(b,l), inr(q))
+        | inr(a) ->
+            case unfold<'c.1+'b*'c> l of
+              inl(nl) -> 
+                 inr(a)
+            | inr(cns) ->
+               let (hd, tl) = cns in
+                 inl(tl, inl(hd, a))
+  | inr(q) -> 
+     inl(fold<'c.1+'b*'c> inl(), inr(q))
+
+letu fix = hack fixw
+ as {'c (* mu 'c. 1 + 'b*'c *)}({'b}'a --o 'a) --o 'a
+
+
+letu val = fun n -> fun k -> k n
+letu write = fun n ->  fun k -> let [c] = [print "s"] in k n
+letu write1 = fun n ->  fun k -> let [c] = [print "1"] in k n
+letu write2 = fun n ->  fun k -> let [c] = [print "2"] in k n
+letu write3 = fun n ->  fun k -> let [c] = [print "3"] in k n
+letu add = fun k -> k (fun n -> fun k1 -> 
+                        let [nv] = n in 
+                          k1 (fun m -> fun k2 -> 
+                            let [mv] = m in
+                              k2 [nv + mv]))
+letu if0 = fun x1 -> fun x2 -> fun k -> k (fun n -> fun k ->
+                        let [nv] = n in
+                        case nv = 0 of
+                          inl(true) -> x1 k
+                        | inr(false) -> x2 k)
+letu add1 = fun k -> k (fun n -> fun k1 -> 
+                        let [nv] = n in 
+                          k1 (fun m -> fun k2 -> 
+                            let [mv] = m in
+                            let [s] = [nv + mv] in
+                              k2 [s]))
+letu app = fun e1 -> fun e2 -> fun k -> e1 (fun x1 -> e2 (fun x2 -> x1 x2 k))
+letu mem = fun f -> fun k -> let [n] = f (fun r -> r) in k [n]
+
+letu test1 = fun k -> 
+               (fun k -> add (fun x1 -> val [let x = print "3" in 3] (fun x2 -> x1 x2 k)))
+               (fun x1 -> val [5] (fun x2 -> x1 x2 k))
+letu test2 =
+      fun k -> 
+         val (fun x ->
+              copy x as xa, xb in
+                  fun k -> 
+                     (fun k -> add (fun x1 -> val xa (fun x2 -> x1 x2 k)))
+                     (fun x1 -> val xb (fun x2 -> x1 x2 k)))
+         (fun x1 -> write [5] (fun x2 -> x1 x2 k))
+
+letu test21 =
+      app
+         (val (fun x ->
+                  copy x as xa, xb in
+                    app (app add (val xa)) (val xb)))
+              (write [5])
+
+letu test22 = test21 (fun r -> let [v]=r in [print v])
+
+letu test3 =
+      app
+         (val (fun x ->
+                  copy x as xa, xb in
+                    app (app add (app (val xa) (val [3]))) (app (val xb) (val [4]))))
+              (write (fun x -> app (app add (val x)) (val [5])))
+     
+letu test31 = test3 (fun r -> let [v]=r in [print v])
+
+letu test4_0 =
+      app (app add test3) (app (app add (val [6])) (val [5]))
+
+letu test4_1 =
+      app (val (fun x -> val [3])) (app (app add1 (val [6])) (val [5]))
+
+letu test4 =
+      app (app add (mem test3)) (val [5])
+     
+letu test41 = test4 (fun r -> let [v]=r in [print v])
+
+letu c = fun p -> 
+           let (nnx, y) = p in 
+           fun k -> nnx (fun x -> k (x, y))
+
+letu k = fun p ->           
+           let (k, c) = p in 
+           fun p1 ->
+             let (k1, x) = p1 in
+               k (fun b -> k1 (b, c) , x)
+
+letu step = 
+   fun f -> 
+   copy f as f1, f2 in
+      fun k1 -> 
+         k1 (fun n -> fun k2 ->
+                        let [nv] = n in 
+                        case or (nv = 0) (nv = 1) of
+                          inl(true) -> k2 [1]
+                        | inr(false) -> 
+                             f1 [nv - 1] 
+                             (fun m -> let [mv] = m in
+                             f2 [nv - 2] 
+                             (fun r -> let [rv] = r in
+                               k2 [mv + rv])))
+
+letu fixv = fun step ->
+              fix (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
+
+letu tt = app (fixv step) (val [32])
+letu testfib = tt (fun r -> let [v]=r in [print v])
+
