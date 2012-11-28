@@ -104,12 +104,13 @@ letu k = fun p ->
            fun p1 ->
              let (k1, x) = p1 in
                k (fun b -> k1 (b, c) , x)
+letu eval = fun kk -> fun k -> let [v] = kk (fun n -> n) in k [v]
 
 letu step = 
    fun f -> 
    copy f as f1, f2 in
       fun k1 -> 
-         k1 (fun n -> fun k2 ->
+         k1 (fun n -> eval (fun k2 ->
                         let [nv] = n in 
                         case or (nv = 0) (nv = 1) of
                           inl(true) -> k2 [1]
@@ -118,11 +119,12 @@ letu step =
                              (fun m -> let [mv] = m in
                              f2 [nv - 2] 
                              (fun r -> let [rv] = r in
-                               k2 [mv + rv])))
+                               k2 [mv + rv]))))
 
+letu stepl = (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
 letu fixv = fun step ->
               fix (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
 
-letu tt = app (fixv step) (val [32])
-letu testfib = tt (fun r -> let [v]=r in [print v])
+letu tt = app (fixv step) (val [39])
+letu testfib = let [v] = tt (fun r -> r) in [print v]
 
