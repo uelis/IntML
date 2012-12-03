@@ -12,6 +12,37 @@ type block =
   | Branch of label * Term.var * let_bindings * (Term.t * (Term.var * Term.t * label) * (Term.var * Term.t * label))
   | Return of label * Term.var * let_bindings * Term.t * Type.t
 
+let string_of_block b =
+  match b with
+    | Unreachable(l) -> 
+        Printf.sprintf "and l%i(x) = L%i(x)\n" l.name l.name (* (Printing.string_of_type l.message_type)*)
+    | Direct(l, x, bndgs, body, goal) ->
+        (Printf.sprintf "and l%i(%s) = \n  let" 
+          l.name x (* (Printing.string_of_type l.message_type)) *)) ^
+        (String.concat "" (List.map (fun (t, (x, y)) -> 
+                                       Printf.sprintf "  val (%s, %s) = %s\n" 
+                                         x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
+        (Printf.sprintf "  in l%i(%s) end\n" goal.name (Printing.string_of_termW body))
+    | Branch(la, x, bndgs, (cond, (l, lb, lg), (r, rb, rg))) ->
+        (Printf.sprintf "and l%i(%s)=\n  let" 
+          la.name x (* (Printing.string_of_type la.message_type)*)) ^
+        (String.concat "" (List.map (fun (t, (x, y)) -> 
+                                       Printf.sprintf "  val (%s, %s) = %s\n" 
+                                         x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
+        (Printf.sprintf "  in case %s of\n" (Printing.string_of_termW cond)) ^
+        (Printf.sprintf "    inl(%s) => l%i(%s)\n" l lg.name (Printing.string_of_termW lb)) ^
+        (Printf.sprintf "  | inr(%s) => l%i(%s)\nend\n" r rg.name (Printing.string_of_termW rb)) 
+    | Return(l, x, bndgs, body, retty) ->
+        (Printf.sprintf "and l%i(%s)=\n  let" 
+          l.name x (*(Printing.string_of_type l.message_type)*)) ^
+        (String.concat "" (List.map (fun (t, (x, y)) -> 
+                                       Printf.sprintf "  val (%s, %s) = %s\n" 
+                                         x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
+        (Printf.sprintf "  in %s\n end\n" 
+           (Printing.string_of_termW body)
+ (*           (Printing.string_of_type retty)*))
+
+
 type func = {
   func_name : string;
   argument_type: Type.t;
@@ -26,7 +57,8 @@ let rec isPure (t: Term.t) : bool =
   match t.Term.desc with
     | Var(_) -> true
     | UnitW -> true
-    | ConstW(Cbot) | ConstW(Cprint(_)) | ConstW(Cintprint)-> false
+    | ConstW(Cbot) -> true (* TODO: Cbot is actually "assert false" *)
+    | ConstW(Cprint(_)) | ConstW(Cintprint)-> false
     | ConstW(Cintconst(_)) | ConstW(Cintadd) | ConstW(Cintsub) | ConstW(Cintmul)
     | ConstW(Cintdiv) (* questionable! *) | ConstW(Cinteq) | ConstW(Cintslt) -> true
     | FoldW(_, t) -> isPure t
@@ -260,6 +292,7 @@ let trace (c: circuit) : func =
     else 
       begin
         let block = trace src src.name [(mkVar "z",(sigma,x))] (mkVar sigma, mkVar x) in
+          Printf.printf "%s" (string_of_block block);
           Hashtbl.add entry_points src.name ();
           match block with
             | Unreachable(_) | Return(_) -> [block]

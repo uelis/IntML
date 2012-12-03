@@ -36,10 +36,9 @@ letu write1 = fun n ->  fun k -> let [c] = [print "1"] in k n
 letu write2 = fun n ->  fun k -> let [c] = [print "2"] in k n
 letu write3 = fun n ->  fun k -> let [c] = [print "3"] in k n
 letu add = fun k -> k (fun n -> fun k1 -> 
-                        let [nv] = n in 
                           k1 (fun m -> fun k2 -> 
-                            let [mv] = m in
-                              k2 [nv + mv]))
+                              let [s] = let [nv] = n in let [mv] = m in [nv + mv] in
+                                k2 [s]))
 letu if0 = fun x1 -> fun x2 -> fun k -> k (fun n -> fun k ->
                         let [nv] = n in
                         case nv = 0 of
@@ -105,11 +104,24 @@ letu k = fun p ->
              let (k1, x) = p1 in
                k (fun b -> k1 (b, c) , x)
 *)
+letu eval = fun kk -> fun k -> let [v] = kk (fun n -> n) in k [v]
+
+letu step1 =
+   fun f ->
+   copy f as f1, f2 in
+     val (fun x -> mem (fun k ->
+          let [xv] = x in
+          case xv < 2 of
+            inl(true) -> val [1] k
+          | inr(false) -> 
+              app (app add (f1 [xv - 1])) (f2 [xv - 2]) k 
+         ))
+
 letu step = 
    fun f -> 
    copy f as f1, f2 in
       fun k1 -> 
-         k1 (fun n -> fun k2 ->
+         k1 (fun n -> eval (fun k2 ->
                         let [nv] = n in 
                         case or (nv = 0) (nv = 1) of
                           inl(true) -> k2 [1]
@@ -118,11 +130,12 @@ letu step =
                              (fun m -> let [mv] = m in
                              f2 [nv - 2] 
                              (fun r -> let [rv] = r in
-                               k2 [mv + rv])))
+                               k2 [mv + rv]))))
 
+letu stepl = (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
 letu fixv = fun step ->
               fix (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
 
-letu tt = app (fixv step) (val [32])
-letu testfib = tt (fun r -> let [v]=r in [print v])
+letu tt = app (fixv step1) (val [35])
+letu testfib = let [v] = tt (fun r -> r) in [print v]
 

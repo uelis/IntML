@@ -692,12 +692,12 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
             ("x", None),
             Term.mkCaseW (Term.mkVar "x") 
               [("y", Term.mkAppW (project i a b1) (Term.mkVar "y"));
-               ("y", mkLoopW mkUnitW ("x", mkInrW (mkVar "x")))])
+               ("y", mkConstW Cbot)])
         with Not_Leq ->
           Term.mkLambdaW(
             ("x", None),
             Term.mkCaseW (Term.mkVar "x") 
-              [("y",  mkLoopW mkUnitW ("x", mkInrW (mkVar "x")));
+              [("y",  mkConstW Cbot);
                ("y", Term.mkAppW (project i a b2) (Term.mkVar "y"))])
         end 
 (*    | Type.TensorW(b1, b2) ->

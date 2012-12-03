@@ -24,6 +24,7 @@ sig
   val add_incoming: t * Llvm.llbasicblock -> t -> unit
 end = 
 struct
+  
   type t = { bits : Llvm.llvalue list }
 
   let i1 = Llvm.i1_type context
@@ -69,6 +70,108 @@ struct
     List.iter 
       (fun (yi, xi) -> Llvm.add_incoming (yi, blocky) xi)
       (List.combine y.bits x.bits)
+    
+(*
+  type t = { 
+    vector : Llvm.llvalue option;
+    len : int
+  }
+
+  let struct_type len =
+    Llvm.integer_type context len
+
+  let length b = b.len
+
+  let undef len = 
+    if len = 0 then 
+      { vector = None; len = 0 }
+    else 
+      { vector = Some (Llvm.undef (struct_type len)); 
+        len = len }
+
+  let null len = 
+    if len = 0 then 
+      { vector = None; len = 0 }
+    else 
+      { vector = Some (Llvm.const_null (struct_type len)); 
+        len = len }
+
+  let values_of_struct s len =
+    Listutil.init len (fun i -> 
+                     Llvm.build_extractelement s (Llvm.const_int (Llvm.i32_type context) i) "i" builder)
+
+      (* bl darf nicht leer sein *)
+  let struct_of_list bl =
+    let len = List.length bl in
+    let s = Llvm.const_null (struct_type len) in
+      List.fold_right (fun v s ->
+                         let s' = Llvm.build_shl s (Llvm.const_int (struct_type len) 1) "s1" builder in
+                         let ve = Llvm.build_zext v (struct_type len) "ve" builder in
+                           Llvm.build_or s' ve "s2" builder)
+        (List.rev bl) s
+ 
+  let concat b1 b2 = 
+ match b1.vector, b2.vector with
+    | v1, None -> b1
+    | None, v2 -> b2
+    | Some x, Some y -> 
+        let ilen = Llvm.integer_type context (b1.len + b2.len) in
+        let zh' = Llvm.build_zext x ilen "zhext" builder in
+        let cl2 = Llvm.const_int ilen b2.len in
+        let zh = Llvm.build_shl zh' cl2 "zh" builder in
+        let zl =Llvm.build_zext y ilen "zl" builder in
+          {vector = Some (Llvm.build_or zh zl "z" builder);
+           len = b1.len + b2.len}
+
+  let takedrop n b1 =
+    if n = 0 then { vector = None; len = 0 } , b1 
+    else if n = b1.len then b1, { vector = None; len = 0 } 
+    else 
+    match b1.vector with 
+      | None -> assert false
+      | Some z -> 
+          let ixn = Llvm.integer_type context n in
+          let ilen = Llvm.integer_type context b1.len in
+          let x' = Llvm.build_lshr z (Llvm.const_int ilen (b1.len - n)) "xshr" builder in
+          let h = Llvm.build_trunc x' ixn "x" builder in
+          let t = Llvm.build_trunc z (Llvm.integer_type context (b1.len - n)) "y" builder in
+              { vector = Some h; len = n },
+              { vector = Some t; len = b1.len - n }
+
+  let extractvalue b i =    
+    match b.vector with
+      | Some v -> 
+          let x' = Llvm.build_lshr v (Llvm.const_int (Llvm.integer_type context b.len) (b.len - i - 1)) "xshr" builder in
+          let h = Llvm.build_trunc x' (Llvm.i1_type context) "x" builder in
+            h
+      | None -> assert false
+
+  let of_list bl =
+    let len = List.length bl in
+      if len = 0 then 
+        { vector = None; len = 0 }
+      else
+        { vector = Some (struct_of_list bl); len = len }
+
+  let build_phi vecblocks builder =
+    match vecblocks with
+      | ({ vector = Some vx; len = lx }, blockx) :: rest ->
+          let z = Llvm.build_phi [(vx, blockx)] "z" builder in
+            List.iter (function 
+                         | ({ vector = Some vy }, blocky) -> 
+                             Llvm.add_incoming (vy, blocky) z
+                         | _ -> assert false) rest;
+            { vector = Some z; len = lx }
+      | ({ vector = None }, blockx) :: rest ->
+          { vector = None; len = 0} 
+      | _ ->
+          assert false
+
+  let add_incoming (y, blocky) x =
+    match x.vector, y.vector with
+      | Some vx, Some vy -> Llvm.add_incoming (vy, blocky) vx
+      | _ -> ()
+ *)
 end
 
 type encoded_value = {
@@ -214,6 +317,9 @@ let build_term
   (* Add type annotations in various places *)
   let rec annotate_term (t: Term.t) : Term.t =
     match t.desc with
+      | ConstW(Cbot) -> 
+          let alpha = Type.newty Type.Var in
+            mkTypeAnnot (mkConstW Cbot) (Some alpha)
       | Var(_) | UnitW | ConstW(_) -> t
       | TypeAnnot(t1, None) -> annotate_term t1
       | TypeAnnot(t1, Some a) -> mkTypeAnnot (annotate_term t1) (Some a)
@@ -263,6 +369,15 @@ let build_term
     match t.Term.desc with
       | Var(x) -> 
           List.assoc x ctx
+      | TypeAnnot({ desc = ConstW(Cbot) }, Some a) ->
+          let func = Llvm.block_parent (Llvm.insertion_block builder) in
+          let inf_loop = Llvm.append_block context "bot" func in 
+          let _ = Llvm.build_br inf_loop builder in
+          let _ = Llvm.position_at_end inf_loop builder in
+          let _ = Llvm.build_br inf_loop builder in
+          let dummy = Llvm.append_block context "dummy" func in 
+          let _ = Llvm.position_at_end dummy builder in
+            build_truncate_extend {payload = []; attrib = Bitvector.null 0;} a
       | ConstW(Cintconst(i)) ->
           let vali = Llvm.const_int (Llvm.i64_type context) i in
             {payload = [vali]; attrib = Bitvector.null 0;}
