@@ -207,7 +207,8 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         a,
         eq_expected_constraint t (a, ty) :: con
   | PairU(_, _) | LetU(_, _) | AppU(_, _) | LambdaU(_, _) | BoxTermU(_)
-  | LetBoxU(_, _) | CaseU(_, _, _) | CopyU(_, _) | HackU(_, _) | MemoU(_) ->
+  | LetBoxU(_, _) | CaseU(_, _, _) | CopyU(_, _) | HackU(_, _) | MemoU(_)
+  | SuspendU _ | ForceU _ ->
       raise (Typing_error (Some t, "Working class term expected."))
 and ptU (c: contextW) (phi: contextU) (t: Term.t) 
         : Type.t * type_constraint list =
@@ -355,6 +356,24 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
          con1)
   | MemoU(t1) ->
       ptU [] [] t1
+  | SuspendU(t) ->
+      let gamma = fresh_index_types phi in
+      let tyBox, conBox = ptU c gamma t in
+      let alpha = newty Var in
+      let cont = newty (ContW alpha) in
+      let conC = leq_index_types (dot cont gamma) phi in
+      let b = newty (BoxU(newty OneW, cont)) in
+        b,
+        eq_expected_constraint t (tyBox, newty (BoxU(newty OneW, alpha))) :: 
+        conC @ conBox 
+  | ForceU(t) ->
+      let tyK, conK = ptW c t in
+      let alpha = newty Var in
+      let cont = newty (ContW alpha) in
+      let b = newty (BoxU(newty OneW, alpha)) in
+        b,
+        eq_expected_constraint t (tyK, cont) :: 
+        conK 
   | TypeAnnot(t, None) -> 
       ptU c phi t
   | TypeAnnot(t, Some ty) ->

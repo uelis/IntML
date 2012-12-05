@@ -111,6 +111,10 @@ let string_of_type (ty: Type.t): string =
           Buffer.add_char buf ',';
           s_typeW value;
           Buffer.add_char buf '>'
+      | Type.ContW(ret) ->
+          Buffer.add_string buf "cont<";
+          s_typeW ret;
+          Buffer.add_char buf '>'
       | Type.FunW _ | Type.SumW _ | Type.TensorW _ ->
           Buffer.add_char buf '(';
           s_typeW t;
@@ -159,7 +163,7 @@ let string_of_type (ty: Type.t): string =
           s_typeW t2;
           Buffer.add_char buf ']'
       | Type.ZeroW | Type.OneW | Type.FunW _ | Type.NatW
-      | Type.SumW _ | Type.TensorW _ | Type.MuW _ | Type.HashW _ ->
+      | Type.SumW _ | Type.TensorW _ | Type.MuW _ | Type.HashW _ | Type.ContW _ ->
           s_typeW t
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -208,7 +212,7 @@ let abstract_string_of_typeU (ty: Type.t): string =
           Buffer.add_string buf (string_of_type t2);
           Buffer.add_char buf ']'
       | Type.NatW | Type.ZeroW | Type.OneW | Type.FunW _
-      | Type.SumW _ | Type.TensorW _ | Type.MuW _ | Type.HashW _ ->
+      | Type.SumW _ | Type.TensorW _ | Type.MuW _ | Type.HashW _ | Type.ContW _->
           Buffer.add_string buf (string_of_type t);
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';

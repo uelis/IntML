@@ -59,6 +59,9 @@ type instruction =
    | LWeak of wire (* \Tens A X *) * wire (* \Tens B X *) (* where B <= A *)
    | Epsilon of wire (* [A] *) * wire (* \Tens A [B] *) * wire (* [B] *)
    | Memo of wire (* X *) * wire (* X *)
+   | Grab of wire (* X *) * wire
+   | Ret of wire (* X *)
+   | Force of wire (* X *) * (Term.var list * Term.t)
 
 type circuit = 
     { output : wire; 
@@ -77,6 +80,9 @@ let rec wires (i: instruction list): wire list =
     | LWeak(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | Memo(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | Epsilon(w1, w2, w3) :: is -> w1 :: w2 :: w3 :: (wires is)
+    | Grab(w1, w2) :: is -> w1 :: (wires is)
+    | Ret(w1) :: is -> w1 :: (wires is)
+    | Force(w1, _ ) :: is -> w1 :: (wires is)
 
 let map_wires_instruction (f: wire -> wire): instruction -> instruction =
   fun i -> 
@@ -87,6 +93,9 @@ let map_wires_instruction (f: wire -> wire): instruction -> instruction =
     | Contr(w1, w2, w3) -> Contr(f w1, f w2, f w3)
     | Door(w1, w2) -> Door(f w1, f w2)
     | Memo(w1, w2) -> Memo(f w1, f w2)
+    | Grab(w1, w2) -> Grab(f w1, f w2)
+    | Ret(w1) -> Ret(f w1)
+    | Force(w, t) -> Force(f w, t)
     | ADoor(w1, w2) -> ADoor(f w1, f w2)
     | LWeak(w1, w2) -> LWeak(f w1, f w2)
     | Epsilon(w1, w2, w3) -> Epsilon(f w1, f w2, f w3)
@@ -165,6 +174,13 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
           let (w_t, i_t) = compile sigma gamma t in
           let w = fresh_wire () in 
             (w, Memo(flip w_t, w) :: i_t)
+      | SuspendU(t) ->
+          let (w_t, i_t) = compile_in_box unusable_var sigma gamma t in
+          let w = fresh_wire () in
+            (w, Grab(w, w_t) :: Ret(flip w_t) :: i_t)
+      | ForceU(k) ->
+          let w = fresh_wire () in
+            (w, [Force(w, (sigma, k))])
       | HackU(_, t1) ->
           let w = fresh_wire () in
             (w, [(Axiom(w, (sigma, fresh_vars_for_missing_annots t1)))])
@@ -352,6 +368,44 @@ let infer_types (c : circuit) : Type.t =
               w2.type_back (tensor sigma beta) ::
             Typing.eq_constraint 
               w1.type_forward (tensor sigma beta) ::
+            (constraints rest)
+      | Grab(w1, wt) :: rest ->
+          let sigma = Type.newty Type.Var in
+          (* let alpha = Type.newty Type.Var in *)
+          (* let cont = Type.newty (Type.ContW alpha) in*)
+          let cont = Type.newty Type.Var in
+            Typing.eq_constraint 
+              w1.type_back (tensor sigma (Type.newty Type.OneW)) ::
+            Typing.eq_constraint 
+              w1.type_forward (tensor sigma cont) ::
+            (constraints rest)
+      | Ret(w1) :: rest ->
+          let sigma = Type.newty Type.Var in
+          (* let alpha = Type.newty Type.Var in *)
+          let beta = Type.newty Type.Var in
+          (* let cont = Type.newty (Type.ContW alpha) in*)
+          let cont = Type.newty Type.Var in
+            Typing.eq_constraint 
+              w1.type_back (tensor sigma (tensor cont beta)) ::
+            Typing.eq_constraint 
+              w1.type_forward (tensor sigma (tensor cont (Type.newty Type.OneW))) ::
+            (constraints rest)
+      | Force(w1, (s, k)) :: rest ->
+          let sigma = Type.newty Type.Var in
+          let alpha = Type.newty Type.Var in
+          let cont = Type.newty (Type.ContW alpha) in
+          let x = "x" in
+          let k' = variant k in (* ensure "x" and "y" are fresh *) 
+          let s' = List.map variant_var s in
+          let tyk = principal_typeW
+                                [(x, sigma)]
+                                (let_tupleW x (s', k')) in 
+            Typing.eq_constraint 
+              tyk cont ::
+            Typing.eq_constraint 
+              w1.type_back (tensor sigma (Type.newty Type.OneW)) ::
+            Typing.eq_constraint 
+              w1.type_forward (tensor sigma alpha) ::
             (constraints rest)
       | Tensor(w1, w2, w3)::rest ->
           let sigma1 = Type.newty Type.Var in
@@ -542,6 +596,12 @@ let rec dot_of_circuit
           | Memo(w1, w2) -> 
               Printf.sprintf "\"Memo({%i,%i},{%i,%i})\"" 
                 w1.src w1.dst w2.src w2.dst
+          | Grab(w1, w2) -> 
+              Printf.sprintf "\"Grab({%i,%i},{%i,%i})\"" w1.src w1.dst w2.src w2.dst
+          | Force(w1, _) -> 
+              Printf.sprintf "\"Force({%i,%i})\"" w1.src w1.dst
+          | Ret(w1) -> 
+              Printf.sprintf "\"Ret({%i,%i})\"" w1.src w1.dst
           | ADoor(w1, w2) -> 
               Printf.sprintf "\"ADoor({%i,%i},{%i,%i})\"" 
                 w1.src w1.dst w2.src w2.dst
@@ -563,6 +623,9 @@ let rec dot_of_circuit
           | Der(_, _, _) -> "&pi;_..."
           | Contr(_, _, _) -> "a+"
           | Memo(_, _) -> "memo"
+          | Grab(_) -> "grab"
+          | Force(_, _) -> "force"
+          | Ret(_) -> "ret"
           | Door(_, w) -> 
               if w.src = -1 then "\", shape=\"plaintext" else "&uarr;"
           | ADoor(_, _) -> "&darr;"
@@ -649,6 +712,7 @@ let rec min i (ty: Type.t) : Term.t =
                                    if Type.equals alpha beta then mua 
                                    else beta) a in
         min (i+1) unfolded
+  | Type.ContW(ret) -> Printf.printf "min: cont\n"; raise Not_Leq
   | Type.HashW(key, value) -> mkConstW (Chashnew) (* TODO *)
   | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
   | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _->
@@ -880,6 +944,32 @@ let message_passing_term (c: circuit): Term.t =
                          (mkPairW (mkInrW (mkVar d)) (mkVar y)))
                   ) 
                 ))
+            | Grab(w1, wt) when w1.src = dst ->
+                ("x", mkLetW (mkVar "x") (("sigma", "v"),
+                                          in_k w1.src (max_wire_src_dst + 1) 
+                                            (mkPairW (mkVar "sigma")
+                                               (mkLambdaW 
+                                                  (("m", None), 
+                                                   in_k wt.dst (max_wire_src_dst + 1) 
+                                                     (mkPairW (mkVar "sigma") (mkVar "m"))
+                                                  )
+                                               )
+                                            )))
+            | Ret(w1) when w1.src = dst ->
+                ("x", mkLetW (mkVar "x") (("sigma", "v"), 
+                                            (parse ("let (cont, m) = v in cont m"))))
+            | Force(w1, k) when w1.src = dst ->
+                (x, mkLetW (mkVar x) ((sigma, y), 
+                                          (mkAppW (let_tupleW sigma k) 
+                                             (mkPairW 
+                                                (mkLambdaW 
+                                                   (("m", None), 
+                                                    in_k w1.src (max_wire_src_dst + 1) 
+                                                      (mkPairW (mkVar sigma) (mkVar "m"))
+                                                   )
+                                                ) 
+                                                (mkVar y)
+                                             ))))
             | Memo(w1 (* X *) , w2 (* X *)) when w1.src = dst ->
                 ("x", mkLetW (mkVar "x") (("sigma", "v"),
                                           in_k w2.src (max_wire_src_dst + 1) 

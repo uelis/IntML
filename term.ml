@@ -48,6 +48,8 @@ and t_desc =
   | LoopW of t * (var * t)
   | LetBoxW of t * (var * t)             (* s, <x>t *)
   | MemoU of t                    
+  | SuspendU of t                    
+  | ForceU of t                    
   | PairU of t * t                     (* s, t *)
   | LetU of t * (var * var * t)        (* s, <x,y>t *)
   | AppU of t * t                      (* s, t *)
@@ -102,7 +104,7 @@ let rec free_vars (term: t) : var list =
     | Var(v) -> [v]
     | ConstW(_) | UnitW -> []
     | InW(_,_,s) | FoldW(_, s) | UnfoldW(_, s) 
-    | BoxTermU(s) | HackU(_, s) | MemoU(s)-> free_vars s
+    | BoxTermU(s) | HackU(_, s) | MemoU(s) | SuspendU(s) | ForceU(s) -> free_vars s
     | PairW(s, t) | PairU (s, t) | AppW (s, t) | AppU(s, t) -> 
         (free_vars s) @ (free_vars t)
     | LetW(s, (x, y, t)) | LetU(s, (x, y, t)) | CopyU(s, (x, y, t)) ->
@@ -129,6 +131,8 @@ let rename_vars (f: var -> var) (term: t) : t =
     | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, rn s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(rn s) }
     | MemoU(s) -> { term with desc = MemoU(rn s) }
+    | SuspendU(s) -> { term with desc = SuspendU(rn s) }
+    | ForceU(s) -> { term with desc = ForceU(rn s) }
     | HackU(ty, s) -> { term with desc = HackU(ty, rn s) }
     | PairW(s, t) -> { term with desc = PairW(rn s, rn t) }
     | PairU(s, t) -> { term with desc = PairU(rn s, rn t) }
@@ -176,6 +180,8 @@ let map_type_annots (f: Type.t option -> Type.t option) (term: t) : t =
     | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, mta s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
     | MemoU(s) -> { term with desc = MemoU(mta s) }
+    | SuspendU(s) -> { term with desc = SuspendU(mta s) }
+    | ForceU(s) -> { term with desc = ForceU(mta s) }
     | HackU(ty, s) -> { term with desc = HackU(f ty, mta s) }
     | PairW(s, t) -> { term with desc = PairW(mta s, mta t) }
     | PairU (s, t) -> { term with desc = PairU(mta s, mta t) }
@@ -222,6 +228,8 @@ let head_subst (s: t) (x: var) (t: t) : t option =
       | FoldW(ty, s) -> { term with desc = FoldW(ty, sub sigma s) }
       | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, sub sigma s) }
       | BoxTermU(s) -> { term with desc = BoxTermU(sub sigma s) }
+      | SuspendU(s) -> { term with desc = SuspendU(sub sigma s) }
+      | ForceU(s) -> { term with desc = ForceU(sub sigma s) }
       | MemoU(s) -> { term with desc = MemoU(sub sigma s) }
       | HackU(ty, s) -> { term with desc = HackU(ty, sub sigma s) }
       | PairW(s, t) -> { term with desc = PairW(sub sigma s, sub sigma t) }
@@ -303,6 +311,8 @@ let freshen_type_vars t =
     | UnfoldW((alpha, a), s) -> 
         { term with desc = UnfoldW((fv alpha, Type.subst fv a), mta s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
+    | SuspendU(s) -> { term with desc = SuspendU(mta s) }
+    | ForceU(s) -> { term with desc = ForceU(mta s) }
     | MemoU(s) -> { term with desc = MemoU(mta s) }
     | HackU(ty, s) -> { term with desc = HackU(f ty, mta s) }
     | PairW(s, t) -> { term with desc = PairW(mta s, mta t) }

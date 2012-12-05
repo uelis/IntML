@@ -50,6 +50,8 @@ and t_desc =
   | LoopW of t * (var * t) 
   | LetBoxW of t * (var * t)             (* s, <x>t *)
   | MemoU of t                    
+  | SuspendU of t                    
+  | ForceU of t                    
   | PairU of t * t                       (* s, t *)
   | LetU of t * (var * var * t)          (* s, <x,y>t *)
   | AppU of t * t                        (* s, t *)

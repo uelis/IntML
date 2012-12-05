@@ -80,6 +80,8 @@ rule main = parse
   | "letw"     { TokLetW }
   | "letu"     { TokLetU }
   | "memo"     { TokMemo }
+  | "force"    { TokForce }
+  | "suspend"  { TokSuspend }
   | "hash"     { TokHash }
   | "hashnew"  { TokHashnew }
   | "hashfree" { TokHashfree }

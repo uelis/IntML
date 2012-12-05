@@ -48,6 +48,8 @@ module Unify(T : sig type t end) = struct
               union c2 c1
           | NatW, NatW | ZeroW, ZeroW | OneW, OneW | SumW([]), SumW([]) -> 
               ()
+          | ContW(t1), ContW(s1) ->
+              unify_raw (t1, s1 ,tag)
           | TensorW(t1, t2), TensorW(s1, s2) | FunW(t1, t2), FunW(s1, s2) 
           | HashW(t1, t2), HashW(s1, s2) 
           | BoxU(t1, t2), BoxU(s1, s2) | TensorU(t1, t2), TensorU(s1, s2) ->
@@ -78,6 +80,7 @@ module Unify(T : sig type t end) = struct
             r.mark <- mark_open;
             begin
               match r.desc with 
+                | ContW(t1) -> dfs t1
                 | MuW(alpha, t1) -> dfs t1
                 | TensorW(t1, t2) | FunW(t1, t2) | HashW(t1, t2)
                 | BoxU(t1, t2) | TensorU(t1, t2) -> dfs t1; dfs t2

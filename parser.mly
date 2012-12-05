@@ -94,6 +94,8 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokLolli
 %token TokMulti
 %token TokMemo
+%token TokForce
+%token TokSuspend
 %token TokHash
 %token TokHashnew
 %token TokHashfree
@@ -314,6 +316,10 @@ termU_atom:
        { mkTerm (TypeAnnot($2, Some $4)) }
     | TokMemo termU_atom
        { mkTerm (MemoU($2)) }
+    | TokForce termU_atom
+       { mkTerm (ForceU($2)) }
+    | TokSuspend termU_atom
+       { mkTerm (SuspendU($2)) }
 
 typeU:
     | typeU_factor

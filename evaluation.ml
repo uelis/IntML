@@ -99,6 +99,7 @@ let newid =
     fun () -> n := !n + 1; !n
 
 let rec eval (t: Term.t) (sigma : env) : value =
+  (* Printf.printf "%s\n\n" (Printing.string_of_termW t); *)
   match t.desc with 
     | Var(x) -> List.assoc x sigma
     | UnitW -> UnitV 
