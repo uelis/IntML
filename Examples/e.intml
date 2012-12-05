@@ -1,6 +1,10 @@
 letw return = fun x -> inl(x)
 letw continue = fun x -> inr(x)
 
+(*
+letu memo = hack memow
+ as {'c}({'a}[int] --o [int]) --o ({'e}['c] --o [int])
+*)
 letw fixw = fun x ->
   case x of 
     inl(lx) -> 
@@ -27,19 +31,31 @@ letu fix = hack fixw
 {(mu 'x. 1 + 'a*'b*'x) * 'z}({'y}['a] --o ['b]) --o 'u
   *)
 
-letu cons : [int] --> ([int] --> [int]) --> ([int] --> [int]) =  
+letu nil : [int] =
+    [0]
+  
+
+letu cons : [int] --> [int] --> [int] =  
   fun x -> fun xs ->
-      fun i -> 
-        let [iv] = i in
-        let [c] = [iv=0] in
-        if c then x else xs [iv - 1]
+    let [xv] = x in
+    let [xsid] = xs in
+    let [id] = [ let id = hashnew in
+                 let u = hashput 0 id (xv, xsid) in id] in
+        [id]
 
 letu head =
-  fun l -> l [0]
+  fun l -> 
+    let [lid] = l in
+      [case hashget 0 lid of
+         inl(cell) -> let (h, t) = cell in h
+       | inr(notfound) -> let x = 0 loop inr(0)]
 
 letu tail = 
   fun l -> 
-     fun i-> l (let [iv] = i in [iv+1])
+    let [lid] = l in
+      [case hashget 0 lid of
+         inl(cell) -> let (h, t) = cell in t
+       | inr(notfound) -> let x = 0 loop inr(0)]
 
 letu printlist =
   fun l ->
@@ -47,15 +63,16 @@ letu printlist =
   let [jv] = j in
   fix (fun p -> 
          fun i ->
+         fun l -> 
            let [iv] = i in
-           let [b] = [iv = jv] in
-           if b then [()] 
+           if iv = jv then [()] 
              else
-                let [xv] = l [iv] in 
+                let [lid] = l in 
+                let [xv] = head [lid] in
                 let [u] = [print xv] in
                 let [u] = [print ""] in
-                  p [iv + 1]) 
-    [0]
+                  p [iv + 1] (tail [lid])) 
+    [0] l
 
 letu aux =
   fix (fun aux ->
@@ -63,7 +80,7 @@ letu aux =
            copy n as n1, n2 in
              cons [1] (cons n1 (cons [1] (aux (let [nv] = n2 in [nv + 2])))))
 
-letu eContFrac = cons [2] (aux [2])             
+letu eContFrac = (cons [2] (aux [2]))
 
 letw signum = fun x -> if 0 < x then 1 else if x = 0 then 0 else 0-1
 letw abs = fun x -> if 0 < x then x else 0-x
@@ -78,40 +95,32 @@ letw or = fun (x : 2) -> fun (y : 2) ->
   if x then true else y
 
 letu ratTrans =
-   fix (fun ratTrans ->
+   (fix ((fun ratTrans ->
           fun a -> fun b -> fun c -> fun d -> fun xs ->
-           fun i ->
              let [av] = a in
              let [bv] = b in
              let [cv] = c in
              let [dv] = d in
-             let [iv] = i in
              let [qv] = [if dv = 0 then 1 else bv/dv] in
              let [c] = [
               and (or (signum cv = signum dv) (abs cv < abs dv)) 
                       (and ((cv+dv)*qv < av+bv+1) 
                            (av+bv < (cv+dv)*qv + (cv+dv)))] in
              if c then
-                   let [c1]=[iv=0] in
-                   if c1 then
-                      [qv]
-                   else
-                      ratTrans [cv] [dv] [av-qv*cv] [bv-qv*dv] xs [iv-1]
+                   cons [qv] (ratTrans [cv] [dv] [av-qv*cv] [bv-qv*dv] xs)
              else 
                    copy xs as xs1, xs2 in
-                   let [xv] = xs1 [0] in
-                    ratTrans [bv] [av+xv*bv] [dv] [cv+xv*dv] (tail xs2) [iv]
-   )
+                   let [xv] = head xs1 in
+                    ratTrans [bv] [av+xv*bv] [dv] [cv+xv*dv] (tail xs2)
+   )))
 
 letu toDigits = 
-   fix (fun toDigits ->
+   fix ((fun toDigits ->
           fun l ->
-            fun i ->
-              let [iv] = i in
-              let [e] = [iv = 0] in
-              if e then l [iv] else toDigits (ratTrans [10] [0] [0] [1] (tail l)) [iv-1])
+            let [lid] = l in
+            cons (head [lid]) (toDigits (ratTrans [10] [0] [0] [1] (tail [lid])))))
 
-letu e = toDigits eContFrac
+letu e = memo (toDigits eContFrac)
 
 letu ttt = printlist e [11]
-letu ttu = printlist eContFrac [2100   ]
+letu ttu = printlist eContFrac [2100]

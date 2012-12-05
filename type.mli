@@ -23,6 +23,7 @@ and desc =
   | SumW of t list
   | FunW of t * t
   | MuW of t * t
+  | HashW of t * t
   | BoxU of t * t
   | TensorU of t * t
   | FunU of t * t * t

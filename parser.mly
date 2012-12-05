@@ -93,6 +93,12 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokLetU
 %token TokLolli
 %token TokMulti
+%token TokMemo
+%token TokHash
+%token TokHashnew
+%token TokHashfree
+%token TokHashput
+%token TokHashget
 %token TokVertbar
 %token <int> TokNum
 %token <string> TokIdent 
@@ -106,8 +112,10 @@ let clear_type_vars () = Hashtbl.clear type_vars
 
 %start decls
 %start top_query
+%start termW
 %type <Decls.decls> decls
-%type <Top.query> top_query
+%type <Query.query> top_query
+%type <Term.t> termW
 %type <Type.t> typeW
 %type <Type.t> typeU
 
@@ -115,17 +123,17 @@ let clear_type_vars () = Hashtbl.clear type_vars
 
 top_query: 
     | termW TokEof
-      { clear_type_vars (); Top.DirTerm("eval", $1) }
+      { clear_type_vars (); Query.DirTerm("eval", $1) }
     | decl TokEof
-      { Top.DirDecl("decl", $1) }
+      { Query.DirDecl("decl", $1) }
     | TokSharp TokIdent TokEof
-      { Top.Dir($2) }
+      { Query.Dir($2) }
     | TokSharp TokIdent termU_atom TokEof
-      { Top.DirTerm($2, $3) }
+      { Query.DirTerm($2, $3) }
     | TokSharp TokIdent termU_atom termW TokEof
-      { Top.DirTerm2($2, $3, $4) }
+      { Query.DirTerm2($2, $3, $4) }
     | TokSharp TokIdent TokNum TokEof
-      { Top.DirInt($2, $3) }
+      { Query.DirInt($2, $3) }
 
 decls:
     | TokEof
@@ -201,6 +209,14 @@ termW_atom:
        { mkTerm (PairW($2, $4)) }
     | TokKwPrint TokString
        { mkTerm (ConstW(Cprint $2)) } 
+    | TokHashnew
+       { mkTerm (ConstW(Chashnew)) } 
+    | TokHashfree
+       { mkTerm (ConstW(Chashfree)) } 
+    | TokHashput
+       { mkTerm (ConstW(Chashput)) } 
+    | TokHashget
+       { mkTerm (ConstW(Chashget)) } 
     | TokNum
        { mkTerm (ConstW(Cintconst($1))) } 
     | termW_atom TokPlus termW_atom
@@ -219,6 +235,8 @@ typeW:
       { $1 }
     | typeW_summand TokRightArrow typeW
       { Type.newty (Type.FunW($1, $3)) } 
+    | TokHash TokLAngle typeW TokComma typeW TokRAngle
+      { Type.newty (Type.HashW($3, $5)) } 
     | TokMu typeW_atom TokDot typeW
       { Type.newty (Type.MuW($2, $4)) } 
 
@@ -294,6 +312,8 @@ termU_atom:
        { $2 }
     | TokLParen termU TokColon typeU TokRParen
        { mkTerm (TypeAnnot($2, Some $4)) }
+    | TokMemo termU_atom
+       { mkTerm (MemoU($2)) }
 
 typeU:
     | typeU_factor

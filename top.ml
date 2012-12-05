@@ -5,15 +5,8 @@ open Term
 open Term.Location
 open Typing
 open Evaluation
+open Query
 open Compile
-
-type query = 
-  | Dir of string
-  | DirTerm of string * Term.t
-  | DirDecl of string * Decls.decl
-  | DirTerm2 of string * Term.t * Term.t
-  | DirType of string * Type.t
-  | DirInt of string * int
 
 let sim_length = ref 10
 

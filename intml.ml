@@ -19,7 +19,7 @@ let parse (s: string) : decls =
       | Parsing.Parse_error -> 
           failwith (Top.error_msg (parse_error_loc lexbuf) "Parse error")
 
-let parse_query (s: string) : Top.query =
+let parse_query (s: string) : Query.query =
   let lexbuf = Lexing.from_string s in
     try 
       Parser.top_query Lexer.main lexbuf
@@ -50,7 +50,7 @@ let rec print_compiled_terms (d: typed_decls) : unit =
         Printf.printf "*** Writing compiled term for '%s' to file '%s.wc' ***\n" f f;
           flush stdout;
           let oc = open_out (Printf.sprintf "%s.wc" f) in 
-            Printf.fprintf oc "%s\n" (prg_termU t);
+(*            Printf.fprintf oc "%s\n" (fst (compile_termU t)); *)
             close_out oc;
             print_compiled_terms r
 
@@ -60,15 +60,14 @@ let rec llvm_compile (d: typed_decls) : unit =
     | TypedTermDeclW(_, _, _) :: r -> llvm_compile r
     | TypedTermDeclU(f, t, ty) :: r -> 
         (* compile only terms of box type *)
-        (match Type.finddesc ty with
-          | _ ->              
+        (
                     Printf.printf "*** Writing llvm bytecode for '%s' to file '%s.bc' ***\n" f f;
                     flush stdout;
                     let graph = circuit_of_termU [] [] t in
                     let _ = infer_types graph in 
                     let llvm_module = Llvmcodegen.llvm_circuit graph in
                       ignore (Llvm_bitwriter.write_bitcode_file llvm_module (Printf.sprintf "%s.bc" f))
-           | _ -> ());
+        );
         llvm_compile r
 
 let rec eval_loop (ds: typed_decls) : unit =

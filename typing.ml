@@ -94,6 +94,27 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
                           newty (FunW(intty, 
                                       newty (SumW([one; one])))))) in
         b, []
+  | ConstW(Chashnew) ->
+      let hashty = newty Type.NatW in
+        hashty, []
+  | ConstW(Chashfree) ->
+      let alpha = newty Type.Var in
+      let beta = newty Type.Var in
+      let hashty = newty (Type.HashW(alpha, beta)) in
+      let b = newty (FunW(hashty, newty OneW)) in
+        b, []
+  | ConstW(Chashget) ->
+      let alpha = newty Type.Var in
+      let beta = newty Type.Var in
+      let hashty = newty NatW in
+      let b = newty (FunW(hashty, newty (FunW(alpha, newty (SumW[beta; newty OneW]))))) in
+        b, []
+  | ConstW(Chashput) ->
+      let alpha = newty Type.Var in
+      let beta = newty Type.Var in
+      let hashty = newty NatW in
+      let b = newty (FunW(hashty, newty (FunW(alpha, newty (FunW(beta, newty OneW)))))) in
+        b, []
   | ConstW(Cbot) ->
       let b = newty Var in
         b, []
@@ -186,7 +207,7 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         a,
         eq_expected_constraint t (a, ty) :: con
   | PairU(_, _) | LetU(_, _) | AppU(_, _) | LambdaU(_, _) | BoxTermU(_)
-  | LetBoxU(_, _) | CaseU(_, _, _) | CopyU(_, _) | HackU(_, _) ->
+  | LetBoxU(_, _) | CaseU(_, _, _) | CopyU(_, _) | HackU(_, _) | MemoU(_) ->
       raise (Typing_error (Some t, "Working class term expected."))
 and ptU (c: contextW) (phi: contextU) (t: Term.t) 
         : Type.t * type_constraint list =
@@ -322,7 +343,7 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
   | HackU(None, t1) ->
       failwith "ptU cannot be applied to unannotated Hack!"
   | HackU(Some b, t1) ->
-      let a1, con1 = ptW [] t1 in
+      let a1, con1 = ptW c t1 in
       let (b_minus, b_plus) = Type.question_answer_pair (Type.freshen_index_types b) in
           (* TODO
           (fun beta -> 
@@ -332,6 +353,8 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
         (b, 
          eq_expected_constraint t (newty (FunW(b_minus, b_plus)), a1) ::
          con1)
+  | MemoU(t1) ->
+      ptU [] [] t1
   | TypeAnnot(t, None) -> 
       ptU c phi t
   | TypeAnnot(t, Some ty) ->
@@ -430,6 +453,13 @@ let solve_constraints (con: type_constraint list) : unit =
       Type.Typetbl.fold (fun alpha a l -> (a, alpha) :: l)
         m [] 
     in
+    (*
+    Printf.printf "---\n";
+    List.iter (fun (a,b) -> Printf.printf "%s <= %s\n" 
+                              (Printing.string_of_type a)
+                              (Printing.string_of_type b)) ineqs;
+    Printf.printf "===\n";
+     *)
       List.iter solve_ineq ineqs
       (*
   List.iter (fun (t, t', _) ->

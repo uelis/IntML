@@ -4,6 +4,29 @@ open Term
 
 (* evaluation of closed terms *)  
 
+type basevalue =   
+  | BIntV of int
+  | BFoldV of basevalue
+  | BUnitV 
+  | BInV of int * int * basevalue
+  | BPairV of basevalue * basevalue
+
+module Valtbl = Hashtbl.Make (
+struct
+  type t = basevalue
+  let rec equal v1 v2= 
+    match v1, v2 with
+    | BUnitV, BUnitV -> true
+    | BIntV(v), BIntV(w) -> v=w
+    | BFoldV(v), BFoldV(w) -> v=w
+    | BPairV(v11, v12), BPairV(v21, v22) -> equal v11 v21 && equal v12 v22
+    | BInV(m, i, v1'), BInV(n, j, v2') -> 
+        (m = n) && (i = j) && (equal v1' v2')
+    | _ -> false
+  let hash = Hashtbl.hash
+end
+)
+
 type env = (var * value) list
 and value =
   | NatPredV 
@@ -19,12 +42,45 @@ and value =
   | IntsubV of value option
   | IntmulV of value option
   | IntdivV of value option
+  | HashputV of value option * value option
+  | HashgetV of value option
   | IntprintV
+
+let rec basevalue_of_value v =
+  match v with
+    | IntV(i) -> BIntV(i)
+    | FoldV(_, t) -> BFoldV(basevalue_of_value t)
+    | UnitV -> BUnitV
+    | InV(n, i, t) -> BInV(n, i, basevalue_of_value t)
+    | PairV(s, t) -> BPairV(basevalue_of_value s, basevalue_of_value t)
+    | _ -> assert false
+
+let memtbls = Hashtbl.create 2
+let memtbl i = 
+  try 
+    Hashtbl.find memtbls i 
+  with 
+    | Not_found ->
+        let t = (Valtbl.create 10 : value Valtbl.t) in
+          Hashtbl.replace memtbls i t;
+          t
+
+let rec cv2termW (v: value) : Term.t =
+  match v with 
+    | UnitV -> mkUnitW 
+    | IntV(i) -> mkConstW (Cintconst(i))
+    | InV(n, i, v1) -> mkInW n i (cv2termW v1)
+    | PairV(v1, v2) -> mkPairW (cv2termW v1) (cv2termW v2)
+    | FoldV((alpha, a), v) -> mkFoldW (alpha, a) (cv2termW v)
+    | _ -> assert false
 
 type succOrMin =
   | Succ of value
   | Min of value
 
+(* Equality on values of basic type:
+ * A ::= 1 | int | A*A | A+A | mu alpha. A(alpha)
+ *)
 let rec eq (ty: Type.t) (v1: value) (v2: value) : bool =
   match Type.finddesc ty, v1, v2 with
   | Type.Var, _, _ -> 
@@ -32,12 +88,15 @@ let rec eq (ty: Type.t) (v1: value) (v2: value) : bool =
       true
   | Type.OneW, _, _ -> true
   | Type.NatW, IntV(v), IntV(w) -> v=w
+  | Type.MuW(_), FoldV(_, v), FoldV(_, w) -> v=w
   | Type.TensorW(a, b), PairV(v11, v12), PairV(v21, v22) -> eq a v11 v21 && eq b v12 v22
   | Type.SumW(l), InV(m, i, v1'), InV(n, j, v2') -> 
          (m = n) && (i = j) && (eq (List.nth l i) v1' v2')
   | _ -> false
 
-let memtbl = Hashtbl.create 10
+let newid =
+  let n = ref 0 in
+    fun () -> n := !n + 1; !n
 
 let rec eval (t: Term.t) (sigma : env) : value =
   match t.desc with 
@@ -55,6 +114,10 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | ConstW(Cintsub) -> IntsubV(None)
     | ConstW(Cintmul) -> IntmulV(None)
     | ConstW(Cintdiv) -> IntdivV(None)
+    | ConstW(Chashnew) -> IntV(newid ())
+    | ConstW(Chashfree) -> UnitV
+    | ConstW(Chashput) -> HashputV(None, None)
+    | ConstW(Chashget) -> HashgetV(None)
     | ConstW(Cbot) ->  failwith "nontermination!"
     | PairW(t1, t2) -> 
         let v1 = eval t1 sigma in
@@ -100,17 +163,11 @@ let rec eval (t: Term.t) (sigma : env) : value =
           eval t2 ((x, v1) :: sigma)
     | TypeAnnot(t, _) -> eval t sigma
     | HackU (_, _)|CopyU (_, _)|CaseU (_, _, _)|LetBoxU (_, _)|BoxTermU _
-    | LambdaU (_, _)|AppU (_, _)|LetU (_, _)|PairU (_, _)
+    | LambdaU (_, _)|AppU (_, _)|LetU (_, _)|PairU (_, _) | MemoU(_)
       -> assert false
 
 and appV (v1: value) (v2: value) : value = 
   match v1 with
-    | FunV(tau, "ymemo'", t1) -> 
-(        try Hashtbl.find memtbl (v1, v2) with
-            Not_found ->
-              let v = eval t1 (("memo", v2) :: tau) in
-                Hashtbl.add memtbl (v1, v2) v;
-                 v)
     | FunV(tau, x, t1) -> eval t1 ((x, v2) :: tau)
     | NatPredV -> 
         begin
@@ -153,6 +210,24 @@ and appV (v1: value) (v2: value) : value =
     | IntprintV ->
         (match v2 with
            | IntV(v2') -> Printf.printf "%i" v2'; UnitV
+           | _ -> assert false)
+    | HashputV(None, None) -> HashputV(Some v2, None)
+    | HashputV(Some table, None) -> HashputV(Some table, Some v2)
+    | HashputV(Some table, Some key) -> 
+        (match table with
+           | IntV t -> 
+(*               Printf.printf "put: %i\n" (Valtbl.length memtbl); *)
+               Valtbl.replace (memtbl t) (basevalue_of_value key) v2; 
+               UnitV 
+           | _ -> assert false)
+    | HashgetV(None) -> HashgetV(Some v2)
+    | HashgetV(Some v3) -> 
+        (match v3 with
+           | IntV t -> 
+(*               Printf.printf "get %s\n" (Printing.string_of_termW (cv2termW
+ *               v2)); *)
+               (try InV(2, 0, Valtbl.find (memtbl t) (basevalue_of_value v2)) with 
+                 | Not_found -> InV(2, 1, UnitV))
            | _ -> assert false)
     | _ -> failwith "Internal: Cannot apply non-functional value."
 

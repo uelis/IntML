@@ -8,7 +8,8 @@ letw and : 2 -> 2 -> 2 =
 letw or = fun (x : 2) -> fun (y : 2) ->
   if x then true else y
 
-letw fixw = fun x ->
+letw fixw = fun sigmax ->
+  let (sigma, x) = sigmax in 
   case x of 
     inl(lx) -> 
       let (l,x) = lx in
@@ -136,6 +137,6 @@ letu stepl = (fun a -> step (fun x -> fun k -> a (fun b -> b x k)))
 letu fixv = fun step ->
               fix (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
 
-letu tt = app (fixv step1) (val [35])
+letu tt = app (fixv step1) (val [12])
 letu testfib = let [v] = tt (fun r -> r) in [print v]
 

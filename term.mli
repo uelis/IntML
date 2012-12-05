@@ -28,6 +28,10 @@ type term_const =
   | Cinteq
   | Cintslt
   | Cintprint
+  | Chashnew
+  | Chashput
+  | Chashget
+  | Chashfree
 
 type t = { desc: t_desc;      
            loc: Location.t }
@@ -45,6 +49,7 @@ and t_desc =
   | UnfoldW of (Type.t * Type.t) * t
   | LoopW of t * (var * t) 
   | LetBoxW of t * (var * t)             (* s, <x>t *)
+  | MemoU of t                    
   | PairU of t * t                       (* s, t *)
   | LetU of t * (var * var * t)          (* s, <x,y>t *)
   | AppU of t * t                        (* s, t *)

@@ -49,6 +49,7 @@ module Unify(T : sig type t end) = struct
           | NatW, NatW | ZeroW, ZeroW | OneW, OneW | SumW([]), SumW([]) -> 
               ()
           | TensorW(t1, t2), TensorW(s1, s2) | FunW(t1, t2), FunW(s1, s2) 
+          | HashW(t1, t2), HashW(s1, s2) 
           | BoxU(t1, t2), BoxU(s1, s2) | TensorU(t1, t2), TensorU(s1, s2) ->
               unify_raw (t1, s1 ,tag);
               unify_raw (t2, s2, tag)
@@ -78,7 +79,7 @@ module Unify(T : sig type t end) = struct
             begin
               match r.desc with 
                 | MuW(alpha, t1) -> dfs t1
-                | TensorW(t1, t2) | FunW(t1, t2)
+                | TensorW(t1, t2) | FunW(t1, t2) | HashW(t1, t2)
                 | BoxU(t1, t2) | TensorU(t1, t2) -> dfs t1; dfs t2
                 | FunU(t1, t2, t3) -> dfs t1; dfs t2; dfs t3
                 | SumW(l) -> List.iter dfs l

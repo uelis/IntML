@@ -79,6 +79,12 @@ rule main = parse
   | "inr"      { TokKwInr }
   | "letw"     { TokLetW }
   | "letu"     { TokLetU }
+  | "memo"     { TokMemo }
+  | "hash"     { TokHash }
+  | "hashnew"  { TokHashnew }
+  | "hashfree" { TokHashfree }
+  | "hashput"  { TokHashput }
+  | "hashget"  { TokHashget }
   | "--o"      { TokLolli }
   | "-->"      { TokMulti }
   | "|"        { TokVertbar }

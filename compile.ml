@@ -58,6 +58,7 @@ type instruction =
    | ADoor of wire (* \Tens (A x B) X *) * wire (* \Tens B X *) 
    | LWeak of wire (* \Tens A X *) * wire (* \Tens B X *) (* where B <= A *)
    | Epsilon of wire (* [A] *) * wire (* \Tens A [B] *) * wire (* [B] *)
+   | Memo of wire (* X *) * wire (* X *)
 
 type circuit = 
     { output : wire; 
@@ -74,6 +75,7 @@ let rec wires (i: instruction list): wire list =
     | Door(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | ADoor(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | LWeak(w1, w2) :: is -> w1 :: w2 :: (wires is)
+    | Memo(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | Epsilon(w1, w2, w3) :: is -> w1 :: w2 :: w3 :: (wires is)
 
 let map_wires_instruction (f: wire -> wire): instruction -> instruction =
@@ -84,6 +86,7 @@ let map_wires_instruction (f: wire -> wire): instruction -> instruction =
     | Der(w1, w2, t) -> Der(f w1, f w2, t)
     | Contr(w1, w2, w3) -> Contr(f w1, f w2, f w3)
     | Door(w1, w2) -> Door(f w1, f w2)
+    | Memo(w1, w2) -> Memo(f w1, f w2)
     | ADoor(w1, w2) -> ADoor(f w1, f w2)
     | LWeak(w1, w2) -> LWeak(f w1, f w2)
     | Epsilon(w1, w2, w3) -> Epsilon(f w1, f w2, f w3)
@@ -158,6 +161,10 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
             (w, [Der(flip w', w, 
                      (sigma, mkUnitW));
                  LWeak(flip wx, w')])
+      | MemoU(t) -> 
+          let (w_t, i_t) = compile sigma gamma t in
+          let w = fresh_wire () in 
+            (w, Memo(flip w_t, w) :: i_t)
       | HackU(_, t1) ->
           let w = fresh_wire () in
             (w, [(Axiom(w, (sigma, fresh_vars_for_missing_annots t1)))])
@@ -243,7 +250,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
       | BoxTermU(t) ->
           let w = fresh_wire () in
             (w, [Axiom(w, 
-                       (sigma, mkLambdaW (("memo", Some (Type.newty Type.OneW)), 
+                       (sigma, mkLambdaW ((unusable_var, Some (Type.newty Type.OneW)), 
                                           fresh_vars_for_missing_annots t)))])
       | LetBoxU(s, (c, t)) ->
           let fv_s = free_vars s in
@@ -324,7 +331,7 @@ let infer_types (c : circuit) : Type.t =
           let f' = variant f in (* ensure "x" and "y" are fresh *) 
           let s' = List.map variant_var s in
           let tyfapp = principal_typeW
-                                [(x, sigma); (y, alpha)] 
+                                [(x, sigma); (y, alpha)]
                                 (mkAppW (let_tupleW x (s', f')) (mkVar y)) in 
             Typing.eq_constraint 
               w1.type_forward 
@@ -333,6 +340,19 @@ let infer_types (c : circuit) : Type.t =
               (flip w1).type_forward 
               (Type.newty (Type.TensorW(sigma, alpha))) ::
             (constraints rest) 
+      | Memo(w1, w2) :: rest ->
+          let sigma = Type.newty Type.Var in
+          let alpha = Type.newty Type.Var in
+          let beta = Type.newty Type.Var in
+            Typing.eq_constraint 
+              w2.type_forward (tensor sigma alpha) ::
+            Typing.eq_constraint 
+              w1.type_back (tensor sigma alpha) ::
+            Typing.eq_constraint 
+              w2.type_back (tensor sigma beta) ::
+            Typing.eq_constraint 
+              w1.type_forward (tensor sigma beta) ::
+            (constraints rest)
       | Tensor(w1, w2, w3)::rest ->
           let sigma1 = Type.newty Type.Var in
           let alpha1 = Type.newty Type.Var in
@@ -519,6 +539,9 @@ let rec dot_of_circuit
           | Door(w1, w2) -> 
               Printf.sprintf "\"Door({%i,%i},{%i,%i})\"" 
                 w1.src w1.dst w2.src w2.dst
+          | Memo(w1, w2) -> 
+              Printf.sprintf "\"Memo({%i,%i},{%i,%i})\"" 
+                w1.src w1.dst w2.src w2.dst
           | ADoor(w1, w2) -> 
               Printf.sprintf "\"ADoor({%i,%i},{%i,%i})\"" 
                 w1.src w1.dst w2.src w2.dst
@@ -539,6 +562,7 @@ let rec dot_of_circuit
           | Tensor(_, _, _) -> "&otimes;"
           | Der(_, _, _) -> "&pi;_..."
           | Contr(_, _, _) -> "a+"
+          | Memo(_, _) -> "memo"
           | Door(_, w) -> 
               if w.src = -1 then "\", shape=\"plaintext" else "&uarr;"
           | ADoor(_, _) -> "&darr;"
@@ -625,6 +649,7 @@ let rec min i (ty: Type.t) : Term.t =
                                    if Type.equals alpha beta then mua 
                                    else beta) a in
         min (i+1) unfolded
+  | Type.HashW(key, value) -> mkConstW (Chashnew) (* TODO *)
   | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
   | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _->
       failwith "internal: min" 
@@ -727,278 +752,14 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
         flush stdout;
         raise Not_Leq 
 
-type equation = int * (Term.var * Term.t)
-
-let string_of_equation (i, (x, t)) =
-  Printf.sprintf "and apply%i(%s) = %s" i x (Printing.string_of_termW t)
-
-let eqns_of_circuit (c : circuit) : equation list =                                   
-  (* Information about the wires in the graph *)
-  let all_wires = wires c.instructions in
-  let max_wire_src_dst = 
-    List.fold_right (fun w m -> max w.src (max w.dst m)) all_wires 0 in
-  (* Rename the variables in the instruction list so that
-   * they do not clash with the name supply below.
-   * *)
-  let instructions_fresh = 
-    let prep_var_y x = "y" ^ x in
-    let prep_y (sigma, f) =
-      (List.map prep_var_y sigma, rename_vars prep_var_y f) in
-    let rec i_fresh instructions = 
-      match instructions with
-        | [] -> []
-        | Der(w1, w2, (sigma, f)) :: rest -> 
-            Der(w1, w2, prep_y (sigma, f)) :: (i_fresh rest)
-        | Axiom(w, (sigma, f)) :: rest ->
-            Axiom(w, prep_y (sigma, f)) :: (i_fresh rest)
-        | node :: rest -> 
-            node :: (i_fresh rest)
-    in i_fresh c.instructions 
-  in
-  (* Supply of fresh variable names. 
-   * (The instructions do not contain a free variable starting with "x")
-   *)
-  let fresh_var = Vargen.mkVarGenerator "x" ~avoid:[] in
-  (* Build a map of nodes, indexed by the src-label of wires. 
-   * Note: This uses the assumption that only one wire with a
-   * given node-label appears in a graph *)
-  let node_map_by_src = 
-    let rec build_dst_map i =
-      match i with
-        | [] -> IntMap.empty
-        | node :: rest -> 
-            let ws = wires [node] in
-            List.fold_right (fun w map -> IntMap.add w.src node map) ws
-                            (build_dst_map rest) 
-    in build_dst_map instructions_fresh in
-  (* action finds the node to which dst is connected  
-   * and returns the action that must happen if the token
-   * is passed along that path
-   *)
-  let in_k k n t = 
-    if k = 0 then t else Term.mkAppW (Term.mkVar (Printf.sprintf "apply%i" k)) t in
-  let rec action dst = 
-    let x = fresh_var() in
-    let y = fresh_var() in
-    let sigma, v, c, d = fresh_var(), fresh_var(), fresh_var(), fresh_var() in
-    let to_dart d t = 
-      (x, mkLetW (mkVar x) 
-            ((sigma, v), in_k d (max_wire_src_dst + 1) t)) in
-      try 
-        begin
-          match IntMap.find dst node_map_by_src with
-            | Axiom(w1, f) when w1.src = dst -> 
-                to_dart w1.src 
-                  (mkPairW (mkVar sigma) 
-                     (mkAppW (let_tupleW sigma f) (mkVar v)))
-            | Tensor(w1, w2, w3) when w1.src = dst ->
-                to_dart w3.src (mkPairW (mkVar sigma) (mkInlW (mkVar v)))
-            | Tensor(w1, w2, w3) when w2.src = dst ->
-                to_dart w3.src (mkPairW (mkVar sigma) (mkInrW (mkVar v)))
-            | Tensor(w1, w2, w3) when w3.src = dst ->
-                (x, mkLetW (mkVar x)
-                           ((sigma, x),
-                             mkCaseW (mkVar x) 
-                                    [(v, in_k w1.src (max_wire_src_dst + 1) 
-                                           (mkPairW (mkVar sigma) (mkVar v))) ;
-                                     (v, in_k w2.src (max_wire_src_dst + 1) 
-                                           (mkPairW (mkVar sigma) (mkVar v)))]
-                             )
-                )
-            | Der(w1, w2, f) when w1.src = dst  ->
-                (x, mkLetW (mkVar x) ((sigma, x),
-                  mkLetW (mkVar x) ((c, v), 
-                    in_k w2.src (max_wire_src_dst + 1) 
-                      (mkPairW (mkVar sigma) (mkVar v))))
-                )
-            | Der(w1, w2, f) when w2.src = dst  ->
-                (x, mkLetW (mkVar x) ((sigma, v),
-                  in_k w1.src (max_wire_src_dst + 1) 
-                    (mkPairW (mkVar sigma) 
-                       (mkPairW (let_tupleW sigma f) (mkVar v)))
-                ))
-            | Contr(w1 (* \Tens{A+B} X *), 
-                    w2 (* \Tens A X *), 
-                    w3 (* \Tens B X *)) when w1.src = dst  ->
-                (x, mkLetW (mkVar x) ((sigma, v),
-                  mkLetW (mkVar v) ((c, v),
-                    mkCaseW (mkVar c) 
-                         [(c, in_k w2.src (max_wire_src_dst + 1) 
-                                (mkPairW (mkVar sigma) 
-                                   (mkPairW (mkVar c) (mkVar v)))) ;
-                          (d, in_k w3.src (max_wire_src_dst + 1) 
-                                (mkPairW (mkVar sigma) 
-                                   (mkPairW (mkVar d) (mkVar v)))) ]
-                    )
-                  )
-                )
-            | Contr(w1 (* \Tens{A+B} X *), 
-                    w2 (* \Tens A X *), 
-                    w3 (* \Tens B X *)) when w2.src = dst  ->
-                (x, mkLetW (mkVar x) ((sigma, v), 
-                  mkLetW (mkVar v) ((c, y),
-                    in_k w1.src (max_wire_src_dst + 1) 
-                      (mkPairW (mkVar sigma) 
-                         (mkPairW (mkInlW (mkVar c)) (mkVar y)))
-                  ) 
-                ))
-            | Contr(w1 (* \Tens{A+B} X *), 
-                    w2 (* \Tens A X *), 
-                    w3 (* \Tens B X *)) when w3.src = dst  ->
-                (x, mkLetW (mkVar x) ((sigma, v),
-                  mkLetW (mkVar v) ((d, y),
-                    in_k w1.src (max_wire_src_dst + 1) 
-                      (mkPairW (mkVar sigma) 
-                         (mkPairW (mkInrW (mkVar d)) (mkVar y)))
-                  ) 
-                ))
-            | Door(w1 (* X *) , w2 (* \Tens A X *)) when w1.src = dst ->
-                (* <<sigma, c>, v> -> <sigma, <c, v>> *)
-                (x, mkLetW (mkVar x) ((x, v),
-                  mkLetW (mkVar x) ((sigma, c),
-                    in_k w2.src (max_wire_src_dst + 1) 
-                      (mkPairW (mkVar sigma) (mkPairW (mkVar c) (mkVar v))))
-                ))
-            | Door(w1 (* X *) , w2 (* \Tens A X *)) when w2.src = dst ->
-                (* <sigma, <c, v>> -> <<sigma, c>, v> *)
-                (x, mkLetW (mkVar x) ((sigma, x), 
-                  mkLetW (mkVar x) ((c, v), 
-                    in_k w1.src (max_wire_src_dst + 1) 
-                      (mkPairW (mkPairW (mkVar sigma) (mkVar c)) (mkVar v)))))
-            | ADoor(w1 (* \Tens (A x B) X *), 
-                    w2 (* \Tens B X *)) when w1.src = dst ->
-                (* <sigma, <<d, c>, v>> -> <<sigma, d>, <c, v>> *)
-                (x, mkLetW (mkVar x) ((sigma, x), 
-                  mkLetW (mkVar x) ((x, v), 
-                    mkLetW (mkVar x) ((d, c), 
-                      in_k w2.src (max_wire_src_dst + 1) 
-                        (mkPairW (mkPairW (mkVar sigma) (mkVar d)) 
-                           (mkPairW (mkVar c) (mkVar v)))))
-                ))
-            | ADoor(w1 (* \Tens (A x B) X *), 
-                    w2 (* \Tens B X *)) when w2.src = dst ->
-                (* <<sigma, d>, <c, v>> -> <sigma, <<d, c>, v>> *)
-                (x, mkLetW (mkVar x) ((x, y),
-                  mkLetW (mkVar x) ((sigma, d), 
-                    mkLetW (mkVar y) ((c, v),
-                      in_k w1.src (max_wire_src_dst + 1) 
-                        (mkPairW (mkVar sigma) 
-                           (mkPairW (mkPairW (mkVar d) (mkVar c)) (mkVar v)))))
-                  ))
-            | LWeak(w1 (* \Tens A X *), 
-                    w2 (* \Tens B X *)) (* B <= A *) when w1.src = dst ->
-                (* <sigma, <c, v>> @ w1 -> <sigma, <project b a c, v>> @ w2 *)
-                let a, b  = 
-                  match Type.finddesc w1.type_back, 
-                        Type.finddesc w2.type_forward with 
-                    | Type.TensorW(a, _), Type.TensorW(b, _) -> a, b
-                    | _ -> assert false in
-                (x, mkLetW (mkVar x) 
-                      ((sigma, y),
-                       mkLetW (mkVar y) 
-                         ((c, v), 
-                          in_k w2.src (max_wire_src_dst + 1) 
-                            (mkPairW (mkVar sigma) 
-                               (mkPairW (mkAppW (project b a) (mkVar c)) 
-                                  (mkVar v)))))
-                  )
-            | LWeak(w1 (* \Tens A X *), 
-                    w2 (* \Tens B X *)) (* B <= A *) when w2.src = dst ->
-                (* <sigma, <c, v>> @ w2 -> <sigma, <embed b a c, v>> @ w1 *)
-                let a, b  = 
-                  match Type.finddesc w1.type_forward, 
-                        Type.finddesc w2.type_back with 
-                    | Type.TensorW(a, _), Type.TensorW(b, _) -> a, b
-                    | _ -> assert false in
-                (x, mkLetW (mkVar x) 
-                      ((sigma, y),
-                       mkLetW (mkVar y) 
-                         ((c, v), 
-                          in_k w1.src (max_wire_src_dst + 1) 
-                            (mkPairW (mkVar sigma) 
-                               (mkPairW (mkAppW (embed b a) (mkVar c)) 
-                                  (mkVar v)))))
-                  )
-            | Epsilon(w1 (* [A] *), 
-                      w2 (* \Tens A [B] *), 
-                      w3 (* [B] *)) when w1.src = dst ->
-                (* <sigma, v> @ w1 -> <sigma, <v,*>> @ w2 *)
-                (x, mkLetW (mkVar x) ((sigma, v),
-                  in_k w2.src (max_wire_src_dst + 1) 
-                    (mkPairW (mkVar sigma) (mkPairW (mkVar v) mkUnitW)))
-                )
-            | Epsilon(w1 (* [A] *), 
-                      w2 (* \Tens A [B] *), 
-                      w3 (* [B] *)) when w2.src = dst ->
-                (* <sigma, <c, v>> @ w1 -> <sigma, v> @ w3 *)
-                (x, mkLetW (mkVar x) ((sigma, x), 
-                  mkLetW (mkVar x) ((c, v), 
-                    in_k w3.src (max_wire_src_dst + 1) 
-                      (mkPairW (mkVar sigma) (mkVar v))
-                  ))
-                )
-            | Epsilon(w1 (* [A] *), 
-                      w2 (* \Tens A [B] *), 
-                      w3 (* [B] *)) when w3.src = dst ->
-                (* <sigma, v> @ w3 -> <sigma, *> @ w1 *)
-                (x, mkLetW (mkVar x) ((sigma, v),
-                  in_k w1.src (max_wire_src_dst + 1) 
-                    (mkPairW (mkVar sigma) mkUnitW))
-                ) 
-            | _ -> 
-                assert false
-        end
-      with 
-        | Not_found ->
-            if 0 = dst then (* output *)
-              (x, in_k 0 (max_wire_src_dst + 1) (mkVar x))
-            else (* wire must be unused because of weakening *)
-              (x, mkConstW Cbot)
-  in
-  (* the term describing what happens to dart number k *)
-  let rec part src wrs =
-    match wrs with
-      | [] -> 
-            if 0 = src then
-              (src, action c.output.src)
-            else 
-              let x = fresh_var () in 
-                (src, (x, mkConstW Cbot))
-      | w::rest ->
-          if w.src = src then (src, action w.dst) else part src rest
-  in
-  let rec mkitoj i j = if i > j then [] else i :: (mkitoj (i+1) j) in
-    (List.map (fun k -> part k all_wires) 
-       (mkitoj 0 max_wire_src_dst))
-
-let prg_of_circuit (c: circuit) : string =
-  (* Rename the wires so that the output wire has label 0 *)
-  let pi i = 
-    if i = 0 then c.output.dst else if i = c.output.dst then 0 else i in 
-  let c' = { output = map_wire pi c.output;
-             instructions = List.map (map_instruction pi) c.instructions} in
-  let eqns = eqns_of_circuit c' in
-    "datatype ('a, 'b) sum = Inl of 'a | Inr of 'b \n" ^
-    "val min = () \n" ^
-    "val zero = 0 \n" ^
-    "fun succ n = n + 1 \n" ^
-    "fun pred n = if n > 0 then n-1 else n \n" ^
-    "fun eq m n = if (m = n) then Inl() else Inr() \n" ^
-    "fun listcase l = \n" ^
-    "  case l of \n" ^
-    "      [] => Inl() \n" ^
-    "    | x::xs => Inr(x, xs) \n" ^
-    "fun bot () = bot ()                  \n" ^
-    "val nil = [] \n" ^
-    "fun cons x xs = x :: xs  \n\n" ^
-    "fun dummy () = 0 \n" ^ 
-    (List.fold_left (fun s e -> (string_of_equation e) ^ "\n" ^ s) "" eqns)
-
-let prg_termU (t: Term.t) : string =
-  let graph = circuit_of_termU [] [] t in
-  let _ = infer_types graph in 
-    prg_of_circuit graph
-
+let parse (s: string) : Term.t =
+  let lexbuf = Lexing.from_string s in
+    try 
+      Parser.termW Lexer.main lexbuf
+    with 
+      | Parsing.Parse_error -> 
+          Printf.printf "%s\n" s;
+          failwith ("internal!")
 
 (** Compilation of string diagram into a lower-level term. *)
 let message_passing_term (c: circuit): Term.t =
@@ -1119,6 +880,24 @@ let message_passing_term (c: circuit): Term.t =
                          (mkPairW (mkInrW (mkVar d)) (mkVar y)))
                   ) 
                 ))
+            | Memo(w1 (* X *) , w2 (* X *)) when w1.src = dst ->
+                ("x", mkLetW (mkVar "x") (("sigma", "v"),
+                                          in_k w2.src (max_wire_src_dst + 1) 
+                                            (parse (Printf.sprintf
+                                                      "case hashget %i 0 of \
+                                                      inl(q) ->
+                                                        let u = hashput %i q v in \
+                                                         (sigma, v) \
+                                                    | inr(q) -> (sigma, v)" w1.src w1.src))))
+            | Memo(w1 (* X *) , w2 (* X *)) when w2.src = dst ->
+                ("x", mkLetW (mkVar "x") (("sigma", "v"),
+                             mkCaseW (parse (Printf.sprintf "hashget %i v" w1.src)) 
+                                    [("a", in_k w2.src (max_wire_src_dst + 1) 
+                                             (parse "(sigma,a)"));
+                                     ("u", in_k w1.src (max_wire_src_dst + 1) 
+                                           (parse (Printf.sprintf "let u = hashput %i 0 v in \
+                                                   (sigma, v)" w1.src)))]
+                             ))
             | Door(w1 (* X *) , w2 (* \Tens A X *)) when w1.src = dst ->
                 (* <<sigma, c>, v> -> <sigma, <c, v>> *)
                 (x, mkLetW (mkVar x) ((x, v),

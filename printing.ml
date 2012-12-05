@@ -105,6 +105,12 @@ let string_of_type (ty: Type.t): string =
           Buffer.add_char buf ',';
           s_typeW a;
           Buffer.add_char buf '>'
+      | Type.HashW(key, value) ->
+          Buffer.add_string buf "hash<";
+          s_typeW key;
+          Buffer.add_char buf ',';
+          s_typeW value;
+          Buffer.add_char buf '>'
       | Type.FunW _ | Type.SumW _ | Type.TensorW _ ->
           Buffer.add_char buf '(';
           s_typeW t;
@@ -153,7 +159,7 @@ let string_of_type (ty: Type.t): string =
           s_typeW t2;
           Buffer.add_char buf ']'
       | Type.ZeroW | Type.OneW | Type.FunW _ | Type.NatW
-      | Type.SumW _ | Type.TensorW _ | Type.MuW _ ->
+      | Type.SumW _ | Type.TensorW _ | Type.MuW _ | Type.HashW _ ->
           s_typeW t
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -202,7 +208,7 @@ let abstract_string_of_typeU (ty: Type.t): string =
           Buffer.add_string buf (string_of_type t2);
           Buffer.add_char buf ']'
       | Type.NatW | Type.ZeroW | Type.OneW | Type.FunW _
-      | Type.SumW _ | Type.TensorW _ | Type.MuW _ ->
+      | Type.SumW _ | Type.TensorW _ | Type.MuW _ | Type.HashW _ ->
           Buffer.add_string buf (string_of_type t);
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -224,6 +230,10 @@ let string_of_term_const (c: term_const) : string =
   | Cinteq -> "inteq"
   | Cintslt -> "intslt"
   | Cintprint -> "intprint"
+  | Chashnew -> "hash_new"
+  | Chashfree -> "hash_free"
+  | Chashput -> "hash_put"
+  | Chashget -> "hash_get"
 
 let string_of_termW (term: Term.t): string =
   let buf = Buffer.create 80 in
