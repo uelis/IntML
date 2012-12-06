@@ -225,7 +225,6 @@ let rec payload_size (a: Type.t) : int =
               | TensorW(a1, a2) -> p_s a1 + (p_s a2)
               | SumW[a1; a2] -> (max (p_s a1) (p_s a2))
               | MuW _ -> 1
-              | HashW _ -> 1
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
         in
           Type.Typetbl.add payload_size_memo a size;

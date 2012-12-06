@@ -116,7 +116,6 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | ConstW(Cintmul) -> IntmulV(None)
     | ConstW(Cintdiv) -> IntdivV(None)
     | ConstW(Chashnew) -> IntV(newid ())
-    | ConstW(Chashfree) -> UnitV
     | ConstW(Chashput) -> HashputV(None, None)
     | ConstW(Chashget) -> HashgetV(None)
     | ConstW(Cbot) ->  failwith "nontermination!"

@@ -14,7 +14,6 @@ and desc =
   | SumW of t list
   | FunW of t * t
   | MuW of t * t
-  | HashW of t * t
   | ContW of t
   | BoxU of t * t
   | TensorU of t * t
@@ -47,7 +46,6 @@ let rec free_vars (b: t) : t list =
     | Var -> [find b]
     | NatW | ZeroW | OneW -> []
     | ContW(b1) -> free_vars b1
-    | HashW(b1, b2)
     | TensorW(b1, b2) | FunW(b1, b2) | TensorU(b1, b2) | BoxU(b1, b2) ->
         free_vars b1 @ (free_vars b2)
     | FunU(a1, b1, b2) -> 
@@ -65,7 +63,6 @@ let rec subst (f: t -> t) (b: t) : t =
     | ZeroW -> newty ZeroW
     | OneW -> newty OneW 
     | TensorW(b1, b2) -> newty(TensorW(subst f b1, subst f b2))
-    | HashW(b1, b2) -> newty(HashW(subst f b1, subst f b2))
     | ContW(b1) -> newty(ContW(subst f b1))
     | SumW(bs) -> newty(SumW(List.map (subst f) bs))
     | FunW(b1, b2) -> newty(FunW(subst f b1, subst f b2))
@@ -134,7 +131,6 @@ let rec freshen_index_types (a: t) : t =
       | SumW(bs) -> newty(SumW(List.map freshen_index_types bs))
       | FunW(b1, b2) -> newty(FunW(freshen_index_types b1, freshen_index_types b2))
       | ContW(b1) -> newty(ContW(freshen_index_types b1))
-      | HashW(b1, b2) -> newty(HashW(freshen_index_types b1, freshen_index_types b2))
       | MuW(alpha, a) -> newty(MuW(alpha, freshen_index_types a))
       | BoxU(a1, a2) -> newty(BoxU(freshen_index_types a1, freshen_index_types a2))
       | TensorU(b1, b2) -> newty(TensorU(freshen_index_types b1, freshen_index_types b2))

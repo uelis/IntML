@@ -31,7 +31,6 @@ type term_const =
   | Chashnew
   | Chashput
   | Chashget
-  | Chashfree
 
 type t = { desc: t_desc;      
            loc: Location.t }

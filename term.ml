@@ -28,7 +28,6 @@ type term_const =
   | Chashnew
   | Chashput
   | Chashget
-  | Chashfree
 
 type t =
     { desc: t_desc;      
@@ -46,7 +45,7 @@ and t_desc =
   | FoldW of (Type.t * Type.t) * t
   | UnfoldW of (Type.t * Type.t) * t
   | LoopW of t * (var * t)
-  | LetBoxW of t * (var * t)             (* s, <x>t *)
+  | LetBoxW of t * (var * t)           (* s, <x>t *)
   | MemoU of t                    
   | SuspendU of t                    
   | ForceU of t                    

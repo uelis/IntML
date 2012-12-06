@@ -60,7 +60,6 @@ type instruction =
    | Epsilon of wire (* [A] *) * wire (* \Tens A [B] *) * wire (* [B] *)
    | Memo of wire (* X *) * wire (* X *)
    | Grab of wire (* X *) * wire
-   | Ret of wire (* X *)
    | Force of wire (* X *) * (Term.var list * Term.t)
 
 type circuit = 
@@ -80,8 +79,7 @@ let rec wires (i: instruction list): wire list =
     | LWeak(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | Memo(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | Epsilon(w1, w2, w3) :: is -> w1 :: w2 :: w3 :: (wires is)
-    | Grab(w1, w2) :: is -> w1 :: (wires is)
-    | Ret(w1) :: is -> w1 :: (wires is)
+    | Grab(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | Force(w1, _ ) :: is -> w1 :: (wires is)
 
 let map_wires_instruction (f: wire -> wire): instruction -> instruction =
@@ -94,7 +92,6 @@ let map_wires_instruction (f: wire -> wire): instruction -> instruction =
     | Door(w1, w2) -> Door(f w1, f w2)
     | Memo(w1, w2) -> Memo(f w1, f w2)
     | Grab(w1, w2) -> Grab(f w1, f w2)
-    | Ret(w1) -> Ret(f w1)
     | Force(w, t) -> Force(f w, t)
     | ADoor(w1, w2) -> ADoor(f w1, f w2)
     | LWeak(w1, w2) -> LWeak(f w1, f w2)
@@ -177,7 +174,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
       | SuspendU(t) ->
           let (w_t, i_t) = compile_in_box unusable_var sigma gamma t in
           let w = fresh_wire () in
-            (w, Grab(w, w_t) :: Ret(flip w_t) :: i_t)
+            (w, Grab(w, flip w_t) :: i_t)
       | ForceU(k) ->
           let w = fresh_wire () in
             (w, [Force(w, (sigma, k))])
@@ -372,23 +369,17 @@ let infer_types (c : circuit) : Type.t =
       | Grab(w1, wt) :: rest ->
           let sigma = Type.newty Type.Var in
           (* let alpha = Type.newty Type.Var in *)
+          let beta = Type.newty Type.Var in
           (* let cont = Type.newty (Type.ContW alpha) in*)
           let cont = Type.newty Type.Var in
             Typing.eq_constraint 
               w1.type_back (tensor sigma (Type.newty Type.OneW)) ::
             Typing.eq_constraint 
               w1.type_forward (tensor sigma cont) ::
-            (constraints rest)
-      | Ret(w1) :: rest ->
-          let sigma = Type.newty Type.Var in
-          (* let alpha = Type.newty Type.Var in *)
-          let beta = Type.newty Type.Var in
-          (* let cont = Type.newty (Type.ContW alpha) in*)
-          let cont = Type.newty Type.Var in
             Typing.eq_constraint 
-              w1.type_back (tensor sigma (tensor cont beta)) ::
+              wt.type_back (tensor sigma (tensor cont beta)) ::
             Typing.eq_constraint 
-              w1.type_forward (tensor sigma (tensor cont (Type.newty Type.OneW))) ::
+              wt.type_forward (tensor sigma (tensor cont (Type.newty Type.OneW))) ::
             (constraints rest)
       | Force(w1, (s, k)) :: rest ->
           let sigma = Type.newty Type.Var in
@@ -600,8 +591,6 @@ let rec dot_of_circuit
               Printf.sprintf "\"Grab({%i,%i},{%i,%i})\"" w1.src w1.dst w2.src w2.dst
           | Force(w1, _) -> 
               Printf.sprintf "\"Force({%i,%i})\"" w1.src w1.dst
-          | Ret(w1) -> 
-              Printf.sprintf "\"Ret({%i,%i})\"" w1.src w1.dst
           | ADoor(w1, w2) -> 
               Printf.sprintf "\"ADoor({%i,%i},{%i,%i})\"" 
                 w1.src w1.dst w2.src w2.dst
@@ -625,7 +614,6 @@ let rec dot_of_circuit
           | Memo(_, _) -> "memo"
           | Grab(_) -> "grab"
           | Force(_, _) -> "force"
-          | Ret(_) -> "ret"
           | Door(_, w) -> 
               if w.src = -1 then "\", shape=\"plaintext" else "&uarr;"
           | ADoor(_, _) -> "&darr;"
@@ -713,7 +701,6 @@ let rec min i (ty: Type.t) : Term.t =
                                    else beta) a in
         min (i+1) unfolded
   | Type.ContW(ret) -> Printf.printf "min: cont\n"; raise Not_Leq
-  | Type.HashW(key, value) -> mkConstW (Chashnew) (* TODO *)
   | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
   | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _->
       failwith "internal: min" 
@@ -950,12 +937,12 @@ let message_passing_term (c: circuit): Term.t =
                                             (mkPairW (mkVar "sigma")
                                                (mkLambdaW 
                                                   (("m", None), 
-                                                   in_k wt.dst (max_wire_src_dst + 1) 
+                                                   in_k wt.src (max_wire_src_dst + 1) 
                                                      (mkPairW (mkVar "sigma") (mkVar "m"))
                                                   )
                                                )
                                             )))
-            | Ret(w1) when w1.src = dst ->
+            | Grab(w1, wt) when wt.src = dst ->
                 ("x", mkLetW (mkVar "x") (("sigma", "v"), 
                                             (parse ("let (cont, m) = v in cont m"))))
             | Force(w1, k) when w1.src = dst ->
