@@ -958,21 +958,21 @@ let message_passing_term (c: circuit): Term.t =
                                                 (mkVar y)
                                              ))))
             | Memo(w1 (* X *) , w2 (* X *)) when w1.src = dst ->
-                ("x", mkLetW (mkVar "x") (("sigma", "v"),
+                (x, mkLetW (mkVar x) (("sigma", "v"),
                                           in_k w2.src (max_wire_src_dst + 1) 
                                             (parse (Printf.sprintf
-                                                      "case hashget %i 0 of \
+                                                      "case hashget (%i+1) 0 of \
                                                       inl(q) ->
-                                                        let u = hashput %i q v in \
+                                                        let u = hashput (%i+1) q v in \
                                                          (sigma, v) \
                                                     | inr(q) -> (sigma, v)" w1.src w1.src))))
             | Memo(w1 (* X *) , w2 (* X *)) when w2.src = dst ->
-                ("x", mkLetW (mkVar "x") (("sigma", "v"),
-                             mkCaseW (parse (Printf.sprintf "hashget %i v" w1.src)) 
+                (x, mkLetW (mkVar x) (("sigma", "v"),
+                             mkCaseW (parse (Printf.sprintf "hashget (%i+1) v" w1.src)) 
                                     [("a", in_k w2.src (max_wire_src_dst + 1) 
                                              (parse "(sigma,a)"));
                                      ("u", in_k w1.src (max_wire_src_dst + 1) 
-                                           (parse (Printf.sprintf "let u = hashput %i 0 v in \
+                                           (parse (Printf.sprintf "let u = hashput (%i+1) 0 v in \
                                                    (sigma, v)" w1.src)))]
                              ))
             | Door(w1 (* X *) , w2 (* \Tens A X *)) when w1.src = dst ->
