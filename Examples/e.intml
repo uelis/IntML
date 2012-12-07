@@ -76,7 +76,7 @@ letu tail =
           | inr(xsid) -> 
                 [xsid]
 
-letu thunked =
+letu thunk =
   fun l ->
     let [thunk] =  suspend 
                    (let [lid] = l in
@@ -93,11 +93,14 @@ letu zipWith = fun f ->
 
 letu fib =
   memo (fix (fun f ->
-       let [v] = thunked f in
+       let [v] = thunk f in
        cons [0] (cons [1] (zipWith (fun x -> fun y -> 
                                       let [xv] = x in
                                       let [yv] = y in [xv+yv])
-                                   [v] (tail [v])) )))
+                               [v] (tail [v])) )))
+
+letu cycle =
+  memo (fix (fun cycle -> cons [1] cycle))
 
 letu printlist =
   fun l ->
