@@ -42,8 +42,7 @@ letu cons : [int] --> [int] --> [int] =
                  let u = hashput 0 id (inl(xk), inl(xsk)) in id] in
         [id]
 
-letu aaa = 
-fix ((fun l -> cons [1] l))
+letu aaa = (fix (fun l -> fun i -> let [iv] = i in cons [iv] (l [iv+1]))) [0]
 
 letu head =
   fun l -> 
@@ -144,5 +143,5 @@ letu toDigits =
 
 letu e = memo (toDigits eContFrac)
 
-letu ttt = printlist e [11]
+letu ttt = printlist e [110]
 letu ttu = printlist eContFrac [2100]
