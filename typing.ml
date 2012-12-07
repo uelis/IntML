@@ -95,13 +95,9 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
                                       newty (SumW([one; one])))))) in
         b, []
   | ConstW(Chashnew) ->
-      let hashty = newty Type.NatW in
-        hashty, []
-  | ConstW(Chashfree) ->
       let alpha = newty Type.Var in
-      let beta = newty Type.Var in
-      let hashty = newty (Type.HashW(alpha, beta)) in
-      let b = newty (FunW(hashty, newty OneW)) in
+      let hashty = newty NatW in
+      let b = newty (FunW(alpha, hashty)) in
         b, []
   | ConstW(Chashget) ->
       let alpha = newty Type.Var in
@@ -361,8 +357,9 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
       let tyBox, conBox = ptU c gamma t in
       let alpha = newty Var in
       let cont = newty (ContW alpha) in
+      let contcont = newty (ContW cont) in
       let conC = leq_index_types (dot cont gamma) phi in
-      let b = newty (BoxU(newty OneW, cont)) in
+      let b = newty (BoxU(newty OneW, contcont)) in
         b,
         eq_expected_constraint t (tyBox, newty (BoxU(newty OneW, alpha))) :: 
         conC @ conBox 
@@ -370,9 +367,10 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
       let tyK, conK = ptW c t in
       let alpha = newty Var in
       let cont = newty (ContW alpha) in
+      let contcont = newty (ContW cont) in
       let b = newty (BoxU(newty OneW, alpha)) in
         b,
-        eq_expected_constraint t (tyK, cont) :: 
+        eq_expected_constraint t (tyK, contcont) :: 
         conK 
   | TypeAnnot(t, None) -> 
       ptU c phi t

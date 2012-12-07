@@ -96,9 +96,7 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokMemo
 %token TokForce
 %token TokSuspend
-%token TokHash
 %token TokHashnew
-%token TokHashfree
 %token TokHashput
 %token TokHashget
 %token TokVertbar
@@ -213,8 +211,6 @@ termW_atom:
        { mkTerm (ConstW(Cprint $2)) } 
     | TokHashnew
        { mkTerm (ConstW(Chashnew)) } 
-    | TokHashfree
-       { mkTerm (ConstW(Chashfree)) } 
     | TokHashput
        { mkTerm (ConstW(Chashput)) } 
     | TokHashget
@@ -237,8 +233,6 @@ typeW:
       { $1 }
     | typeW_summand TokRightArrow typeW
       { Type.newty (Type.FunW($1, $3)) } 
-    | TokHash TokLAngle typeW TokComma typeW TokRAngle
-      { Type.newty (Type.HashW($3, $5)) } 
     | TokMu typeW_atom TokDot typeW
       { Type.newty (Type.MuW($2, $4)) } 
 

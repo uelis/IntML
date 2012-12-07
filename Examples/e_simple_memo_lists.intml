@@ -1,6 +1,10 @@
 letw return = fun x -> inl(x)
 letw continue = fun x -> inr(x)
 
+(*
+letu memo = hack memow
+ as {'c}({'a}[int] --o [int]) --o ({'e}['c] --o [int])
+*)
 letw fixw = fun x ->
   case x of 
     inl(lx) -> 
@@ -21,6 +25,11 @@ letw fixw = fun x ->
 
 letu fix = hack fixw
  as {mu 'c. 1 + 'b*'c}({'b}'a --o 'a) --o 'a
+
+  (*
+{mu 'x. 1 + 'a*'b*'x}({'z}({'y}['a] --o ['b]) --o 'u) --o
+{(mu 'x. 1 + 'a*'b*'x) * 'z}({'y}['a] --o ['b]) --o 'u
+  *)
 
 letu nil : [int] =
     [0]
@@ -76,7 +85,7 @@ letu tail =
           | inr(xsid) -> 
                 [xsid]
 
-letu thunk =
+letu duplicabte =
   fun l ->
     let [thunk] =  suspend 
                    (let [lid] = l in
@@ -85,6 +94,55 @@ letu thunk =
                  let u = hashput 0 id (inr(thunk)) in id] in
         [id]
     
+
+(*
+letu cons : [int] --> [int] --> [int] =  
+  (fun x -> fun xs ->
+    let [xk] = suspend(x) in
+    let [xsk] = suspend(xs) in
+    let [id] = [ let id = hashnew (xk, xsk) in
+                 let u = hashput 0 id (inl(xk), inl(xsk)) in id] in
+        [id])
+
+letu aaa = 
+fix ((fun l -> cons [1] l))
+
+letu head =
+  fun l -> 
+    let [lid] = l in
+    let [ht] = [hashget 0 lid] in
+      case ht of 
+        inl(cell) ->
+          let [h] = [let (h,t) = cell in h] in
+          let [t] = [let (h,t) = cell in t] in
+          case h of
+            inl(k) -> 
+              let [v] = force(k) in
+              let [u] = [hashput 0 lid (inr(v), t)] in
+                [v]
+          | inr(v) -> 
+                [v]
+      | inr(notfound) -> [let x = 0 loop inr(0)]
+
+letu tail = 
+  fun l -> 
+    let [lid] = l in
+    let [ht] = [hashget 0 lid] in
+      case ht of 
+        inl(cell) ->
+          let [h] = [let (h,t) = cell in h] in
+          let [t] = [let (h,t) = cell in t] in
+          case t of
+            inl(k) -> 
+              let [xsid] = force(k) in
+              let [u] = [hashput 0 lid (h, inr(xsid))] in
+                [xsid]
+          | inr(xsid) -> 
+                [xsid]
+      | inr(notfound) -> [let x = 0 loop inr(0)]
+
+*)
+
 letu zipWith = fun f -> 
   fix (fun zw -> fun l1 -> fun l2 ->
      let [v1] = l1 in
@@ -92,15 +150,13 @@ letu zipWith = fun f ->
        cons (f (head [v1]) (head [v2])) (zw (tail [v1]) (tail [v2])))
 
 letu fib =
-  memo (fix (fun f ->
-       let [v] = thunk f in
-       cons [0] (cons [1] (zipWith (fun x -> fun y -> 
+  (fix (fun f ->
+       let [v] = duplicable f in
+       cons [0] (cons [1] (
+                           zipWith (fun x -> fun y -> 
                                       let [xv] = x in
                                       let [yv] = y in [xv+yv])
-                               [v] (tail [v])) )))
-
-letu cycle =
-  memo (fix (fun cycle -> cons [1] cycle))
+                                   [v] (tail [v])) )))
 
 letu printlist =
   fun l ->
@@ -115,7 +171,7 @@ letu printlist =
                 let [lid] = l in 
                 let [xv] = head [lid] in
                 let [u] = [print xv] in
-                let [u] = [if iv + 1 < jv then print ", " else ()] in
+                let [u] = [print ","] in
                   p [iv + 1] (tail [lid])) 
     [0] l
 
@@ -167,5 +223,5 @@ letu toDigits =
 
 letu e = memo (toDigits eContFrac)
 
-letu ttt = printlist e [110]
+letu ttt = printlist e [11]
 letu ttu = printlist eContFrac [2100]

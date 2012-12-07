@@ -82,9 +82,7 @@ rule main = parse
   | "memo"     { TokMemo }
   | "force"    { TokForce }
   | "suspend"  { TokSuspend }
-  | "hash"     { TokHash }
   | "hashnew"  { TokHashnew }
-  | "hashfree" { TokHashfree }
   | "hashput"  { TokHashput }
   | "hashget"  { TokHashget }
   | "--o"      { TokLolli }
