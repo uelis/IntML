@@ -57,6 +57,7 @@ rule main = parse
   | '='        { TokEquals }
   | ":="       { TokColonEquals }
   | "mu"       { TokMu }
+  | "delete"   { TokDelete }
   | "fold"     { TokFold }
   | "unfold"   { TokUnfold }
   | "if"       { TokKwIf }

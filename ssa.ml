@@ -74,7 +74,7 @@ let rec isPure (t: Term.t) : bool =
 
 let rec reduce (t : Term.t) : Term.t =
   match t.Term.desc with
-    | Var(_) | ConstW(_) | UnitW | LoopW(_) | FoldW(_) |  LambdaW(_) -> t
+    | Var(_) | ConstW(_) | UnitW | LoopW(_) | FoldW(_) |  LambdaW(_) | AssignW _ | DeleteW _ -> t
     | TypeAnnot(t, a) ->
         mkTypeAnnot (reduce t) a
     | InW(i, j, t) -> mkInW i j (reduce t)

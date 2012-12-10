@@ -354,9 +354,12 @@ let build_term
             mkLoopW (annotate_term t1) (x, mkTypeAnnot (annotate_term t2) (Some alpha))
       | FoldW((alpha, a), t1) -> mkFoldW (alpha, a) (annotate_term t1)
       | UnfoldW((alpha, a), t1) -> mkUnfoldW (alpha, a) (annotate_term t1)
+      | AssignW((alpha, a), t1, t2) -> mkAssignW (alpha, a) (annotate_term t1) (annotate_term t2)
+      | DeleteW((alpha, a), t1) -> mkDeleteW (alpha, a) (annotate_term t1)
       | LetBoxW(_, _) -> assert false 
       | HackU (_, _)|CopyU (_, _)|CaseU (_, _, _)|LetBoxU (_, _)
-      | BoxTermU _| LambdaU (_, _)|AppU (_, _)|LetU (_, _)|PairU (_, _) -> assert false
+      | BoxTermU _| LambdaU (_, _)|AppU (_, _)|LetU (_, _)|PairU (_, _) 
+      | ForceU _ | SuspendU _ | MemoU _-> assert false
   in
   (* Compile annotated term *)
   let rec build_annotatedterm 
@@ -578,9 +581,6 @@ let build_term
           let pl = Llvm.build_ptrtoint mem_a_struct_ptr i64 "memint" builder in
             {payload = [pl]; attrib = Bitvector.null 0}
       | UnfoldW((alpha, a), t) ->
-          let i64 = Llvm.i64_type context in
-          let freetype = Llvm.function_type (Llvm.void_type context) (Array.of_list [i64]) in
-          let free = Llvm.declare_function "free" freetype the_module in
           let mua = Type.newty (Type.MuW(alpha, a)) in
           let a_unfolded = Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
           let a_struct = packing_type a_unfolded in
@@ -589,8 +589,33 @@ let build_term
                 | {payload = [tptrint]; attrib = a } when Bitvector.length a = 0 ->
                     let tptr = Llvm.build_inttoptr tptrint (Llvm.pointer_type a_struct) "tptr" builder in
                     let tstruct = Llvm.build_load tptr "tstruct" builder in
-                    ignore (Llvm.build_call free (Array.of_list [tptrint]) "" builder);
                     unpack_encoded_value tstruct a_unfolded                      
+                | _ -> assert false
+            end
+      | AssignW((alpha, a), s, t) ->
+          let senc = build_annotatedterm ctx s args in
+          let tenc = build_annotatedterm ctx t args in
+          let mua = Type.newty (Type.MuW(alpha, a)) in
+          let a_unfolded = Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
+          let a_struct = packing_type a_unfolded in
+            begin
+              match senc with
+                | {payload = [sptrint]; attrib = a } when Bitvector.length a = 0 ->
+                    let sptr = Llvm.build_inttoptr sptrint (Llvm.pointer_type a_struct) "tptr" builder in
+                    let tenc_packed = pack_encoded_value tenc a_unfolded in
+                      ignore (Llvm.build_store tenc_packed sptr builder);
+                      {payload = []; attrib = Bitvector.null 0}
+                | _ -> assert false
+            end
+      | DeleteW((alpha, a), t) ->
+          let i64 = Llvm.i64_type context in
+          let freetype = Llvm.function_type (Llvm.void_type context) (Array.of_list [i64]) in
+          let free = Llvm.declare_function "free" freetype the_module in
+            begin
+              match build_annotatedterm ctx t args with
+                | {payload = [tptrint]; attrib = a } when Bitvector.length a = 0 ->
+                    ignore (Llvm.build_call free (Array.of_list [tptrint]) "" builder);
+                    {payload = []; attrib = Bitvector.null 0}
                 | _ -> assert false
             end
       | TypeAnnot(t, _) ->

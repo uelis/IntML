@@ -65,6 +65,7 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokSemicolon
 %token TokSharp
 %token TokMu
+%token TokDelete
 %token TokFold
 %token TokUnfold
 %token TokKwNat
@@ -186,10 +187,10 @@ termW:
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cinteq)), $1)), $3)) }
     | termW_app TokLAngle termW_app
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintslt)), $1)), $3)) }
-    | termW_app TokColonEquals termW
-       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Chashput)), $1)), $3)) }
-    | TokBang termW_atom
-       { mkTerm (AppW(mkTerm (ConstW(Chashget)), $2)) } 
+    | termW_app TokColonEquals TokLAngle typeW TokDot typeW TokRAngle  termW
+       { mkTerm (AssignW(($4, $6), $1, $8)) }
+    | TokDelete TokLAngle typeW TokDot typeW TokRAngle termW
+       { mkTerm (DeleteW(($3, $5), $7)) }
     | TokKwInl termW_atom
        { mkTerm (InW(2, 0, $2)) }
     | TokKwInr termW_atom
@@ -214,8 +215,6 @@ termW_atom:
        { mkTerm (PairW($2, $4)) }
     | TokKwPrint TokString
        { mkTerm (ConstW(Cprint $2)) } 
-    | TokKwRef
-       { mkTerm (ConstW(Chashnew)) } 
     | TokNum
        { mkTerm (ConstW(Cintconst($1))) } 
     | termW_atom TokPlus termW_atom

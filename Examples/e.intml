@@ -8,9 +8,11 @@ letw fixw = fun x ->
         case x of
           inl(bq) ->
             let (b,q) = bq in
-              inl(fold<'c.1+'b*'c> inr(b,l), inr(q))
+              inl(fold<'c.1+'b*'c> (inr(b,l)), inr(q))
         | inr(a) ->
-            case unfold<'c.1+'b*'c> l of
+            let r = unfold<'c.1+'b*'c> l in
+(*            let u = delete<'c.1+'b*'c> l in *)
+            case r of
               inl(nl) -> 
                  inr(a)
             | inr(cns) ->
@@ -24,33 +26,41 @@ letu fix = hack fixw
 
 letu nil : [int] =
     [0]
+(*
+type lazylist<'a> = 
+        Susp of cont<cont<'a>>
+      | Cons of (cont<cont<'a>> + int) * lazylist<'a>
+*)
+letw Susp = fun x -> 
+      fold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inl(x)
+letw Cons = fun x -> 
+      fold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inr(x)
 
 (* Invariante: Wenn man inl(k) einmal forced, dann kommt nicht wieder
  * eine Liste der Form inl(...) heraus *)
-letu cons : [int] --> [mu 'a. ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>]
-                  --> [mu 'a. ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>] =  
+letu cons : [int] --> [mu 'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a]
+                  --> [mu 'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a] =  
   (fun x -> fun xs ->
     let [xk] = suspend(x) in
     let [xsk] = suspend(xs) in
-    let [id] = [ ref (inr(inl(xk), fold<'a. ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>> ref (inl(xsk)))) ] in
-        [fold<'a. ref<cont<cont<'a>> +  (cont<cont<int>> + int) * 'a>> id])
+    let [id] = [ Cons(inl(xk), Susp(xsk)) ] in
+        [id])
 
 letu ft = 
-  fix (fun ft ->
   fun l -> 
     let [lid] = l in
-    let [r] = [unfold<'a.ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>> lid] in
-    case !r of
+    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
       inl(thunk) -> 
         let [v] = force thunk in
-        let [u] = [ r := !(unfold<'a.ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>> v) ] in
-          [r]
-    | inr(v) -> [r])
+        let [u] = [ lid :=<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> 
+                         unfold<'a.cont<cont<'a>> + (cont<cont<int>> + int) * 'a> v ] in
+          [lid]
+    | inr(v) -> [lid]
 
 letu head =
   fun l -> 
-    let [cell] = ft l in
-    case !cell of
+    let [lid] = ft l in
+    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
       inl(thunk) -> 
         [let x=0 loop inr(x)]
     | inr(ht) ->
@@ -59,15 +69,15 @@ letu head =
         case h of
           inl(k) -> 
             let [v] = force(k) in
-            let [u] = [ cell := inr(inr(v), t) ] in
+            let [u] = [ lid :=<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inr(inr(v), t) ] in
               [v]
         | inr(v) -> 
               [v]
 
 letu tail =
   fun l -> 
-    let [cell] = ft l in
-    case !cell of
+    let [lid] = ft l in
+    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
       inl(thunk) -> 
         [let x=0 loop inr(x)]
     | inr(ht) ->
@@ -77,10 +87,9 @@ letu thunk =
   fun l -> 
     (* Invariante erhalten *)
     let [thunk] =  suspend (
-                      let [cell] = ft l in
-                        [fold <'a.ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>> cell]
+                      let [lid] = ft l in [lid]
                    ) in
-    let [id] = [ fold<'a.ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>> ref (inl(thunk)) ] in
+    let [id] = [ fold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> (inl(thunk)) ] in
         [id]
     
 letu zipWith = fun f -> 

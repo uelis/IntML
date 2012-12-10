@@ -232,9 +232,6 @@ let string_of_term_const (c: term_const) : string =
   | Cinteq -> "inteq"
   | Cintslt -> "intslt"
   | Cintprint -> "intprint"
-  | Chashnew -> "hash_new"
-  | Chashput -> "hash_put"
-  | Chashget -> "hash_get"
 
 let string_of_termW (term: Term.t): string =
   let buf = Buffer.create 80 in
