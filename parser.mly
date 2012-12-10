@@ -61,6 +61,7 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokDot
 %token TokQuote
 %token TokColon
+%token TokColonEquals
 %token TokSemicolon
 %token TokSharp
 %token TokMu
@@ -96,9 +97,9 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokMemo
 %token TokForce
 %token TokSuspend
-%token TokHashnew
-%token TokHashput
-%token TokHashget
+%token TokCont
+%token TokKwRef
+%token TokBang
 %token TokVertbar
 %token <int> TokNum
 %token <string> TokIdent 
@@ -185,6 +186,10 @@ termW:
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cinteq)), $1)), $3)) }
     | termW_app TokLAngle termW_app
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintslt)), $1)), $3)) }
+    | termW_app TokColonEquals termW
+       { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Chashput)), $1)), $3)) }
+    | TokBang termW_atom
+       { mkTerm (AppW(mkTerm (ConstW(Chashget)), $2)) } 
     | TokKwInl termW_atom
        { mkTerm (InW(2, 0, $2)) }
     | TokKwInr termW_atom
@@ -209,12 +214,8 @@ termW_atom:
        { mkTerm (PairW($2, $4)) }
     | TokKwPrint TokString
        { mkTerm (ConstW(Cprint $2)) } 
-    | TokHashnew
+    | TokKwRef
        { mkTerm (ConstW(Chashnew)) } 
-    | TokHashput
-       { mkTerm (ConstW(Chashput)) } 
-    | TokHashget
-       { mkTerm (ConstW(Chashget)) } 
     | TokNum
        { mkTerm (ConstW(Cintconst($1))) } 
     | termW_atom TokPlus termW_atom
@@ -251,6 +252,10 @@ typeW_factor:
 typeW_atom:
     | TokQuote identifier
       { type_var $2 }
+    | TokCont TokLAngle typeW TokRAngle
+      { Type.newty (Type.ContW($3)) } 
+    | TokKwRef TokLAngle typeW TokRAngle
+      { Type.newty (Type.RefW($3)) } 
     | TokNum 
       { let rec nat_ty n = 
           match n with

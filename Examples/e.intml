@@ -25,64 +25,62 @@ letu fix = hack fixw
 letu nil : [int] =
     [0]
 
-
-
-letu cons : [int] --> [int] --> [int] =  
+(* Invariante: Wenn man inl(k) einmal forced, dann kommt nicht wieder
+ * eine Liste der Form inl(...) heraus *)
+letu cons : [int] --> [mu 'a. ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>]
+                  --> [mu 'a. ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>] =  
   (fun x -> fun xs ->
     let [xk] = suspend(x) in
     let [xsk] = suspend(xs) in
-    let [id] = [ let id = hashnew (xk, xsk) in
-                 let u = hashput 0 id (inl(inl(xk), inl(xsk))) in id] in
-        [id])
+    let [id] = [ ref (inr(inl(xk), fold<'a. ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>> ref (inl(xsk)))) ] in
+        [fold<'a. ref<cont<cont<'a>> +  (cont<cont<int>> + int) * 'a>> id])
 
 letu ft = 
+  fix (fun ft ->
   fun l -> 
     let [lid] = l in
-    let [ct0] = [hashget 0 lid] in
-    case ct0 of
-      inl(ct) ->
-        case ct of
-          inl(cell) -> [cell]
-        | inr(thunk) ->
-            let [cell] = force(thunk) in
-              [ let u = hashput 0 lid (inl(cell)) in cell ]
-    | inr(notfound) -> [let x = 0 loop inr(0)]
+    let [r] = [unfold<'a.ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>> lid] in
+    case !r of
+      inl(thunk) -> 
+        let [v] = force thunk in
+        let [u] = [ r := !(unfold<'a.ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>> v) ] in
+          [r]
+    | inr(v) -> [r])
 
 letu head =
   fun l -> 
-    let [lid] = l in
-    let [cell] = ft [lid] in
-          let [h] = [let (h,t) = cell in h] in
-          let [t] = [let (h,t) = cell in t] in
-          case h of
-            inl(k) -> 
-              let [v] = force(k) in
-              let [u] = [hashput 0 lid (inl(inr(v), t))] in
-                [v]
-          | inr(v) -> 
-                [v]
+    let [cell] = ft l in
+    case !cell of
+      inl(thunk) -> 
+        [let x=0 loop inr(x)]
+    | inr(ht) ->
+        let [h] = [let (h,t) = ht in h] in
+        let [t] = [let (h,t) = ht in t] in
+        case h of
+          inl(k) -> 
+            let [v] = force(k) in
+            let [u] = [ cell := inr(inr(v), t) ] in
+              [v]
+        | inr(v) -> 
+              [v]
 
-letu tail = 
+letu tail =
   fun l -> 
-    let [lid] = l in
-    let [cell] = ft [lid] in
-          let [h] = [let (h,t) = cell in h] in
-          let [t] = [let (h,t) = cell in t] in
-          case t of
-            inl(k) -> 
-              let [xsid] = force(k) in
-              let [u] = [hashput 0 lid (inl(h, inr(xsid)))] in
-                [xsid]
-          | inr(xsid) -> 
-                [xsid]
+    let [cell] = ft l in
+    case !cell of
+      inl(thunk) -> 
+        [let x=0 loop inr(x)]
+    | inr(ht) ->
+        [let (h,t) = ht in t]
 
 letu thunk =
-  fun l ->
-    let [thunk] =  suspend 
-                   (let [lid] = l in
-                   let [cell] = ft [lid] in [cell]) in
-    let [id] = [ let id = hashnew () in
-                 let u = hashput 0 id (inr(thunk)) in id] in
+  fun l -> 
+    (* Invariante erhalten *)
+    let [thunk] =  suspend (
+                      let [cell] = ft l in
+                        [fold <'a.ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>> cell]
+                   ) in
+    let [id] = [ fold<'a.ref< cont<cont<'a>> + (cont<cont<int>> + int) * 'a>> ref (inl(thunk)) ] in
         [id]
     
 letu zipWith = fun f -> 
@@ -92,7 +90,7 @@ letu zipWith = fun f ->
        cons (f (head [v1]) (head [v2])) (zw (tail [v1]) (tail [v2])))
 
 letu fib =
-  (fix (memo (fun f ->
+  (fix ( (fun f ->
        let [v] = thunk f in
        cons [0] (cons [1] (zipWith (fun x -> fun y -> 
                                       let [xv] = x in
@@ -100,7 +98,7 @@ letu fib =
                                [v] (tail [v])) ))))
 
 letu cycle =
-  memo (fix (fun cycle -> cons [1] cycle))
+  (fix (fun cycle -> cons [1] cycle))
 
 letu printlist =
   fun l ->
@@ -165,7 +163,7 @@ letu toDigits =
             let [lid] = l in
             cons (head [lid]) (toDigits (ratTrans [10] [0] [0] [1] (tail [lid])))))
 
-letu e = memo (toDigits eContFrac)
+letu e = (toDigits eContFrac)
 
 letu ttt = printlist e [11]
 letu ttu = printlist eContFrac [2100]

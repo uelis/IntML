@@ -53,7 +53,9 @@ rule main = parse
   | ':'        { TokColon }
   | ';'        { TokSemicolon }
   | '#'        { TokSharp }
+  | '!'        { TokBang }
   | '='        { TokEquals }
+  | ":="       { TokColonEquals }
   | "mu"       { TokMu }
   | "fold"     { TokFold }
   | "unfold"   { TokUnfold }
@@ -82,9 +84,8 @@ rule main = parse
   | "memo"     { TokMemo }
   | "force"    { TokForce }
   | "suspend"  { TokSuspend }
-  | "hashnew"  { TokHashnew }
-  | "hashput"  { TokHashput }
-  | "hashget"  { TokHashget }
+  | "cont"     { TokCont }
+  | "ref"      { TokKwRef }
   | "--o"      { TokLolli }
   | "-->"      { TokMulti }
   | "|"        { TokVertbar }

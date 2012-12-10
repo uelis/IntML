@@ -96,20 +96,18 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         b, []
   | ConstW(Chashnew) ->
       let alpha = newty Type.Var in
-      let hashty = newty NatW in
-      let b = newty (FunW(alpha, hashty)) in
+      let refty = newty (Type.RefW(alpha)) in
+      let b = newty (FunW(alpha, refty)) in
         b, []
   | ConstW(Chashget) ->
       let alpha = newty Type.Var in
-      let beta = newty Type.Var in
-      let hashty = newty NatW in
-      let b = newty (FunW(hashty, newty (FunW(alpha, newty (SumW[beta; newty OneW]))))) in
+      let refty = newty (Type.RefW(alpha)) in
+      let b = newty (FunW(refty, alpha)) in
         b, []
   | ConstW(Chashput) ->
       let alpha = newty Type.Var in
-      let beta = newty Type.Var in
-      let hashty = newty NatW in
-      let b = newty (FunW(hashty, newty (FunW(alpha, newty (FunW(beta, newty OneW)))))) in
+      let hashty = newty (Type.RefW(alpha)) in
+      let b = newty (FunW(hashty, newty (FunW(alpha, newty Type.OneW)))) in
         b, []
   | ConstW(Cbot) ->
       let b = newty Var in

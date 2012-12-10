@@ -384,7 +384,7 @@ let infer_types (c : circuit) : Type.t =
       | Force(w1, (s, k)) :: rest ->
           let sigma = Type.newty Type.Var in
           let alpha = Type.newty Type.Var in
-          let cont = Type.newty (Type.ContW alpha) in
+          let cont = Type.newty (Type.ContW (Type.newty (Type.ContW alpha))) in
           let x = "x" in
           let k' = variant k in (* ensure "x" and "y" are fresh *) 
           let s' = List.map variant_var s in
@@ -700,7 +700,8 @@ let rec min i (ty: Type.t) : Term.t =
                                    if Type.equals alpha beta then mua 
                                    else beta) a in
         min (i+1) unfolded
-  | Type.ContW(ret) -> Printf.printf "min: cont\n"; raise Not_Leq
+  | Type.ContW(ret) -> Printf.printf "min: cont\n"; flush stdout; raise Not_Leq
+  | Type.RefW(ret) -> Printf.printf "min: ref\n"; flush stdout; raise Not_Leq
   | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
   | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _->
       failwith "internal: min" 
@@ -944,7 +945,7 @@ let message_passing_term (c: circuit): Term.t =
                                             )))
             | Grab(w1, wt) when wt.src = dst ->
                 ("x", mkLetW (mkVar "x") (("sigma", "v"), 
-                                            (parse ("let (cont, m) = v in cont m"))))
+                                            (parse ("let (contk, m) = v in contk m"))))
             | Force(w1, k) when w1.src = dst ->
                 (x, mkLetW (mkVar x) ((sigma, y), 
                                           (mkAppW (let_tupleW sigma k) 

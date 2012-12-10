@@ -19,20 +19,12 @@ and value =
   | IntsubV of value option
   | IntmulV of value option
   | IntdivV of value option
-  | HashputV of value option * value option
-  | HashgetV of value option
   | HashnewV
+  | HashputV of value option 
+  | HashgetV 
   | IntprintV
 
-let memtbls = Hashtbl.create 2
-let memtbl i = 
-  try 
-    Hashtbl.find memtbls i 
-  with 
-    | Not_found ->
-        let t = (Hashtbl.create 10) in
-          Hashtbl.replace memtbls i t;
-          t
+let heap = Hashtbl.create 2
 
 let rec cv2termW (v: value) : Term.t =
   match v with 
@@ -85,8 +77,8 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | ConstW(Cintmul) -> IntmulV(None)
     | ConstW(Cintdiv) -> IntdivV(None)
     | ConstW(Chashnew) -> HashnewV
-    | ConstW(Chashput) -> HashputV(None, None)
-    | ConstW(Chashget) -> HashgetV(None)
+    | ConstW(Chashput) -> HashputV(None)
+    | ConstW(Chashget) -> HashgetV
     | ConstW(Cbot) ->  failwith "nontermination!"
     | PairW(t1, t2) -> 
         let v1 = eval t1 sigma in
@@ -133,6 +125,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | TypeAnnot(t, _) -> eval t sigma
     | HackU (_, _)|CopyU (_, _)|CaseU (_, _, _)|LetBoxU (_, _)|BoxTermU _
     | LambdaU (_, _)|AppU (_, _)|LetU (_, _)|PairU (_, _) | MemoU(_)
+    | ForceU _ | SuspendU _
       -> assert false
 
 and appV (v1: value) (v2: value) : value = 
@@ -181,24 +174,24 @@ and appV (v1: value) (v2: value) : value =
            | IntV(v2') -> Printf.printf "%i" v2'; UnitV
            | _ -> assert false)
     | HashnewV ->
-        IntV (newid ())
-    | HashputV(None, None) -> HashputV(Some v2, None)
-    | HashputV(Some table, None) -> HashputV(Some table, Some v2)
-    | HashputV(Some table, Some key) -> 
-        (match table with
-           | IntV t -> 
+        let id = newid () in
+          Hashtbl.replace heap id v2; 
+          IntV id
+    | HashputV(None) -> HashputV(Some v2)
+    | HashputV(Some r) -> 
+        (match r with
+           | IntV id -> 
 (*               Printf.printf "put: %i\n" (Valtbl.length memtbl); *)
-               Hashtbl.replace (memtbl t) key v2; 
+               Hashtbl.replace heap id v2; 
                UnitV 
            | _ -> assert false)
-    | HashgetV(None) -> HashgetV(Some v2)
-    | HashgetV(Some v3) -> 
-        (match v3 with
-           | IntV t -> 
+    | HashgetV -> 
+        (match v2 with
+           | IntV id -> 
 (*               Printf.printf "get %s\n" (Printing.string_of_termW (cv2termW
  *               v2)); *)
-               (try InV(2, 0, Hashtbl.find (memtbl t) v2) with 
-                 | Not_found -> InV(2, 1, UnitV))
+               (try Hashtbl.find heap id with 
+                 | Not_found -> assert false)
            | _ -> assert false)
     | _ -> failwith "Internal: Cannot apply non-functional value."
 
