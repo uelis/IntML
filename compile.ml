@@ -794,7 +794,9 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
         let unfolded = 
           Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
           Term.mkLambdaW(("x", None),
-                         Term.mkAppW (project (i+1) a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x")))
+                         Term.mkAppW (Term.mkLambdaW((unusable_var, None),
+                                                     Term.mkDeleteW (beta,b1) (Term.mkVar "x")))
+                           (Term.mkAppW (project (i+1) a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x"))))
     | _ -> 
         raise Not_Leq in
   try
