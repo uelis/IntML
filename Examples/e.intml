@@ -172,6 +172,6 @@ letu toDigits =
 
 letu e = (toDigits eContFrac)
 
-letu ttt = printlist e [200]
+letu ttt = printlist e [50]
 letu ttu = printlist fib [100]
 letu tta = head cycle
