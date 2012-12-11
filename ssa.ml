@@ -284,6 +284,33 @@ let trace (c: circuit) : func =
                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w2.dst; message_type = w2.type_forward}),
                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w3.dst; message_type = w3.type_forward})))
               end
+(*            | Grab(w1, wt) when w1.src = dst ->
+                trace src w1.dst lets (sigma, mk
+                ("x", mkLetW (mkVar "x") (("sigma", "v"),
+                                          in_k w1.src (max_wire_src_dst + 1) 
+                                            (mkPairW (mkVar "sigma")
+                                               (mkLambdaW 
+                                                  (("m", None), 
+                                                   in_k wt.src (max_wire_src_dst + 1) 
+                                                     (mkPairW (mkVar "sigma") (mkVar "m"))
+                                                  )
+                                               )
+                                            )))
+            | Grab(w1, wt) when wt.src = dst ->
+                ("x", mkLetW (mkVar "x") (("sigma", "v"), 
+                                            (parse ("let (contk, m) = v in contk m"))))
+            | Force(w1, k) when w1.src = dst ->
+                (x, mkLetW (mkVar x) ((sigma, y), 
+                                          (mkAppW (let_tupleW sigma k) 
+                                             (mkPairW 
+                                                (mkLambdaW 
+                                                   (("m", None), 
+                                                    in_k w1.src (max_wire_src_dst + 1) 
+                                                      (mkPairW (mkVar sigma) (mkVar "m"))
+                                                   )
+                                                ) 
+                                                (mkVar y)
+                                             )))) *)
           | _ -> assert false
   in
   let sigma, x = "sigma", "x" in

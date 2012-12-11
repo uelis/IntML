@@ -194,6 +194,11 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         a2,
         eq_expected_constraint t1 (a1, newty (BoxU(newty OneW, alpha))) ::
         con1 @ con2
+  | Term.ContW(i, n, t) ->
+      let alpha = newty Var in
+        newty (ContW(alpha)),
+        []
+          (* TODO *)
   | TypeAnnot(t, None) -> 
       ptW c t
   | TypeAnnot(t, Some ty) ->
@@ -378,7 +383,7 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
         eq_expected_constraint t (a, ty) :: con
   | LoopW _  |LambdaW (_, _) | AppW (_, _) | CaseW (_, _) | InW (_, _, _) 
   | LetW (_, _) | LetBoxW(_,_) | PairW (_, _)|ConstW (_)|UnitW 
-  | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ ->
+  | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ | Term.ContW _ ->
       raise (Typing_error (Some t, "Upper class term expected."))
 
 let raise_error (failed_eqn: U.failure_reason) =

@@ -102,7 +102,7 @@ let string_of_type (ty: Type.t): string =
       | Type.MuW(alpha, a) ->
           Buffer.add_string buf "mu<";
           s_typeW alpha;
-          Buffer.add_char buf 'm';
+          Buffer.add_char buf '.';
           s_typeW a;
           Buffer.add_char buf '>'
       | Type.ContW(ret) ->

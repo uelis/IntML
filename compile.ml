@@ -307,7 +307,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
             (w, ins)
       | LoopW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _)| InW (_, _, _)
       | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_)|UnitW
-      | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ ->
+      | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ | ContW _ ->
           assert false 
   and compile_in_box (c: var) (sigma: var list) (gamma: ctx) (t: Term.t) =
     let (gamma_in_box, i_enter_box) = enter_box gamma in
@@ -935,32 +935,32 @@ let message_passing_term (c: circuit): Term.t =
                   ) 
                 ))
             | Grab(w1, wt) when w1.src = dst ->
-                ("x", mkLetW (mkVar "x") (("sigma", "v"),
+                (x, mkLetW (mkVar x) ((sigma, unusable_var),
                                           in_k w1.src (max_wire_src_dst + 1) 
-                                            (mkPairW (mkVar "sigma")
+                                            (mkPairW (mkVar sigma)
                                                (mkLambdaW 
-                                                  (("m", None), 
+                                                  ((y, None), 
                                                    in_k wt.src (max_wire_src_dst + 1) 
-                                                     (mkPairW (mkVar "sigma") (mkVar "m"))
+                                                     (mkPairW (mkVar sigma) (mkVar y))
                                                   )
                                                )
                                             )))
             | Grab(w1, wt) when wt.src = dst ->
                 ("x", mkLetW (mkVar "x") (("sigma", "v"), 
-                                            (parse ("let (contk, m) = v in contk m"))))
+                                            (parse ("let (k, m) = v in k m"))))
             | Force(w1, k) when w1.src = dst ->
                 (x, mkLetW (mkVar x) ((sigma, y), 
                                           (mkAppW (let_tupleW sigma k) 
                                              (mkPairW 
                                                 (mkLambdaW 
-                                                   (("m", None), 
+                                                   ((c, None), 
                                                     in_k w1.src (max_wire_src_dst + 1) 
-                                                      (mkPairW (mkVar sigma) (mkVar "m"))
+                                                      (mkPairW (mkVar sigma) (mkVar c))
                                                    )
                                                 ) 
                                                 (mkVar y)
                                              ))))
-            | Memo(w1 (* X *) , w2 (* X *)) when w1.src = dst ->
+(*            | Memo(w1 (* X *) , w2 (* X *)) when w1.src = dst ->
                 (x, mkLetW (mkVar x) (("sigma", "v"),
                                           in_k w2.src (max_wire_src_dst + 1) 
                                             (parse (Printf.sprintf
@@ -977,7 +977,7 @@ let message_passing_term (c: circuit): Term.t =
                                      ("u", in_k w1.src (max_wire_src_dst + 1) 
                                            (parse (Printf.sprintf "let u = hashput (%i+1) 0 v in \
                                                    (sigma, v)" w1.src)))]
-                             ))
+                             ))*)
             | Door(w1 (* X *) , w2 (* \Tens A X *)) when w1.src = dst ->
                 (* <<sigma, c>, v> -> <sigma, <c, v>> *)
                 (x, mkLetW (mkVar x) ((x, v),

@@ -47,6 +47,7 @@ and t_desc =
   | DeleteW of (Type.t * Type.t) * t
   | LoopW of t * (var * t) 
   | LetBoxW of t * (var * t)             (* s, <x>t *)
+  | ContW of int * int * t
   | MemoU of t                    
   | SuspendU of t                    
   | ForceU of t                    
@@ -80,6 +81,7 @@ val mkFoldW : Type.t * Type.t -> t -> t
 val mkUnfoldW : Type.t * Type.t -> t -> t
 val mkAssignW : Type.t * Type.t -> t -> t -> t
 val mkDeleteW : Type.t * Type.t -> t -> t
+val mkContW : int -> int -> t -> t
 val mkPairU : t -> t -> t
 val mkLetU : t -> (var * var) * t -> t
 val mkAppU : t -> t -> t

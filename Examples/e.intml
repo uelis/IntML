@@ -8,7 +8,7 @@ letw fixw = fun x ->
         case x of
           inl(bq) ->
             let (b,q) = bq in
-              inl(fold<'c.1+'b*'c> (inr(b,l)), inr(q))
+              inl(fold<'c.1+'b*'c> inr(b,l), inr(q))
         | inr(a) ->
             let r = unfold<'c.1+'b*'c> l in
 (*            let u = delete<'c.1+'b*'c> l in *)
@@ -24,8 +24,6 @@ letw fixw = fun x ->
 letu fix = hack fixw
  as {mu 'c. 1 + 'b*'c}({'b}'a --o 'a) --o 'a
 
-letu nil : [int] =
-    [0]
 (*
 type lazylist<'a> = 
         Susp of cont<cont<'a>>
@@ -68,7 +66,7 @@ letu head =
         let [t] = [let (h,t) = ht in t] in
         case h of
           inl(k) -> 
-            let [v] = force(k) in
+            let [v] = force k in
             let [u] = [ lid :=<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inr(inr(v), t) ] in
               [v]
         | inr(v) -> 

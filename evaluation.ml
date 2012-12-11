@@ -36,7 +36,7 @@ let newid =
 let heap = Hashtbl.create 2
 
 let rec eval (t: Term.t) (sigma : env) : value =
-  (* Printf.printf "%s\n\n" (Printing.string_of_termW t); *)
+(*  Printf.printf "%s\n\n" (Printing.string_of_termW t);  *)
   match t.desc with 
     | Var(x) -> List.assoc x sigma
     | UnitW -> UnitV 
@@ -60,7 +60,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | LetW(t1, (x1, x2, t2)) ->
        (match eval t1 sigma with
         | PairV(v1, v2) -> eval t2 ((x1, v1) :: (x2, v2) :: sigma)
-        | _ -> failwith "Internal: Pairs"
+        | _ -> failwith (Printf.sprintf "Internal: Pairs (%s)" (Printing.string_of_termW t))
        )
     | InW(n, i, t1) -> InV(n, i, eval t1 sigma)
     | CaseW(t1, l) ->
@@ -84,8 +84,8 @@ let rec eval (t: Term.t) (sigma : env) : value =
             | _ -> failwith "Internal: evaluation of loop" in
           loop v1
     | FoldW((alpha, a), t) ->
-        let v = eval t sigma in
         let id = newid () in
+        let v = eval t sigma in
           Hashtbl.replace heap id v; 
           IntV id
     | UnfoldW(_, t) ->
@@ -107,6 +107,8 @@ let rec eval (t: Term.t) (sigma : env) : value =
            | IntV id -> Hashtbl.remove heap id;
                         UnitV
            | _ -> assert false)
+    | ContW(i, n, s) ->
+        eval (Compile.in_k i n s) sigma           
     | LetBoxW(t1, (x, t2)) ->
         let s1, a1 = Compile.compile_termU t1 in
         let v1 = eval (mkAppW s1 mkUnitW) sigma in
