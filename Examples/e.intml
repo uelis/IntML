@@ -120,7 +120,7 @@ letu printlist =
                 let [lid] = l in 
                 let [xv] = head [lid] in
                 let [u] = [print xv] in
-                let [u] = [if iv + 1 < jv then print ", " else ()] in
+(*                let [u] = [if iv + 1 < jv then print ", " else ()] in *)
                   p [iv + 1] (tail [lid])) 
     [0] l
 
@@ -172,5 +172,6 @@ letu toDigits =
 
 letu e = (toDigits eContFrac)
 
-letu ttt = printlist e [11]
-letu ttu = printlist eContFrac [2100]
+letu ttt = printlist e [200]
+letu ttu = printlist fib [100]
+letu tta = head cycle

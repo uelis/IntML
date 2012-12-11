@@ -700,7 +700,6 @@ let rec min i (ty: Type.t) : Term.t =
                                    else beta) a in
         min (i+1) unfolded
   | Type.ContW(ret) -> Printf.printf "min: cont\n"; flush stdout; raise Not_Leq
-  | Type.RefW(ret) -> Printf.printf "min: ref\n"; flush stdout; raise Not_Leq
   | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
   | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _->
       failwith "internal: min" 

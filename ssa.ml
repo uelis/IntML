@@ -9,7 +9,7 @@ type let_bindings = (Term.t * (Term.var * Term.var)) list
 type block = 
     Unreachable of label
   | Direct of label * Term.var * let_bindings * Term.t * label
-  | InDirect of label * Term.var * let_bindings * Term.t * (label list)
+  | InDirect of label * Term.var * let_bindings * Term.t * (label list) (* all destinations must accept the same message type *)
   | Branch of label * Term.var * let_bindings * (Term.t * (Term.var * Term.t * label) * (Term.var * Term.t * label))
   | Return of label * Term.var * let_bindings * Term.t * Type.t
 
@@ -24,6 +24,16 @@ let string_of_block b =
                                        Printf.sprintf "  val (%s, %s) = %s\n" 
                                          x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
         (Printf.sprintf "  in l%i(%s) end\n" goal.name (Printing.string_of_termW body))
+    | InDirect(l, x, bndgs, body, goals) ->
+        (Printf.sprintf "and l%i(%s) = \n  let" 
+          l.name x (* (Printing.string_of_type l.message_type)) *)) ^
+        (String.concat "" (List.map (fun (t, (x, y)) -> 
+                                       Printf.sprintf "  val (%s, %s) = %s\n" 
+                                         x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
+        (Printf.sprintf "  in %s => [%s] end\n" 
+           (Printing.string_of_termW body)
+           (String.concat "," (List.map (fun l -> Printf.sprintf "l%i" l.name) goals))
+        )
     | Branch(la, x, bndgs, (cond, (l, lb, lg), (r, rb, rg))) ->
         (Printf.sprintf "and l%i(%s)=\n  let" 
           la.name x (* (Printing.string_of_type la.message_type)*)) ^
@@ -74,7 +84,7 @@ let rec isPure (t: Term.t) : bool =
 
 let rec reduce (t : Term.t) : Term.t =
   match t.Term.desc with
-    | Var(_) | ConstW(_) | UnitW | LoopW(_) | FoldW(_) |  LambdaW(_) | AssignW _ | DeleteW _ -> t
+    | Var(_) | ConstW(_) | UnitW | LoopW(_) | FoldW(_) |  LambdaW(_) | AssignW _ | DeleteW _ | ContW _ -> t
     | TypeAnnot(t, a) ->
         mkTypeAnnot (reduce t) a
     | InW(i, j, t) -> mkInW i j (reduce t)
@@ -153,6 +163,17 @@ let trace (c: circuit) : func =
         | node :: rest -> 
             node :: (i_fresh rest) in
       i_fresh c.instructions in
+  let possible_indirect_goals =
+    let rec goals instructions =
+      match instructions with
+        | [] -> []
+        | Grab(_, wt) :: rest -> { name = wt.dst; message_type = wt.type_forward } :: goals rest
+        | Force(w, _) :: rest -> { name = w.dst; message_type = w.type_forward }  :: goals rest
+        | _ :: rest -> goals rest in 
+      goals instructions_fresh in
+  let max_wire_src_dst = 
+    List.fold_right (fun w m -> max w.src (max w.dst m)) 
+      (wires instructions_fresh) 0 in
   let node_map_by_src = 
     let rec build_dst_map i =
       match i with
@@ -191,9 +212,8 @@ let trace (c: circuit) : func =
           | Axiom(w1 (* [f] *), f) when dst = w1.src ->
               let newlets, sigma', f' = make_bindings sigma f in
                 trace src w1.dst (newlets @ lets) (sigma', reduce (mkAppW f' v))
-          (*            Direct(src, newlets @ lets, 
-           (sigma', mkAppW f' v), 
-           {name = w1.dst; message_type = w1.type_forward})*)
+(*              Direct(src, "z", newlets @ lets, mkPairW sigma' (mkAppW f' v), 
+                         {name = w1.dst; message_type = w1.type_forward}) *)
           | Tensor(w1, w2, w3) when dst = w1.src -> 
               (* <sigma, v> @ w1       |-->  <sigma, inl(v)> @ w3 *)
               trace src w3.dst lets (sigma, mkInlW v)
@@ -209,7 +229,7 @@ let trace (c: circuit) : func =
                   | InW(2, 1, v') -> trace src w2.dst lets (sigma, v')
                   | _ -> 
                       (* Printf.printf "%s\n" (Printing.string_of_termW v); *)
-                      let v' = "v'" in 
+                      let v' = fresh_var () in 
                         (*                      assert (Type.equals src.message_type w3.type_back);*)
                         Branch(src, "z", lets,
                                (v, 
@@ -234,7 +254,7 @@ let trace (c: circuit) : func =
           | ADoor(w1 (* \Tens (A x B) X *), w2 (* \Tens B X *)) when dst = w2.src ->
               let (sigma', d), lets' = unpair sigma lets in
               let (c, v'), lets'' = unpair v lets' in
-                trace src w1.dst lets' (sigma', mkPairW (mkPairW d c) v')
+                trace src w1.dst lets'' (sigma', mkPairW (mkPairW d c) v')
           | LWeak(w1 (* \Tens A X *), 
                   w2 (* \Tens B X *)) (* B <= A *) when dst = w1.src ->
               let _, a_token = unTensorW w1.type_back in
@@ -284,22 +304,17 @@ let trace (c: circuit) : func =
                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w2.dst; message_type = w2.type_forward}),
                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w3.dst; message_type = w3.type_forward})))
               end
-(*            | Grab(w1, wt) when w1.src = dst ->
-                trace src w1.dst lets (sigma, mk
-                ("x", mkLetW (mkVar "x") (("sigma", "v"),
-                                          in_k w1.src (max_wire_src_dst + 1) 
-                                            (mkPairW (mkVar "sigma")
-                                               (mkLambdaW 
-                                                  (("m", None), 
-                                                   in_k wt.src (max_wire_src_dst + 1) 
-                                                     (mkPairW (mkVar "sigma") (mkVar "m"))
-                                                  )
-                                               )
-                                            )))
-            | Grab(w1, wt) when wt.src = dst ->
-                ("x", mkLetW (mkVar "x") (("sigma", "v"), 
-                                            (parse ("let (contk, m) = v in contk m"))))
-            | Force(w1, k) when w1.src = dst ->
+           | Grab(w1, wt) when w1.src = dst ->
+                trace src w1.dst lets (sigma, mkContW wt.dst (max_wire_src_dst + 1) sigma)
+           | Grab(w1, wt) when wt.src = dst ->
+                InDirect(src, "z", lets, v, possible_indirect_goals)
+(*                ("x", mkLetW (mkVar "x") (("sigma", "v"), 
+                                            (parse ("let (contk, m) = v in contk m")))) *)
+           | Force(w1, k) when w1.src = dst ->
+               let newlets, sigma', k' = make_bindings sigma k in
+                InDirect(src, "z", newlets @ lets, 
+                         mkPairW k' (mkPairW (mkContW w1.dst (max_wire_src_dst + 1) sigma') v), possible_indirect_goals)
+(*                  
                 (x, mkLetW (mkVar x) ((sigma, y), 
                                           (mkAppW (let_tupleW sigma k) 
                                              (mkPairW 
@@ -326,6 +341,8 @@ let trace (c: circuit) : func =
             | Unreachable(_) | Return(_) -> [block]
             | Direct(_, _, _, _, dst) ->
                 block :: trace_all dst
+            | InDirect(_, _, _, _, dsts) ->
+                block :: (List.concat (List.map trace_all dsts))
             | Branch(_, _, _, (_, (_, _, dst1), (_, _, dst2))) ->
                 block :: trace_all dst1 @ trace_all dst2 
       end in

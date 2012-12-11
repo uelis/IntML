@@ -195,9 +195,10 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         eq_expected_constraint t1 (a1, newty (BoxU(newty OneW, alpha))) ::
         con1 @ con2
   | Term.ContW(i, n, t) ->
+      let _, con = ptW c t in
       let alpha = newty Var in
         newty (ContW(alpha)),
-        []
+        con
           (* TODO *)
   | TypeAnnot(t, None) -> 
       ptW c t

@@ -24,7 +24,6 @@ and desc =
   | FunW of t * t
   | MuW of t * t
   | ContW of t
-  | RefW of t
   | BoxU of t * t
   | TensorU of t * t
   | FunU of t * t * t

@@ -99,7 +99,6 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokForce
 %token TokSuspend
 %token TokCont
-%token TokKwRef
 %token TokBang
 %token TokVertbar
 %token <int> TokNum
@@ -253,8 +252,6 @@ typeW_atom:
       { type_var $2 }
     | TokCont TokLAngle typeW TokRAngle
       { Type.newty (Type.ContW($3)) } 
-    | TokKwRef TokLAngle typeW TokRAngle
-      { Type.newty (Type.RefW($3)) } 
     | TokNum 
       { let rec nat_ty n = 
           match n with

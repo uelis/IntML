@@ -58,7 +58,7 @@ module Unify(T : sig type t end) = struct
           | MuW(alpha, a), MuW(beta, b) -> 
               unify_raw (alpha, beta, tag);
               unify_raw (a, b, tag)
-          | ContW(t1), ContW(s1) | RefW(t1), RefW(s1) ->
+          | ContW(t1), ContW(s1) ->
               unify_raw (t1, s1 ,tag)
           | FunU(a1, t1, t2), FunU(b1, s1, s2) -> 
               unify_raw (a1, b1, tag);
@@ -79,7 +79,7 @@ module Unify(T : sig type t end) = struct
             r.mark <- mark_open;
             begin
               match r.desc with 
-                | ContW(t1) | RefW(t1) -> dfs t1
+                | ContW(t1) -> dfs t1
                 | MuW(alpha, t1) -> dfs t1
                 | TensorW(t1, t2) | FunW(t1, t2)
                 | BoxU(t1, t2) | TensorU(t1, t2) -> dfs t1; dfs t2

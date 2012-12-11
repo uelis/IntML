@@ -53,7 +53,6 @@ rule main = parse
   | ':'        { TokColon }
   | ';'        { TokSemicolon }
   | '#'        { TokSharp }
-  | '!'        { TokBang }
   | '='        { TokEquals }
   | ":="       { TokColonEquals }
   | "mu"       { TokMu }
@@ -64,9 +63,6 @@ rule main = parse
   | "then"     { TokKwThen }
   | "else"     { TokKwElse }
   | "print"    { TokKwPrint }
-  | "min"      { TokKwMin }
-  | "succ"     { TokKwSucc }
-  | "pred"     { TokKwPred }
   | "bool"     { TokKwBool }
   | "int"      { TokKwNat }
   | "eq"       { TokKwEq }
@@ -86,7 +82,6 @@ rule main = parse
   | "force"    { TokForce }
   | "suspend"  { TokSuspend }
   | "cont"     { TokCont }
-  | "ref"      { TokKwRef }
   | "--o"      { TokLolli }
   | "-->"      { TokMulti }
   | "|"        { TokVertbar }
