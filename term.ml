@@ -79,6 +79,7 @@ let mkUnfoldW (alpha, a) s = { desc = UnfoldW((alpha, a), s); loc = None }
 let mkAssignW (alpha, a) s t = { desc = AssignW((alpha, a), s, t); loc = None }
 let mkDeleteW (alpha, a) s = { desc = DeleteW((alpha, a), s); loc = None }
 let mkContW i n t = { desc = ContW(i, n, t); loc = None }
+let mkLetCompW s (x, t) = mkAppW (mkLambdaW ((x, None), t)) s
 let mkPairU s t= { desc = PairU(s, t); loc = None }
 let mkLetU s ((x, y), t) = { desc = LetU(s, (x, y, t)); loc = None }
 let mkAppU s t = { desc = AppU(s, t); loc = None }

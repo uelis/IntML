@@ -82,6 +82,7 @@ val mkUnfoldW : Type.t * Type.t -> t -> t
 val mkAssignW : Type.t * Type.t -> t -> t -> t
 val mkDeleteW : Type.t * Type.t -> t -> t
 val mkContW : int -> int -> t -> t
+val mkLetCompW : t -> (var * t) -> t
 val mkPairU : t -> t -> t
 val mkLetU : t -> (var * var) * t -> t
 val mkAppU : t -> t -> t

@@ -368,10 +368,9 @@ let infer_types (c : circuit) : Type.t =
             (constraints rest)
       | Grab(w1, wt) :: rest ->
           let sigma = Type.newty Type.Var in
-          (* let alpha = Type.newty Type.Var in *)
+          let alpha = Type.newty Type.Var in 
           let beta = Type.newty Type.Var in
-          (* let cont = Type.newty (Type.ContW alpha) in*)
-          let cont = Type.newty Type.Var in
+          let cont = Type.newty (Type.ContW alpha) in
             Typing.eq_constraint 
               w1.type_back (tensor sigma (Type.newty Type.OneW)) ::
             Typing.eq_constraint 
@@ -794,9 +793,11 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
         let unfolded = 
           Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
           Term.mkLambdaW(("x", None),
-                         Term.mkAppW (Term.mkLambdaW((unusable_var, None),
-                                                     Term.mkDeleteW (beta,b1) (Term.mkVar "x")))
-                           (Term.mkAppW (project (i+1) a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x"))))
+                         Term.mkLetCompW
+                           (Term.mkAppW (project (i+1) a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x")))
+                           ("y", Term.mkLetCompW
+                                   (Term.mkDeleteW (beta,b1) (Term.mkVar "x"))
+                                   (unusable_var, Term.mkVar "y")))
     | _ -> 
         raise Not_Leq in
   try
@@ -940,7 +941,7 @@ let message_passing_term (c: circuit): Term.t =
                                             (mkPairW (mkVar sigma)
                                                (mkLambdaW 
                                                   ((y, None), 
-                                                   in_k wt.src (max_wire_src_dst + 1) 
+                                                   mkContW wt.src (max_wire_src_dst + 1)
                                                      (mkPairW (mkVar sigma) (mkVar y))
                                                   )
                                                )
@@ -954,7 +955,7 @@ let message_passing_term (c: circuit): Term.t =
                                              (mkPairW 
                                                 (mkLambdaW 
                                                    ((c, None), 
-                                                    in_k w1.src (max_wire_src_dst + 1) 
+                                                    mkContW w1.src (max_wire_src_dst + 1) 
                                                       (mkPairW (mkVar sigma) (mkVar c))
                                                    )
                                                 ) 
