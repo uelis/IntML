@@ -199,17 +199,6 @@ let trace (c: circuit) : func =
             let f' = Term.rename_vars (fun u -> if u = x then tr else u) f in
             let lets, t', f'' = make_bindings (mkVar th) (rest, f') in
               lets @ [(t, (th, tr))], mkPairW t' (mkVar tr), f'' in
-    let rec make_bindings1 t vars =
-      match vars with 
-        | [] -> [], t, t
-        | x :: rest ->
-            let th = fresh_var () in
-            let tr = fresh_var () in
-            let lets, t', f'' = make_bindings1 (mkVar th) rest in
-              if x = unusable_var then
-                lets @ [(t, (th, tr))], mkPairW t' (mkVar tr), mkPairW f'' (mkConstW Cundef) 
-              else
-                lets @ [(t, (th, tr))], mkPairW t' (mkVar tr), mkPairW f'' (mkVar tr) in
       if not (IntMap.mem dst node_map_by_src) then
         begin
           if dst = c.output.dst then
@@ -316,12 +305,8 @@ let trace (c: circuit) : func =
                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w3.dst; message_type = w3.type_forward})))
               end
            | Grab(s, w1, wt) when w1.src = dst ->
-               let newlets, sigma', t' = make_bindings1 sigma s in
-               let alpha = Type.newty Type.Var in
-                trace src w1.dst (newlets @ lets)
-                   (mkTypeAnnot sigma' (Some alpha), 
-                                       mkContW wt.dst (max_wire_src_dst + 1) 
-                                         (mkTypeAnnot t' (Some alpha)))
+                trace src w1.dst lets
+                   (sigma, mkContW wt.dst (max_wire_src_dst + 1) sigma)
            | Grab(_, w1, wt) when wt.src = dst ->
                 InDirect(src, "z", lets, v, possible_indirect_goals)
 (*                ("x", mkLetW (mkVar "x") (("sigma", "v"), 
