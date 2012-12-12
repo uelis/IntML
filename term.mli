@@ -19,7 +19,7 @@ end
 
 type term_const =
   | Cprint of string
-  | Cbot
+  | Cundef
   | Cintconst of int
   | Cintadd
   | Cintsub

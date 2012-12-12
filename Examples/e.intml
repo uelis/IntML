@@ -11,7 +11,7 @@ letw fixw = fun x ->
               inl(fold<'c.1+'b*'c> inr(b,l), inr(q))
         | inr(a) ->
             let r = unfold<'c.1+'b*'c> l in
-(*            let u = delete<'c.1+'b*'c> l in *)
+            let u = delete<'c.1+'b*'c> l in 
             case r of
               inl(nl) -> 
                  inr(a)
@@ -41,7 +41,8 @@ letu cons : [int] --> [mu 'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a]
   (fun x -> fun xs ->
     let [xk] = suspend(x) in
     let [xsk] = suspend(xs) in
-    let [id] = [ Cons(inl(xk), Susp(xsk)) ] in
+    let [id] = 
+           [ Cons(inl(xk), Susp(xsk)) ] in
         [id])
 
 letu ft = 
@@ -104,6 +105,11 @@ letu fib =
                                       let [yv] = y in [xv+yv])
                                [v] (tail [v])) ))))
 
+(* loop im Compiler!
+letu cycle =
+  (fix (fun cycle -> fun n -> cons [1] (cycle n)))
+*)
+
 letu cycle =
   (fix (fun cycle -> cons [1] cycle))
 
@@ -120,15 +126,14 @@ letu printlist =
                 let [lid] = l in 
                 let [xv] = head [lid] in
                 let [u] = [print xv] in
-(*                let [u] = [if iv + 1 < jv then print ", " else ()] in *)
+                let [u] = [if iv + 1 < jv then print ", " else ()] in 
                   p [iv + 1] (tail [lid])) 
     [0] l
 
 letu aux =
-  fix (fun aux ->
-         fun n ->
-           copy n as n1, n2 in
-             cons [1] (cons n1 (cons [1] (aux (let [nv] = n2 in [nv + 2])))))
+  fix (fun aux -> fun n ->
+           let [nv] = n in
+             cons [1] (cons [nv] (cons [1] (aux [nv + 2]))))
 
 letu eContFrac =  (cons [2] (aux [2]))
 
@@ -152,16 +157,16 @@ letu ratTrans =
              let [cv] = c in
              let [dv] = d in
              let [qv] = [if dv = 0 then 1 else bv/dv] in
+             let [xsv] = xs in
              let [c] = [
               and (or (signum cv = signum dv) (abs cv < abs dv)) 
                       (and ((cv+dv)*qv < av+bv+1) 
                            (av+bv < (cv+dv)*qv + (cv+dv)))] in
              if c then
-                   cons [qv] (ratTrans [cv] [dv] [av-qv*cv] [bv-qv*dv] xs)
+                   cons [qv] (ratTrans [cv] [dv] [av-qv*cv] [bv-qv*dv] [xsv])
              else 
-                   copy xs as xs1, xs2 in
-                   let [xv] = head xs1 in
-                    ratTrans [bv] [av+xv*bv] [dv] [cv+xv*dv] (tail xs2)
+                   let [xv] = head [xsv] in
+                    ratTrans [bv] [av+xv*bv] [dv] [cv+xv*dv] (tail [xsv])
    )))
 
 letu toDigits = 
@@ -172,6 +177,6 @@ letu toDigits =
 
 letu e = (toDigits eContFrac)
 
-letu ttt = printlist e [50]
-letu ttu = printlist fib [100]
-letu tta = head cycle
+letu ttt = printlist e [1000]
+letu tta = printlist eContFrac [500]
+letu ttu = let [x] = head (tail (ratTrans [10] [0] [0] [1] eContFrac)) in [print x]

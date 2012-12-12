@@ -94,7 +94,7 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
                           newty (FunW(intty, 
                                       newty (SumW([one; one])))))) in
         b, []
-  | ConstW(Cbot) ->
+  | ConstW(Cundef) ->
       let b = newty Var in
         b, []
   | UnitW ->

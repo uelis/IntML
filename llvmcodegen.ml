@@ -319,9 +319,9 @@ let build_term
   (* Add type annotations in various places *)
   let rec annotate_term (t: Term.t) : Term.t =
     match t.desc with
-      | ConstW(Cbot) -> 
+      | ConstW(Cundef) -> 
           let alpha = Type.newty Type.Var in
-            mkTypeAnnot (mkConstW Cbot) (Some alpha)
+            mkTypeAnnot (mkConstW Cundef) (Some alpha)
       | Var(_) | UnitW | ConstW(_) -> t
       | TypeAnnot(t1, None) -> annotate_term t1
       | TypeAnnot(t1, Some a) -> mkTypeAnnot (annotate_term t1) (Some a)
@@ -377,15 +377,8 @@ let build_term
     match t.Term.desc with
       | Var(x) -> 
           List.assoc x ctx
-      | TypeAnnot({ desc = ConstW(Cbot) }, Some a) ->
-          let func = Llvm.block_parent (Llvm.insertion_block builder) in
-          let inf_loop = Llvm.append_block context "bot" func in 
-          let _ = Llvm.build_br inf_loop builder in
-          let _ = Llvm.position_at_end inf_loop builder in
-          let _ = Llvm.build_br inf_loop builder in
-          let dummy = Llvm.append_block context "dummy" func in 
-          let _ = Llvm.position_at_end dummy builder in
-            build_truncate_extend {payload = []; attrib = Bitvector.null 0;} a
+      | TypeAnnot({ desc = ConstW(Cundef) }, Some a) ->
+          build_truncate_extend {payload = []; attrib = Bitvector.null 0;} a
       | ConstW(Cintconst(i)) ->
           let vali = Llvm.const_int (Llvm.i64_type context) i in
             {payload = [vali]; attrib = Bitvector.null 0;}
@@ -817,8 +810,7 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                                         (Type.newty (Type.TensorW(contalpha, v_type))) in
                               dynamic_connect_to src_block v dst.name;
                               build_coercion_block dst
-                 ) dsts;
-                 Printf.printf "\n"
+                 ) dsts
            | Branch(src, x, lets, (s, (xl, bodyl, dst1), (xr, bodyr, dst2))) ->
                begin
                  let t = reduce (

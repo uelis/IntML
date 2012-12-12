@@ -52,7 +52,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | ConstW(Cintsub) -> IntsubV(None)
     | ConstW(Cintmul) -> IntmulV(None)
     | ConstW(Cintdiv) -> IntdivV(None)
-    | ConstW(Cbot) ->  failwith "nontermination!"
+    | ConstW(Cundef) ->  failwith "undefined!"
     | PairW(t1, t2) -> 
         let v1 = eval t1 sigma in
         let v2 = eval t2 sigma in

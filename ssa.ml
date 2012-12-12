@@ -68,7 +68,7 @@ let rec isPure (t: Term.t) : bool =
   match t.Term.desc with
     | Var(_) -> true
     | UnitW -> true
-    | ConstW(Cbot) -> true (* TODO: Cbot is actually "assert false" *)
+    | ConstW(Cundef) -> true (* TODO: Cundef is actually "assert false" *)
     | ConstW(Cprint(_)) | ConstW(Cintprint)-> false
     | ConstW(Cintconst(_)) | ConstW(Cintadd) | ConstW(Cintsub) | ConstW(Cintmul)
     | ConstW(Cintdiv) (* questionable! *) | ConstW(Cinteq) | ConstW(Cintslt) -> true
@@ -167,7 +167,7 @@ let trace (c: circuit) : func =
     let rec goals instructions =
       match instructions with
         | [] -> []
-        | Grab(_, wt) :: rest -> { name = wt.dst; message_type = wt.type_forward } :: goals rest
+        | Grab(_, _, wt) :: rest -> { name = wt.dst; message_type = wt.type_forward } :: goals rest
         | Force(w, _) :: rest -> { name = w.dst; message_type = w.type_forward }  :: goals rest
         | _ :: rest -> goals rest in 
       goals instructions_fresh in
@@ -199,6 +199,17 @@ let trace (c: circuit) : func =
             let f' = Term.rename_vars (fun u -> if u = x then tr else u) f in
             let lets, t', f'' = make_bindings (mkVar th) (rest, f') in
               lets @ [(t, (th, tr))], mkPairW t' (mkVar tr), f'' in
+    let rec make_bindings1 t vars =
+      match vars with 
+        | [] -> [], t, t
+        | x :: rest ->
+            let th = fresh_var () in
+            let tr = fresh_var () in
+            let lets, t', f'' = make_bindings1 (mkVar th) rest in
+              if x = unusable_var then
+                lets @ [(t, (th, tr))], mkPairW t' (mkVar tr), mkPairW f'' (mkConstW Cundef) 
+              else
+                lets @ [(t, (th, tr))], mkPairW t' (mkVar tr), mkPairW f'' (mkVar tr) in
       if not (IntMap.mem dst node_map_by_src) then
         begin
           if dst = c.output.dst then
@@ -304,9 +315,14 @@ let trace (c: circuit) : func =
                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w2.dst; message_type = w2.type_forward}),
                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w3.dst; message_type = w3.type_forward})))
               end
-           | Grab(w1, wt) when w1.src = dst ->
-                trace src w1.dst lets (sigma, mkContW wt.dst (max_wire_src_dst + 1) sigma)
-           | Grab(w1, wt) when wt.src = dst ->
+           | Grab(s, w1, wt) when w1.src = dst ->
+               let newlets, sigma', t' = make_bindings1 sigma s in
+               let alpha = Type.newty Type.Var in
+                trace src w1.dst (newlets @ lets)
+                   (mkTypeAnnot sigma' (Some alpha), 
+                                       mkContW wt.dst (max_wire_src_dst + 1) 
+                                         (mkTypeAnnot t' (Some alpha)))
+           | Grab(_, w1, wt) when wt.src = dst ->
                 InDirect(src, "z", lets, v, possible_indirect_goals)
 (*                ("x", mkLetW (mkVar "x") (("sigma", "v"), 
                                             (parse ("let (contk, m) = v in contk m")))) *)
@@ -314,18 +330,6 @@ let trace (c: circuit) : func =
                let newlets, sigma', k' = make_bindings sigma k in
                 InDirect(src, "z", newlets @ lets, 
                          mkPairW k' (mkPairW (mkContW w1.dst (max_wire_src_dst + 1) sigma') v), possible_indirect_goals)
-(*                  
-                (x, mkLetW (mkVar x) ((sigma, y), 
-                                          (mkAppW (let_tupleW sigma k) 
-                                             (mkPairW 
-                                                (mkLambdaW 
-                                                   (("m", None), 
-                                                    in_k w1.src (max_wire_src_dst + 1) 
-                                                      (mkPairW (mkVar sigma) (mkVar "m"))
-                                                   )
-                                                ) 
-                                                (mkVar y)
-                                             )))) *)
           | _ -> assert false
   in
   let sigma, x = "sigma", "x" in
@@ -335,7 +339,7 @@ let trace (c: circuit) : func =
     else 
       begin
         let block = trace src src.name [(mkVar "z",(sigma,x))] (mkVar sigma, mkVar x) in
-          Printf.printf "%s" (string_of_block block);
+(*          Printf.printf "%s" (string_of_block block);  *)
           Hashtbl.add entry_points src.name ();
           match block with
             | Unreachable(_) | Return(_) -> [block]

@@ -5,7 +5,7 @@
 
 type var = string
 
-let unusable_var = "unusable"
+let unusable_var = "_unusable"
 
 module Location = struct
   type pos = { column: int; line: int} 
@@ -16,7 +16,7 @@ end
 
 type term_const =
   | Cprint of string
-  | Cbot
+  | Cundef
   | Cintconst of int
   | Cintadd
   | Cintsub

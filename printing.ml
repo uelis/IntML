@@ -219,7 +219,7 @@ let abstract_string_of_typeU (ty: Type.t): string =
 let string_of_term_const (c: term_const) : string =
   match c with
   | Cprint s -> "print(" ^ s ^ ")"
-  | Cbot -> "bot()"
+  | Cundef -> "undef"
   | Cintconst i -> Printf.sprintf "%i" i
   | Cintadd -> "intadd"
   | Cintsub -> "intsub"
@@ -337,6 +337,10 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_char buf ')'
       | InW(n, k, t1) ->
           Buffer.add_string buf (Printf.sprintf "in(%i, %i," n k);
+          s_termW t1;
+          Buffer.add_char buf ')'
+      | ContW(n, k, t1) ->
+          Buffer.add_string buf (Printf.sprintf "cont(%i, %i," n k);
           s_termW t1;
           Buffer.add_char buf ')'
       | TypeAnnot(t, _) ->
