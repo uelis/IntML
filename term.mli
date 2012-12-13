@@ -45,6 +45,8 @@ and t_desc =
   | UnfoldW of (Type.t * Type.t) * t
   | AssignW of (Type.t * Type.t) * t * t
   | DeleteW of (Type.t * Type.t) * t
+  | EmbedW of (Type.t * Type.t) * t
+  | ProjectW of (Type.t * Type.t) * t
   | LoopW of t * (var * t) 
   | LetBoxW of t * (var * t)             (* s, <x>t *)
   | ContW of int * int * t
@@ -81,6 +83,8 @@ val mkFoldW : Type.t * Type.t -> t -> t
 val mkUnfoldW : Type.t * Type.t -> t -> t
 val mkAssignW : Type.t * Type.t -> t -> t -> t
 val mkDeleteW : Type.t * Type.t -> t -> t
+val mkEmbedW : Type.t * Type.t -> t -> t
+val mkProjectW : Type.t * Type.t -> t -> t
 val mkContW : int -> int -> t -> t
 val mkLetCompW : t -> (var * t) -> t
 val mkPairU : t -> t -> t

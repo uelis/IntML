@@ -178,6 +178,16 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         newty OneW,
         eq_expected_constraint t (newty (MuW(alpha, a)), a1) ::
         con1
+  | EmbedW((a, b), t) ->
+      let a1, con1 = ptW c t in
+        b,
+        eq_expected_constraint t (a, a1) ::
+        con1
+  | ProjectW((a, b), t) ->
+      let a1, con1 = ptW c t in
+        a,
+        eq_expected_constraint t (b, a1) ::
+        con1
   | LoopW(t1, (x, t2)) ->
       let a1, con1 = ptW c t1 in
       let alpha, beta = newty Var, newty Var in
@@ -384,7 +394,8 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
         eq_expected_constraint t (a, ty) :: con
   | LoopW _  |LambdaW (_, _) | AppW (_, _) | CaseW (_, _) | InW (_, _, _) 
   | LetW (_, _) | LetBoxW(_,_) | PairW (_, _)|ConstW (_)|UnitW 
-  | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ | Term.ContW _ ->
+  | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ | Term.ContW _
+  | EmbedW _ | ProjectW _ ->
       raise (Typing_error (Some t, "Upper class term expected."))
 
 let raise_error (failed_eqn: U.failure_reason) =

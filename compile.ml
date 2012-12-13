@@ -307,7 +307,8 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
             (w, ins)
       | LoopW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _)| InW (_, _, _)
       | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_)|UnitW
-      | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ | ContW _ ->
+      | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ | ContW _ 
+      | EmbedW _ | ProjectW _ ->
           assert false 
   and compile_in_box (c: var) (sigma: var list) (gamma: ctx) (t: Term.t) =
     let (gamma_in_box, i_enter_box) = enter_box gamma in
@@ -685,129 +686,6 @@ let rec out_k (t: Term.t) (n: int) : int * Term.t =
   | InW(2, 1, {desc = InW(n', k, s)}) when n = n' + 1 -> (k + 1, s)
   | _ -> failwith "out_k"
 
-exception Not_Leq               
-
-let min (ty: Type.t) : Term.t =
-let rec min i (ty: Type.t) : Term.t =
-  if i > 10 then raise Not_Leq else
-  match Type.finddesc ty with
-  | Type.Var -> mkUnitW
-  | Type.OneW -> mkUnitW
-  | Type.NatW -> mkConstW (Cintconst(0))
-  | Type.TensorW(a, b) -> mkPairW (min i a) (min i b)
-  | Type.SumW(a :: l) -> mkInW (1 + (List.length l)) 0 (min i a)
-  | Type.MuW(alpha,a) -> 
-      let mua = Type.newty (Type.MuW(alpha, a)) in
-      let unfolded = Type.subst (fun beta -> 
-                                   if Type.equals alpha beta then mua 
-                                   else beta) a in
-        min (i+1) unfolded
-  | Type.ContW(ret) -> Printf.printf "min: cont\n"; flush stdout; raise Not_Leq
-  | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
-  | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _->
-      failwith "internal: min" 
-        in min 0 ty
-
-(* If alpha <= beta then (embed alpha beta) is a corresponding 
- * embedding from alpha to beta.
- * The function raises Not_Leq if it discovers that alpha <= beta
- * does not hold.
- * *)
-let embed (a: Type.t) (b: Type.t) : Term.t =
-let rec embed i (a: Type.t) (b: Type.t) : Term.t =
-  if i > 1 then raise Not_Leq;
-  if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
-  else 
-    match Type.finddesc b with
-    | Type.SumW[b1; b2] ->
-        begin try 
-          Term.mkLambdaW(("x", None), 
-                         Term.mkInlW 
-                           (Term.mkAppW (embed i a b1) (Term.mkVar "x")))
-        with Not_Leq ->
-          Term.mkLambdaW(("x", None), 
-                         Term.mkInrW 
-                           (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
-        end 
-    | Type.TensorW(b1, b2) ->
-        raise Not_Leq
-(*        begin try 
-          Term.mkLambdaW(("x", None), 
-                         Term.mkPairW 
-                           (Term.mkAppW (embed i a b1) (Term.mkVar "x"))
-                           (min b2))
-        with Not_Leq ->
-          Term.mkLambdaW(("x", None), 
-                         Term.mkPairW 
-                           (min b1)
-                           (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
-        end*)
-    | Type.MuW(beta, b1) ->
-        let mub1 = Type.newty (Type.MuW(beta, b1)) in
-        let unfolded = 
-          Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
-          Term.mkLambdaW(("x", None),
-                         Term.mkFoldW (beta,b1) (Term.mkAppW (embed (i+1) a unfolded) (Term.mkVar "x")))
-    | _ -> raise Not_Leq
-             in
-  embed 0 a b
-
-(* If alpha <= beta then (embed alpha beta) is a corresponding 
- * embedding from beta to alpha. The functions (embed a b) and 
- * (project a b)form a section-retraction pair.
- * The function raises Not_Leq if it discovers that alpha <= beta
- * does not hold.
- * *)
-let project (a0: Type.t) (b0: Type.t) : Term.t =            
-let rec project i (a: Type.t) (b: Type.t) : Term.t =
-  if i > 1 then raise Not_Leq;
-  if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
-  else 
-    match Type.finddesc b with
-    | Type.SumW[b1; b2] ->
-        begin try 
-          Term.mkLambdaW(
-            ("x", None),
-            Term.mkCaseW (Term.mkVar "x") 
-              [("y", Term.mkAppW (project i a b1) (Term.mkVar "y"));
-               ("y", mkConstW Cundef)])
-        with Not_Leq ->
-          Term.mkLambdaW(
-            ("x", None),
-            Term.mkCaseW (Term.mkVar "x") 
-              [("y",  mkConstW Cundef);
-               ("y", Term.mkAppW (project i a b2) (Term.mkVar "y"))])
-        end 
-(*    | Type.TensorW(b1, b2) ->
-        begin try 
-          Term.mkLambdaW(("x", None), 
-                         Term.mkLetW (Term.mkVar "x") 
-                           (("y", "z"), 
-                            Term.mkAppW (project i a b1) (Term.mkVar "y")))
-        with Not_Leq ->
-          Term.mkLambdaW(("x", None), 
-                         Term.mkLetW (Term.mkVar "x") 
-                           (("y", "z"), 
-                            Term.mkAppW (project i a b2) (Term.mkVar "z")))
-        end *)
-    | Type.MuW(beta, b1) ->
-        let mub1 = Type.newty (Type.MuW(beta, b1)) in
-        let unfolded = 
-          Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
-          Term.mkLambdaW(("x", None),
-                         Term.mkLetCompW
-                           (Term.mkAppW (project (i+1) a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x")))
-                           ("y", Term.mkLetCompW
-                                   (Term.mkDeleteW (beta,b1) (Term.mkVar "x"))
-                                   (unusable_var, Term.mkVar "y")))
-    | _ -> 
-        raise Not_Leq in
-  try
-  project 0 a0 b0
-  with Not_Leq ->
-        Printf.printf "%s | %s \n" (Printing.string_of_type a0)(Printing.string_of_type b0);
-        flush stdout;
-        raise Not_Leq 
 
 let parse (s: string) : Term.t =
   let lexbuf = Lexing.from_string s in
@@ -1025,7 +903,7 @@ let message_passing_term (c: circuit): Term.t =
                          ((c, v), 
                           in_k w2.src (max_wire_src_dst + 1) 
                             (mkPairW (mkVar sigma) 
-                               (mkPairW (mkAppW (project b a) (mkVar c)) 
+                               (mkPairW (mkProjectW (b, a) (mkVar c))(*(mkAppW (project b a) (mkVar c)) *)
                                   (mkVar v)))))
                   )
             | LWeak(w1 (* \Tens A X *), 
@@ -1039,7 +917,7 @@ let message_passing_term (c: circuit): Term.t =
                          ((c, v), 
                           in_k w1.src (max_wire_src_dst + 1) 
                             (mkPairW (mkVar sigma) 
-                               (mkPairW (mkAppW (embed b a) (mkVar c)) 
+                               (mkPairW (mkEmbedW (b, a) (mkVar c)) (* (mkAppW (embed b a) (mkVar c)) *)
                                   (mkVar v)))))
                   )
             | Epsilon(w1 (* [A] *), 

@@ -310,6 +310,20 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf (string_of_type a);
           Buffer.add_string buf "> ";
           s_termW t1
+      | EmbedW((a, b), t1) ->
+          Buffer.add_string buf "embed<";
+          Buffer.add_string buf (string_of_type a);
+          Buffer.add_string buf ", ";
+          Buffer.add_string buf (string_of_type b);
+          Buffer.add_string buf "> ";
+          s_termW t1
+      | ProjectW((a, b), t1) ->
+          Buffer.add_string buf "project<";
+          Buffer.add_string buf (string_of_type a);
+          Buffer.add_string buf ", ";
+          Buffer.add_string buf (string_of_type b);
+          Buffer.add_string buf "> ";
+          s_termW t1
       | AssignW((alpha, a), t1, t2) ->
           s_termW t1;
           Buffer.add_string buf ":=<";

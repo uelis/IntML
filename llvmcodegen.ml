@@ -344,11 +344,6 @@ let build_term
                  (mkTypeAnnot (annotate_term t1) (Some alpha)) 
                  [(x, annotate_term t2); (y, annotate_term t3)])
       | CaseW(_, _) -> assert false
-(*      | AppW({ desc=LetW(s, (x, y, t1)) }, t2) -> 
-          let fvt2 = free_vars t2 in
-          let x' = variant_var_avoid x fvt2 in
-          let y' = variant_var_avoid y fvt2 in
-          annotate_term (mkLetW s ((x', y'), mkAppW (subst (mkVar y') y (subst (mkVar x') x t1)) t2))*)
       | AppW(t1, t2) -> mkAppW (annotate_term t1) (annotate_term t2)
       | LambdaW((x, a), t1) -> mkLambdaW ((x, a), annotate_term t1)
       | LoopW(t1, (x, t2)) -> 
@@ -358,6 +353,8 @@ let build_term
       | UnfoldW((alpha, a), t1) -> mkUnfoldW (alpha, a) (annotate_term t1)
       | AssignW((alpha, a), t1, t2) -> mkAssignW (alpha, a) (annotate_term t1) (annotate_term t2)
       | DeleteW((alpha, a), t1) -> mkDeleteW (alpha, a) (annotate_term t1)
+      | EmbedW((b, a), t1) -> mkEmbedW (b, a) (annotate_term t1)
+      | ProjectW((b, a), t1) -> mkProjectW (b, a) (annotate_term t1)
       | ContW(i, n ,t) -> 
           let alpha = Type.newty Type.Var in
             mkContW i n (mkTypeAnnot (annotate_term t) (Some alpha))
@@ -616,6 +613,12 @@ let build_term
                     {payload = []; attrib = Bitvector.null 0}
                 | _ -> assert false
             end
+      | EmbedW((a, b), s) ->
+          let senc = build_annotatedterm ctx (mkTypeAnnot s (Some a)) args in
+            build_truncate_extend senc b
+      | ProjectW((a, b), s) ->
+          let senc = build_annotatedterm ctx (mkTypeAnnot s (Some b)) args in
+            build_truncate_extend senc a
       | ContW(i, _, { desc = TypeAnnot(t, Some a) }) ->
           let i64 = Llvm.i64_type context in
           let block = get_block i in

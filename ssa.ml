@@ -98,7 +98,8 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
           lets, mkInW i j t'
     | DeleteW(_, {desc = FoldW(_, t)}) -> reduce t
     | UnfoldW(_, {desc = FoldW(_, t)}) -> reduce t
-    | UnfoldW(_) | DeleteW _->
+    | EmbedW _ | ProjectW _ 
+    | UnfoldW(_) | DeleteW _ -> (* TODO: warum wird t nicht reduziert?*)
         let x = fresh_var () in
         let y = fresh_var () in
           [mkPairW t mkUnitW, (x,y)], 
@@ -300,7 +301,8 @@ let trace (c: circuit) : func =
               let _, b_token = unTensorW w2.type_forward in
               let b, _ = unTensorW b_token in
               let (c, v'), lets' = unpair v lets in
-              let rlets, v'' = reduce (mkPairW (mkAppW (project b a) c) v') in
+              let c' = if Type.equals a b then c else mkProjectW (b, a) c in
+              let rlets, v'' = reduce (mkPairW c' v')(* (mkPairW (mkAppW (project b a) c) v') *) in
                 trace src w2.dst (rlets @ lets') (sigma, v'')
           | LWeak(w1 (* \Tens A X *), 
                   w2 (* \Tens B X *)) (* B <= A *) when dst = w2.src ->
@@ -309,7 +311,8 @@ let trace (c: circuit) : func =
               let _, b_token = unTensorW w2.type_back in
               let b, _ = unTensorW b_token in
               let (c, v'), lets' = unpair v lets in
-              let rlets, v'' = reduce (mkPairW (mkAppW (embed b a) c) v') in
+              let c' = if Type.equals a b then c else mkEmbedW (b, a) c in
+              let rlets, v'' = reduce (mkPairW c' v') (*(mkPairW (mkAppW (embed b a) c) v')*) in
                 trace src w1.dst (rlets @ lets') (sigma, v'')
           | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w3.src ->
               (*   <sigma, *> @ w3      |-->  <sigma, *> @ w1 *)
