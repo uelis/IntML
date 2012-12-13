@@ -303,6 +303,21 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf (string_of_type a);
           Buffer.add_string buf "> ";
           s_termW t1
+      | DeleteW((alpha, a), t1) ->
+          Buffer.add_string buf "delete<";
+          Buffer.add_string buf (string_of_type alpha);
+          Buffer.add_string buf ". ";
+          Buffer.add_string buf (string_of_type a);
+          Buffer.add_string buf "> ";
+          s_termW t1
+      | AssignW((alpha, a), t1, t2) ->
+          s_termW t1;
+          Buffer.add_string buf ":=<";
+          Buffer.add_string buf (string_of_type alpha);
+          Buffer.add_string buf ". ";
+          Buffer.add_string buf (string_of_type a);
+          Buffer.add_string buf "> ";
+          s_termW t2
       | _ ->
           (s_termW_app t)
   and s_termW_app (t: Term.t) =
@@ -346,11 +361,11 @@ let string_of_termW (term: Term.t): string =
       | TypeAnnot(t, _) ->
           s_termW_atom t
       | LambdaW(_, _) | LetW(_, _) | CaseW(_, _)
-      | LoopW(_) | AppW(_, _) | FoldW _ | UnfoldW _ ->
+      | LoopW(_) | AppW(_, _) | FoldW _ | UnfoldW _ | DeleteW _ | AssignW _ ->
           Buffer.add_char buf '(';
           s_termW t;
           Buffer.add_char buf ')'
       | _ ->
-          Buffer.add_string buf "(cannot print upper class terms yet)"
+          Buffer.add_string buf "(cannot print upper class terms yet)" 
   in s_termW term; 
      Buffer.contents buf

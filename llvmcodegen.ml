@@ -644,7 +644,7 @@ let build_term
             build_annotatedterm ctx t1 (t2enc :: args)
       | LambdaW((x, a), t1) ->
           (match args with
-             | [] -> failwith "all functions must be fully applied"
+             | [] -> failwith (Printf.sprintf "all functions must be fully applied %s" (Printing.string_of_termW t))
              | t2enc :: args' ->
                  build_annotatedterm ((x, t2enc) :: ctx) t1 args')
       | _ -> 
@@ -781,21 +781,21 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
            | Direct(src, x, lets, body, dst) ->
                Llvm.position_at_end (get_block src.name) builder;
                let senc = Hashtbl.find phi_nodes src.name in
-               let t = Ssa.reduce (mkLets lets body) in
+               let lets', t = Ssa.reduce (mkLets lets body) in
                let ev = build_term the_module get_dynamic_dest_block
-                          [(x, senc)] [(x, src.message_type)] t dst.message_type in
+                          [(x, senc)] [(x, src.message_type)] (mkLets lets' t) dst.message_type in
                let src_block = Llvm.insertion_block builder in
                  ignore (Llvm.build_br (get_block dst.name) builder);
                  connect_to src_block ev dst.name
            | InDirect(src, x, lets, body, dsts) ->
                Llvm.position_at_end (get_block src.name) builder;
                let senc = Hashtbl.find phi_nodes src.name in
-               let t = Ssa.reduce (mkLets lets body) in
+               let lets', t = Ssa.reduce (mkLets lets body) in
                let alpha = Type.newty Type.Var in
                let contalpha = Type.newty (Type.ContW alpha) in
                let message_type = Type.newty Type.Var in
                let ev = build_term the_module get_dynamic_dest_block
-                          [(x, senc)] [(x, src.message_type)] t 
+                          [(x, senc)] [(x, src.message_type)] (mkLets lets' t) 
                           (Type.newty (Type.TensorW(contalpha, message_type))) in
                let dst = unpack_cont_dest ev in
                let src_block = Llvm.insertion_block builder in
@@ -813,7 +813,7 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                  ) dsts
            | Branch(src, x, lets, (s, (xl, bodyl, dst1), (xr, bodyr, dst2))) ->
                begin
-                 let t = reduce (
+                 let lets', t = reduce (
                       mkLets lets ( mkCaseW s 
                                       [(xl, mkInlW bodyl) ;
                                        (xr, mkInrW bodyr) ])) in
@@ -821,7 +821,7 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                    Llvm.position_at_end src_block builder;
                    let senc = Hashtbl.find phi_nodes src.name in
                    let tenc = build_term the_module get_dynamic_dest_block
-                                [(x, senc)] [(x, src.message_type)] t
+                                [(x, senc)] [(x, src.message_type)] (mkLets lets' t)
                                 (Type.newty (Type.SumW[dst1.message_type; dst2.message_type])) in
                    let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - 1) tenc.attrib in
                    let denc12 = { payload = tenc.payload; attrib = da } in
@@ -837,9 +837,9 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
            | Return(src, x, lets, body, return_type) ->
                Llvm.position_at_end (get_block src.name) builder;
                let senc = Hashtbl.find phi_nodes src.name in
-               let t = Ssa.reduce (mkLets lets body) in
+               let lets', t = Ssa.reduce (mkLets lets body) in
                let ev = build_term the_module get_dynamic_dest_block
-                          [(x, senc)] [(x, src.message_type)] t return_type in
+                          [(x, senc)] [(x, src.message_type)] (mkLets lets' t) return_type in
 (*               let pty = packing_type return_type in*)
                let pev = pack_encoded_value ev return_type in
                  ignore (Llvm.build_ret pev builder)
