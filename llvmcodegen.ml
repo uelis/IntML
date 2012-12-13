@@ -484,6 +484,28 @@ let build_term
           let attrib_branch = Bitvector.concat tenc.attrib (Bitvector.of_list [branch]) in
           let denc = { payload = tenc.payload; attrib = attrib_branch} in
             build_truncate_extend denc a
+      | CaseW({ desc = TypeAnnot(u, Some a) }, [(x, s); (_, {desc = TypeAnnot({ desc = ConstW(Cundef) }, Some _)})]) -> 
+          let uenc = build_annotatedterm ctx u [] in
+          let ax, ay = 
+            match Type.finddesc a with
+              | Type.SumW [ax; ay] -> ax, ay
+              | _ -> assert false in
+          assert (Bitvector.length uenc.attrib > 0);
+          let xya, cond = Bitvector.takedrop (Bitvector.length (uenc.attrib) - 1) uenc.attrib in
+          let xyenc = {payload = uenc.payload; attrib = xya } in
+          let xenc = build_truncate_extend xyenc ax in
+              build_annotatedterm ((x, xenc) :: ctx) s args 
+      | CaseW({ desc = TypeAnnot(u, Some a) }, [(_, {desc = TypeAnnot({ desc = ConstW(Cundef) }, Some _)}); (y, t)]) -> 
+          let uenc = build_annotatedterm ctx u [] in
+          let ax, ay = 
+            match Type.finddesc a with
+              | Type.SumW [ax; ay] -> ax, ay
+              | _ -> assert false in
+          assert (Bitvector.length uenc.attrib > 0);
+          let xya, cond = Bitvector.takedrop (Bitvector.length (uenc.attrib) - 1) uenc.attrib in
+          let xyenc = {payload = uenc.payload; attrib = xya } in
+          let yenc = build_truncate_extend xyenc ay in
+            build_annotatedterm ((y, yenc) :: ctx) t args
       | CaseW({ desc = TypeAnnot(u, Some a) }, [(x, s); (y, t)]) -> 
           let uenc = build_annotatedterm ctx u [] in
           let ax, ay = 

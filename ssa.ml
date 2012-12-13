@@ -73,6 +73,7 @@ let rec mkLets lets t =
 let rec reduce (t : Term.t) : let_bindings * Term.t =
   match t.Term.desc with
     | Var(_) 
+    | ConstW(Cundef) 
     | ConstW(Cintconst _) 
     | ConstW(Cintprint)
     | UnitW | LambdaW(_) 
@@ -98,6 +99,8 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
           lets, mkInW i j t'
     | DeleteW(_, {desc = FoldW(_, t)}) -> reduce t
     | UnfoldW(_, {desc = FoldW(_, t)}) -> reduce t
+    | ProjectW((a,b), {desc = EmbedW((a',b'), t)}) 
+        when Type.equals a a' && Type.equals b b' -> reduce t
     | EmbedW _ | ProjectW _ 
     | UnfoldW(_) | DeleteW _ -> (* TODO: warum wird t nicht reduziert?*)
         let x = fresh_var () in
@@ -155,7 +158,7 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
         let lets2, rt2 = reduce t2 in
           begin
             match rt1.Term.desc with
-              | TypeAnnot({desc=LambdaW((x, a), f)}, _)
+              | TypeAnnot({desc=LambdaW((x, a), f)}, _)  (* TODOTODO *)
               | LambdaW((x, a), f) ->
                   let lets3, rt = reduce (Term.subst rt2 x f) in
                     lets3 @ lets2 @ lets1, rt
@@ -302,7 +305,7 @@ let trace (c: circuit) : func =
               let b, _ = unTensorW b_token in
               let (c, v'), lets' = unpair v lets in
               let c' = if Type.equals a b then c else mkProjectW (b, a) c in
-              let rlets, v'' = reduce (mkPairW c' v')(* (mkPairW (mkAppW (project b a) c) v') *) in
+              let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Evaluation.project b a) c) v') in
                 trace src w2.dst (rlets @ lets') (sigma, v'')
           | LWeak(w1 (* \Tens A X *), 
                   w2 (* \Tens B X *)) (* B <= A *) when dst = w2.src ->
@@ -312,7 +315,7 @@ let trace (c: circuit) : func =
               let b, _ = unTensorW b_token in
               let (c, v'), lets' = unpair v lets in
               let c' = if Type.equals a b then c else mkEmbedW (b, a) c in
-              let rlets, v'' = reduce (mkPairW c' v') (*(mkPairW (mkAppW (embed b a) c) v')*) in
+              let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Evaluation.embed b a) c) v') in
                 trace src w1.dst (rlets @ lets') (sigma, v'')
           | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w3.src ->
               (*   <sigma, *> @ w3      |-->  <sigma, *> @ w1 *)
