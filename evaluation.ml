@@ -35,6 +35,109 @@ let newid =
 
 let heap = Hashtbl.create 2
 
+exception Not_Leq               
+
+(* If alpha <= beta then (embed alpha beta) is a corresponding 
+ * embedding from alpha to beta.
+ * The function raises Not_Leq if it discovers that alpha <= beta
+ * does not hold.
+ * *)
+let embed (a: Type.t) (b: Type.t) : Term.t =
+let rec embed i (a: Type.t) (b: Type.t) : Term.t =
+  if i > 1 then raise Not_Leq;
+  if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
+  else 
+    match Type.finddesc b with
+    | Type.SumW[b1; b2] ->
+        begin try 
+          Term.mkLambdaW(("x", None), 
+                         Term.mkInlW 
+                           (Term.mkAppW (embed i a b1) (Term.mkVar "x")))
+        with Not_Leq ->
+          Term.mkLambdaW(("x", None), 
+                         Term.mkInrW 
+                           (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
+        end 
+    | Type.TensorW(b1, b2) ->
+        raise Not_Leq
+(*        begin try 
+          Term.mkLambdaW(("x", None), 
+                         Term.mkPairW 
+                           (Term.mkAppW (embed i a b1) (Term.mkVar "x"))
+                           (min b2))
+        with Not_Leq ->
+          Term.mkLambdaW(("x", None), 
+                         Term.mkPairW 
+                           (min b1)
+                           (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
+        end*)
+    | Type.MuW(beta, b1) ->
+        let mub1 = Type.newty (Type.MuW(beta, b1)) in
+        let unfolded = 
+          Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
+          Term.mkLambdaW(("x", None),
+                         Term.mkFoldW (beta,b1) (Term.mkAppW (embed (i+1) a unfolded) (Term.mkVar "x")))
+    | _ -> raise Not_Leq
+             in
+  embed 0 a b
+
+(* If alpha <= beta then (embed alpha beta) is a corresponding 
+ * embedding from beta to alpha. The functions (embed a b) and 
+ * (project a b)form a section-retraction pair.
+ * The function raises Not_Leq if it discovers that alpha <= beta
+ * does not hold.
+ * *)
+let project (a0: Type.t) (b0: Type.t) : Term.t =            
+let rec project i (a: Type.t) (b: Type.t) : Term.t =
+  if i > 1 then raise Not_Leq;
+  if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
+  else 
+    match Type.finddesc b with
+    | Type.SumW[b1; b2] ->
+        begin try 
+          Term.mkLambdaW(
+            ("x", None),
+            Term.mkCaseW (Term.mkVar "x") 
+              [("y", Term.mkAppW (project i a b1) (Term.mkVar "y"));
+               (unusable_var, mkConstW Cundef)])
+        with Not_Leq ->
+          Term.mkLambdaW(
+            ("x", None),
+            Term.mkCaseW (Term.mkVar "x") 
+              [(unusable_var,  mkConstW Cundef);
+               ("y", Term.mkAppW (project i a b2) (Term.mkVar "y"))])
+        end 
+(*    | Type.TensorW(b1, b2) ->
+        begin try 
+          Term.mkLambdaW(("x", None), 
+                         Term.mkLetW (Term.mkVar "x") 
+                           (("y", "z"), 
+                            Term.mkAppW (project i a b1) (Term.mkVar "y")))
+        with Not_Leq ->
+          Term.mkLambdaW(("x", None), 
+                         Term.mkLetW (Term.mkVar "x") 
+                           (("y", "z"), 
+                            Term.mkAppW (project i a b2) (Term.mkVar "z")))
+        end *)
+    | Type.MuW(beta, b1) ->
+        let mub1 = Type.newty (Type.MuW(beta, b1)) in
+        let unfolded = 
+          Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
+          Term.mkLambdaW(("x", None),
+                         Term.mkLetCompW
+                           (Term.mkAppW (project (i+1) a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x")))
+                           ("y", Term.mkLetCompW
+                                   (Term.mkDeleteW (beta,b1) (Term.mkVar "x"))
+                                   (unusable_var, Term.mkVar "y")))
+    | _ -> 
+        raise Not_Leq in
+  try
+  project 0 a0 b0
+  with Not_Leq ->
+        Printf.printf "%s | %s \n" (Printing.string_of_type a0)(Printing.string_of_type b0);
+        flush stdout;
+        raise Not_Leq 
+
 let rec eval (t: Term.t) (sigma : env) : value =
 (*  Printf.printf "%s\n\n" (Printing.string_of_termW t);  *)
   match t.desc with 
@@ -107,6 +210,10 @@ let rec eval (t: Term.t) (sigma : env) : value =
            | IntV id -> Hashtbl.remove heap id;
                         UnitV
            | _ -> assert false)
+    | EmbedW((a, b), s) ->
+          eval (mkAppW (embed a b) s) sigma
+    | ProjectW((a, b), s) ->
+          eval (mkAppW (project a b) s) sigma
     | ContW(i, n, s) ->
         eval (Compile.in_k i n s) sigma           
     | LetBoxW(t1, (x, t2)) ->

@@ -344,11 +344,6 @@ let build_term
                  (mkTypeAnnot (annotate_term t1) (Some alpha)) 
                  [(x, annotate_term t2); (y, annotate_term t3)])
       | CaseW(_, _) -> assert false
-(*      | AppW({ desc=LetW(s, (x, y, t1)) }, t2) -> 
-          let fvt2 = free_vars t2 in
-          let x' = variant_var_avoid x fvt2 in
-          let y' = variant_var_avoid y fvt2 in
-          annotate_term (mkLetW s ((x', y'), mkAppW (subst (mkVar y') y (subst (mkVar x') x t1)) t2))*)
       | AppW(t1, t2) -> mkAppW (annotate_term t1) (annotate_term t2)
       | LambdaW((x, a), t1) -> mkLambdaW ((x, a), annotate_term t1)
       | LoopW(t1, (x, t2)) -> 
@@ -358,6 +353,8 @@ let build_term
       | UnfoldW((alpha, a), t1) -> mkUnfoldW (alpha, a) (annotate_term t1)
       | AssignW((alpha, a), t1, t2) -> mkAssignW (alpha, a) (annotate_term t1) (annotate_term t2)
       | DeleteW((alpha, a), t1) -> mkDeleteW (alpha, a) (annotate_term t1)
+      | EmbedW((b, a), t1) -> mkEmbedW (b, a) (annotate_term t1)
+      | ProjectW((b, a), t1) -> mkProjectW (b, a) (annotate_term t1)
       | ContW(i, n ,t) -> 
           let alpha = Type.newty Type.Var in
             mkContW i n (mkTypeAnnot (annotate_term t) (Some alpha))
@@ -487,6 +484,28 @@ let build_term
           let attrib_branch = Bitvector.concat tenc.attrib (Bitvector.of_list [branch]) in
           let denc = { payload = tenc.payload; attrib = attrib_branch} in
             build_truncate_extend denc a
+      | CaseW({ desc = TypeAnnot(u, Some a) }, [(x, s); (_, {desc = TypeAnnot({ desc = ConstW(Cundef) }, Some _)})]) -> 
+          let uenc = build_annotatedterm ctx u [] in
+          let ax, ay = 
+            match Type.finddesc a with
+              | Type.SumW [ax; ay] -> ax, ay
+              | _ -> assert false in
+          assert (Bitvector.length uenc.attrib > 0);
+          let xya, cond = Bitvector.takedrop (Bitvector.length (uenc.attrib) - 1) uenc.attrib in
+          let xyenc = {payload = uenc.payload; attrib = xya } in
+          let xenc = build_truncate_extend xyenc ax in
+              build_annotatedterm ((x, xenc) :: ctx) s args 
+      | CaseW({ desc = TypeAnnot(u, Some a) }, [(_, {desc = TypeAnnot({ desc = ConstW(Cundef) }, Some _)}); (y, t)]) -> 
+          let uenc = build_annotatedterm ctx u [] in
+          let ax, ay = 
+            match Type.finddesc a with
+              | Type.SumW [ax; ay] -> ax, ay
+              | _ -> assert false in
+          assert (Bitvector.length uenc.attrib > 0);
+          let xya, cond = Bitvector.takedrop (Bitvector.length (uenc.attrib) - 1) uenc.attrib in
+          let xyenc = {payload = uenc.payload; attrib = xya } in
+          let yenc = build_truncate_extend xyenc ay in
+            build_annotatedterm ((y, yenc) :: ctx) t args
       | CaseW({ desc = TypeAnnot(u, Some a) }, [(x, s); (y, t)]) -> 
           let uenc = build_annotatedterm ctx u [] in
           let ax, ay = 
@@ -616,6 +635,12 @@ let build_term
                     {payload = []; attrib = Bitvector.null 0}
                 | _ -> assert false
             end
+      | EmbedW((a, b), s) ->
+          let senc = build_annotatedterm ctx (mkTypeAnnot s (Some a)) args in
+            build_truncate_extend senc b
+      | ProjectW((a, b), s) ->
+          let senc = build_annotatedterm ctx (mkTypeAnnot s (Some b)) args in
+            build_truncate_extend senc a
       | ContW(i, _, { desc = TypeAnnot(t, Some a) }) ->
           let i64 = Llvm.i64_type context in
           let block = get_block i in
@@ -644,7 +669,7 @@ let build_term
             build_annotatedterm ctx t1 (t2enc :: args)
       | LambdaW((x, a), t1) ->
           (match args with
-             | [] -> failwith "all functions must be fully applied"
+             | [] -> failwith (Printf.sprintf "all functions must be fully applied %s" (Printing.string_of_termW t))
              | t2enc :: args' ->
                  build_annotatedterm ((x, t2enc) :: ctx) t1 args')
       | _ -> 
@@ -781,21 +806,21 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
            | Direct(src, x, lets, body, dst) ->
                Llvm.position_at_end (get_block src.name) builder;
                let senc = Hashtbl.find phi_nodes src.name in
-               let t = Ssa.reduce (mkLets lets body) in
+               let lets', t = Ssa.reduce (mkLets lets body) in
                let ev = build_term the_module get_dynamic_dest_block
-                          [(x, senc)] [(x, src.message_type)] t dst.message_type in
+                          [(x, senc)] [(x, src.message_type)] (mkLets lets' t) dst.message_type in
                let src_block = Llvm.insertion_block builder in
                  ignore (Llvm.build_br (get_block dst.name) builder);
                  connect_to src_block ev dst.name
            | InDirect(src, x, lets, body, dsts) ->
                Llvm.position_at_end (get_block src.name) builder;
                let senc = Hashtbl.find phi_nodes src.name in
-               let t = Ssa.reduce (mkLets lets body) in
+               let lets', t = Ssa.reduce (mkLets lets body) in
                let alpha = Type.newty Type.Var in
                let contalpha = Type.newty (Type.ContW alpha) in
                let message_type = Type.newty Type.Var in
                let ev = build_term the_module get_dynamic_dest_block
-                          [(x, senc)] [(x, src.message_type)] t 
+                          [(x, senc)] [(x, src.message_type)] (mkLets lets' t) 
                           (Type.newty (Type.TensorW(contalpha, message_type))) in
                let dst = unpack_cont_dest ev in
                let src_block = Llvm.insertion_block builder in
@@ -813,7 +838,7 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                  ) dsts
            | Branch(src, x, lets, (s, (xl, bodyl, dst1), (xr, bodyr, dst2))) ->
                begin
-                 let t = reduce (
+                 let lets', t = reduce (
                       mkLets lets ( mkCaseW s 
                                       [(xl, mkInlW bodyl) ;
                                        (xr, mkInrW bodyr) ])) in
@@ -821,7 +846,7 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                    Llvm.position_at_end src_block builder;
                    let senc = Hashtbl.find phi_nodes src.name in
                    let tenc = build_term the_module get_dynamic_dest_block
-                                [(x, senc)] [(x, src.message_type)] t
+                                [(x, senc)] [(x, src.message_type)] (mkLets lets' t)
                                 (Type.newty (Type.SumW[dst1.message_type; dst2.message_type])) in
                    let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - 1) tenc.attrib in
                    let denc12 = { payload = tenc.payload; attrib = da } in
@@ -837,9 +862,9 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
            | Return(src, x, lets, body, return_type) ->
                Llvm.position_at_end (get_block src.name) builder;
                let senc = Hashtbl.find phi_nodes src.name in
-               let t = Ssa.reduce (mkLets lets body) in
+               let lets', t = Ssa.reduce (mkLets lets body) in
                let ev = build_term the_module get_dynamic_dest_block
-                          [(x, senc)] [(x, src.message_type)] t return_type in
+                          [(x, senc)] [(x, src.message_type)] (mkLets lets' t) return_type in
 (*               let pty = packing_type return_type in*)
                let pev = pack_encoded_value ev return_type in
                  ignore (Llvm.build_ret pev builder)

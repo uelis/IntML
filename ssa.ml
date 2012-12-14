@@ -4,7 +4,7 @@ open Compile
 type label = { 
   name: int; 
   message_type: Type.t
-}
+}               
 type let_bindings = (Term.t * (Term.var * Term.var)) list 
 type block = 
     Unreachable of label
@@ -64,78 +64,109 @@ type func = {
 
 let fresh_var = Vargen.mkVarGenerator "x" ~avoid:[]
 
-let rec isPure (t: Term.t) : bool =
+let rec mkLets lets t =
+  match lets with
+    | [] -> t
+    | (s, (x, y)) :: lets' -> mkLets lets' (mkLetW s ((x, y), t)) 
+
+(* TODOTODO *)
+let rec reduce (t : Term.t) : let_bindings * Term.t =
   match t.Term.desc with
-    | Var(_) -> true
-    | UnitW -> true
-    | ConstW(Cundef) -> true (* TODO: Cundef is actually "assert false" *)
-    | ConstW(Cprint(_)) | ConstW(Cintprint)-> false
-    | ConstW(Cintconst(_)) | ConstW(Cintadd) | ConstW(Cintsub) | ConstW(Cintmul)
-    | ConstW(Cintdiv) (* questionable! *) | ConstW(Cinteq) | ConstW(Cintslt) -> true
-    | FoldW(_, t) -> isPure t
-    | InW(i, j, s) -> isPure s
-    | PairW(t1, t2) -> isPure t1 && (isPure t2)
-    | LambdaW(_) -> true
-    | AppW(t1, t2) -> isPure t1 && (isPure t2)
-    | CaseW(s, [(u, su); (v, sv)]) -> isPure s && (isPure su) && (isPure sv)
-    | _ -> false
-
-
-
-let rec reduce (t : Term.t) : Term.t =
-  match t.Term.desc with
-    | Var(_) | ConstW(_) | UnitW | LoopW(_) | FoldW(_) |  LambdaW(_) | AssignW _ | DeleteW _ | ContW _ -> t
+    | Var(_) 
+    | ConstW(Cundef) 
+    | ConstW(Cintconst _) 
+    | ConstW(Cintprint)
+    | UnitW | LambdaW(_) 
+    | AppW({desc=ConstW(Cintadd)}, _)
+    | AppW({desc=ConstW(Cintsub)}, _)
+    | AppW({desc=ConstW(Cintdiv)}, _)
+    | AppW({desc=ConstW(Cintmul)}, _)
+    | AppW({desc=ConstW(Cintslt)}, _)
+    | AppW({desc=ConstW(Cinteq)}, _)
+    | FoldW _
+      -> 
+        [], t
+    | ConstW(_) | LoopW(_) | AssignW _ | ContW _ -> 
+        let x = fresh_var () in
+        let y = fresh_var () in
+          [(mkPairW t mkUnitW, (x, y))],
+          mkVar x
     | TypeAnnot(t, a) ->
-        mkTypeAnnot (reduce t) a
-    | InW(i, j, t) -> mkInW i j (reduce t)
+        let lets, t' = reduce t in
+          lets, mkTypeAnnot t' a
+    | InW(i, j, t) -> 
+        let lets, t' = reduce t in
+          lets, mkInW i j t'
+    | DeleteW(_, {desc = FoldW(_, t)}) -> reduce t
     | UnfoldW(_, {desc = FoldW(_, t)}) -> reduce t
-    | UnfoldW(_) -> t
+    | ProjectW((a,b), {desc = EmbedW((a',b'), t)}) 
+        when Type.equals a a' && Type.equals b b' -> reduce t
+    | EmbedW _ | ProjectW _ 
+    | UnfoldW(_) | DeleteW _ -> (* TODO: warum wird t nicht reduziert?*)
+        let x = fresh_var () in
+        let y = fresh_var () in
+          [mkPairW t mkUnitW, (x,y)], 
+          mkVar x
     | PairW(t1, t2) ->
-        mkPairW (reduce t1) (reduce t2)
+        let lets1, t1' = reduce t1 in
+        let lets2, t2' = reduce t2 in
+          lets2 @ lets1,
+          mkPairW t1' t2'
     | LetW(t1, (x, y, t2)) ->
-        let rt1 = reduce t1 in
+        let lets1, t1' = reduce t1 in
           begin
-            match rt1.Term.desc with
-              | PairW(s1, s2) when isPure rt1 ->
+            match t1'.Term.desc with
+              | PairW(s1, s2) ->
                   (* Need to be careful to avoid accidental capture. *)
                   let x' = fresh_var () in
                   let y' = fresh_var () in
                   let t' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) t2 in
-                    reduce (Term.subst s1 x' (Term.subst s2 y' t'))
-              | _ -> mkLetW rt1 ((x, y), reduce t2)
+                  let lets2, t2' = reduce (Term.subst s1 x' (Term.subst s2 y' t')) in
+                    lets2 @ lets1,
+                    t2'
+              | _ -> 
+                  let lets2, t2' = reduce t2 in
+                    lets2 @ ((t1', (x,y)) :: lets1), t2'
           end
     | CaseW(s, [(u, su); (v, sv)]) ->
-        let rs = reduce s in
+        let letss, rs = reduce s in
           begin
             match rs.Term.desc with
-              | InW(2, 0, rs0) when isPure rs ->
-                  reduce (Term.subst rs0 u su)
-              | InW(2, 1, rs1) when isPure rs ->
-                  reduce (Term.subst rs1 v sv)
-              | LetW(t1, (x, y, t2)) ->
-                  let x' = fresh_var () in
-                  let y' = fresh_var () in
-                  let t2' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) t2 in
-                    mkLetW t1 ((x',y'), reduce (mkCaseW t2' [(u, su); (v, sv)]))
-              | CaseW(s1, [(x, sx); (y, sy)]) ->
+              | InW(2, 0, rs0) ->
+                  let letsu, ru = reduce (Term.subst rs0 u su) in
+                    letsu @ letss, ru
+              | InW(2, 1, rs1) ->
+                  let letsu, rv = reduce (Term.subst rs1 v sv) in
+                    letsu @ letss, rv
+(*              | CaseW(s1, [(x, sx); (y, sy)]) ->
                   let x' = fresh_var () in
                   let y' = fresh_var () in
                   let sx' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) sx in
                   let sy' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) sy in
                     mkCaseW s1 [(x', reduce (mkCaseW sx' [(u, su); (v, sv)])); 
-                                (y', reduce (mkCaseW sy' [(u, su); (v, sv)]))]
+                                (y', reduce (mkCaseW sy' [(u, su); (v, sv)]))]*)
               | _ -> 
-                  mkCaseW rs [(u, su); (v, sv)]
+                  let letsu, ru = reduce su in
+                  let letsv, rv = reduce sv in
+                  let x = fresh_var () in
+                  let y = fresh_var () in
+                    (mkPairW (mkCaseW rs [(u, mkLets letsu ru); (v, mkLets letsv rv)]) mkUnitW, (x, y)) :: letss, 
+                    mkVar x
           end
     | AppW(t1, t2) ->
-        let rt1 = reduce t1 in
-        let rt2 = reduce t2 in
+        let lets1, rt1 = reduce t1 in
+        let lets2, rt2 = reduce t2 in
           begin
             match rt1.Term.desc with
-              | LambdaW((x, a), f) when isPure rt2 ->
-                  reduce (Term.subst rt2 x f)
+              | TypeAnnot({desc=LambdaW((x, a), f)}, _)  (* TODOTODO *)
+              | LambdaW((x, a), f) ->
+                  let lets3, rt = reduce (Term.subst rt2 x f) in
+                    lets3 @ lets2 @ lets1, rt
               | _ -> 
-                  mkAppW rt1 rt2
+                  let x = fresh_var () in
+                  let y = fresh_var () in
+                    (mkPairW (mkAppW rt1 rt2) mkUnitW, (x, y)) :: lets2 @ lets1, 
+                    mkVar x
           end
     | _ -> 
         Printf.printf "%s\n" (Printing.string_of_termW t);
@@ -190,15 +221,24 @@ let trace (c: circuit) : func =
             let x = fresh_var () in
             let y = fresh_var () in
               (mkVar x, mkVar y), (t, (x, y)) :: lets in
+    (* TODO: do properly !! *)      
     let rec make_bindings t (vars, f) =
       match vars with 
         | [] -> [], t, f
         | x :: rest ->
-            let th = fresh_var () in
-            let tr = fresh_var () in
-            let f' = Term.rename_vars (fun u -> if u = x then tr else u) f in
-            let lets, t', f'' = make_bindings (mkVar th) (rest, f') in
-              lets @ [(t, (th, tr))], mkPairW t' (mkVar tr), f'' in
+            begin
+              match t.Term.desc with
+                | PairW(t', t2) -> 
+                    let f' = Term.subst t2 x f in
+                    let lets, t'', f'' = make_bindings t' (rest, f') in
+                      lets, mkPairW t'' t2, f''
+                | _ -> 
+                    let th = fresh_var () in
+                    let tr = fresh_var () in
+                    let f' = Term.rename_vars (fun u -> if u = x then tr else u) f in
+                    let lets, t', f'' = make_bindings (mkVar th) (rest, f') in
+                      lets @ [(t, (th, tr))], mkPairW t' (mkVar tr), f'' 
+            end in
       if not (IntMap.mem dst node_map_by_src) then
         begin
           if dst = c.output.dst then
@@ -211,7 +251,8 @@ let trace (c: circuit) : func =
         match IntMap.find dst node_map_by_src with
           | Axiom(w1 (* [f] *), f) when dst = w1.src ->
               let newlets, sigma', f' = make_bindings sigma f in
-                trace src w1.dst (newlets @ lets) (sigma', reduce (mkAppW f' v))
+              let rlets, f'' = reduce (mkAppW f' v) in
+                trace src w1.dst (rlets @ newlets @ lets) (sigma', f'')
 (*              Direct(src, "z", newlets @ lets, mkPairW sigma' (mkAppW f' v), 
                          {name = w1.dst; message_type = w1.type_forward}) *)
           | Tensor(w1, w2, w3) when dst = w1.src -> 
@@ -237,7 +278,8 @@ let trace (c: circuit) : func =
                                 (v', mkPairW sigma (mkVar v'), {name = w2.dst; message_type = w2.type_forward})))
               end
           | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w1.src ->
-              trace src w2.dst lets (sigma, reduce (mkSndW v))
+              let rlets, v' = reduce (mkSndW v) in
+              trace src w2.dst (rlets @ lets) (sigma, v')
           | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w2.src ->
               let newlets, sigma', f' = make_bindings sigma f in
                 trace src w1.dst (newlets @ lets) (sigma', mkPairW f' v)
@@ -262,7 +304,9 @@ let trace (c: circuit) : func =
               let _, b_token = unTensorW w2.type_forward in
               let b, _ = unTensorW b_token in
               let (c, v'), lets' = unpair v lets in
-                trace src w2.dst lets' (sigma, reduce (mkPairW (mkAppW (project b a) c) v'))
+              let c' = if Type.equals a b then c else mkProjectW (b, a) c in
+              let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Evaluation.project b a) c) v') in
+                trace src w2.dst (rlets @ lets') (sigma, v'')
           | LWeak(w1 (* \Tens A X *), 
                   w2 (* \Tens B X *)) (* B <= A *) when dst = w2.src ->
               let _, a_token = unTensorW w1.type_forward in
@@ -270,7 +314,9 @@ let trace (c: circuit) : func =
               let _, b_token = unTensorW w2.type_back in
               let b, _ = unTensorW b_token in
               let (c, v'), lets' = unpair v lets in
-                trace src w1.dst lets' (sigma, reduce (mkPairW (mkAppW (embed b a) c) v'))
+              let c' = if Type.equals a b then c else mkEmbedW (b, a) c in
+              let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Evaluation.embed b a) c) v') in
+                trace src w1.dst (rlets @ lets') (sigma, v'')
           | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w3.src ->
               (*   <sigma, *> @ w3      |-->  <sigma, *> @ w1 *)
               trace src w1.dst lets (sigma, mkUnitW)
@@ -279,7 +325,8 @@ let trace (c: circuit) : func =
               trace src w2.dst lets (sigma, mkPairW v mkUnitW)
           | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w2.src ->
               (* <sigma, <v,w>> @ w2  |-->  <sigma, w> @ w3 *)
-              trace src w3.dst lets (sigma, reduce (mkSndW v))
+              let rlets, v' = reduce (mkSndW v) in
+              trace src w3.dst (rlets @ lets) (sigma, v')
           | Contr(w1, w2, w3) when dst = w2.src -> 
               (*  <sigma, <v,w>> @ w2         |-->  <sigma, <inl(v),w>> @ w1 *) 
               let (c, v'), lets' = unpair v lets in
@@ -324,7 +371,7 @@ let trace (c: circuit) : func =
     else 
       begin
         let block = trace src src.name [(mkVar "z",(sigma,x))] (mkVar sigma, mkVar x) in
-(*          Printf.printf "%s" (string_of_block block);  *)
+          Printf.printf "%s" (string_of_block block);  
           Hashtbl.add entry_points src.name ();
           match block with
             | Unreachable(_) | Return(_) -> [block]

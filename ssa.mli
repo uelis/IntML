@@ -20,5 +20,5 @@ type func = {
   return_type: Type.t;
 }
                                        
-val reduce: Term.t -> Term.t
+val reduce: Term.t -> let_bindings * Term.t
 val trace: Compile.circuit -> func                                       

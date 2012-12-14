@@ -18,7 +18,7 @@ letw fixw = fun x ->
               inl(fold<'c.1+'b*'c> (inr(b,l)), inr(q))
         | inr(a) ->
             let r = unfold<'c.1+'b*'c> l in
-            let u = delete<'c.1+'b*'c> l in 
+            let u = delete<'c.1+'b*'c> l in  
             case r of
               inl(nl) -> 
                  inr(a)
@@ -54,7 +54,7 @@ letu add1 = fun k -> k (fun n -> fun k1 ->
                               k2 [s]))
 letu app = fun e1 -> fun e2 -> fun k -> e1 (fun x1 -> e2 (fun x2 -> x1 x2 k))
 letu mem = fun f -> fun k -> let [n] = f (fun r -> r) in k [n]
-(*
+
 letu test1 = fun k -> 
                (fun k -> add (fun x1 -> val [let x = print "3" in 3] (fun x2 -> x1 x2 k)))
                (fun x1 -> val [5] (fun x2 -> x1 x2 k))
@@ -105,7 +105,7 @@ letu k = fun p ->
            fun p1 ->
              let (k1, x) = p1 in
                k (fun b -> k1 (b, c) , x)
-*)
+
 letu eval = fun kk -> fun k -> let [v] = kk (fun n -> n) in k [v]
 
 letu step1 =
