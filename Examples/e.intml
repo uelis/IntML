@@ -10,7 +10,9 @@ letw fixw = fun x ->
             let (b,q) = bq in
               inl(fold<'c.1+'b*'c> inr(b,l), inr(q))
         | inr(a) ->
-            case unfold<'c.1+'b*'c> l of
+            let r = unfold<'c.1+'b*'c> l in
+(*            let u = delete<'c.1+'b*'c> l in *)
+            case r of
               inl(nl) -> 
                  inr(a)
             | inr(cns) ->
@@ -22,68 +24,68 @@ letw fixw = fun x ->
 letu fix = hack fixw
  as {mu 'c. 1 + 'b*'c}({'b}'a --o 'a) --o 'a
 
-letu nil : [int] =
-    [0]
+(*
+type lazylist<'a> = 
+        Susp of cont<cont<'a>>
+      | Cons of (cont<cont<'a>> + int) * lazylist<'a>
+*)
+letw Susp = fun x -> 
+      fold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inl(x)
+letw Cons = fun x -> 
+      fold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inr(x)
 
-
-
-letu cons : [int] --> [int] --> [int] =  
+(* Invariante: Wenn man inl(k) einmal forced, dann kommt nicht wieder
+ * eine Liste der Form inl(...) heraus *)
+letu cons : [int] --> [mu 'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a]
+                  --> [mu 'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a] =  
   (fun x -> fun xs ->
     let [xk] = suspend(x) in
     let [xsk] = suspend(xs) in
-    let [id] = [ let id = hashnew (xk, xsk) in
-                 let u = hashput 0 id (inl(inl(xk), inl(xsk))) in id] in
+    let [id] = 
+           [ Cons(inl(xk), Susp(xsk)) ] in
         [id])
 
 letu ft = 
   fun l -> 
     let [lid] = l in
-    let [ct0] = [hashget 0 lid] in
-    case ct0 of
-      inl(ct) ->
-        case ct of
-          inl(cell) -> [cell]
-        | inr(thunk) ->
-            let [cell] = force(thunk) in
-              [ let u = hashput 0 lid (inl(cell)) in cell ]
-    | inr(notfound) -> [let x = 0 loop inr(0)]
+    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
+      inl(thunk) -> 
+        let [v] = force thunk in
+        let [u] = [ lid :=<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> 
+                         unfold<'a.cont<cont<'a>> + (cont<cont<int>> + int) * 'a> v ] in
+          [lid]
+    | inr(v) -> [lid]
 
 letu head =
   fun l -> 
-    let [lid] = l in
-    let [cell] = ft [lid] in
-          let [h] = [let (h,t) = cell in h] in
-          let [t] = [let (h,t) = cell in t] in
-          case h of
-            inl(k) -> 
-              let [v] = force(k) in
-              let [u] = [hashput 0 lid (inl(inr(v), t))] in
-                [v]
-          | inr(v) -> 
-                [v]
+    let [lid] = ft l in
+    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
+      inl(thunk) -> 
+        [let x=0 loop inr(x)]
+    | inr(ht) ->
+        case let (h,t) = ht in h of
+          inl(k) -> 
+            let [v] = force k in
+            let [u] = [  let (h,t) = ht in
+                         lid :=<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inr(inr(v), t) ] in
+              [v]
+        | inr(v) -> 
+              [v]
 
-letu tail = 
+letu tail =
   fun l -> 
-    let [lid] = l in
-    let [cell] = ft [lid] in
-          let [h] = [let (h,t) = cell in h] in
-          let [t] = [let (h,t) = cell in t] in
-          case t of
-            inl(k) -> 
-              let [xsid] = force(k) in
-              let [u] = [hashput 0 lid (inl(h, inr(xsid)))] in
-                [xsid]
-          | inr(xsid) -> 
-                [xsid]
+    let [lid] = ft l in
+    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
+      inl(thunk) -> 
+        [let x=0 loop inr(x)]
+    | inr(ht) ->
+        [let (h,t) = ht in t]
 
 letu thunk =
-  fun l ->
-    let [thunk] =  suspend 
-                   (let [lid] = l in
-                   let [cell] = ft [lid] in [cell]) in
-    let [id] = [ let id = hashnew () in
-                 let u = hashput 0 id (inr(thunk)) in id] in
-        [id]
+  fun l -> 
+    (* Invariante erhalten *)
+    let [thunk] =  suspend (ft l) in
+      [ Susp(thunk) ]
     
 letu zipWith = fun f -> 
   fix (fun zw -> fun l1 -> fun l2 ->
@@ -92,15 +94,20 @@ letu zipWith = fun f ->
        cons (f (head [v1]) (head [v2])) (zw (tail [v1]) (tail [v2])))
 
 letu fib =
-  memo (fix (fun f ->
+  (fix ( (fun f ->
        let [v] = thunk f in
        cons [0] (cons [1] (zipWith (fun x -> fun y -> 
                                       let [xv] = x in
                                       let [yv] = y in [xv+yv])
-                               [v] (tail [v])) )))
+                               [v] (tail [v])) ))))
+
+(* loop im Compiler!
+letu cycle =
+  (fix (fun cycle -> fun n -> cons [1] (cycle n)))
+*)
 
 letu cycle =
-  memo (fix (fun cycle -> cons [1] cycle))
+  (fix (fun cycle -> cons [1] cycle))
 
 letu printlist =
   fun l ->
@@ -115,15 +122,14 @@ letu printlist =
                 let [lid] = l in 
                 let [xv] = head [lid] in
                 let [u] = [print xv] in
-                let [u] = [if iv + 1 < jv then print ", " else ()] in
+          (*      let [u] = [if iv + 1 < jv then print ", " else ()] in *)
                   p [iv + 1] (tail [lid])) 
     [0] l
 
 letu aux =
-  fix (fun aux ->
-         fun n ->
-           copy n as n1, n2 in
-             cons [1] (cons n1 (cons [1] (aux (let [nv] = n2 in [nv + 2])))))
+  fix (fun aux -> fun n ->
+           let [nv] = n in
+             cons [1] (cons [nv] (cons [1] (aux [nv + 2]))))
 
 letu eContFrac =  (cons [2] (aux [2]))
 
@@ -147,16 +153,16 @@ letu ratTrans =
              let [cv] = c in
              let [dv] = d in
              let [qv] = [if dv = 0 then 1 else bv/dv] in
+             let [xsv] = xs in
              let [c] = [
               and (or (signum cv = signum dv) (abs cv < abs dv)) 
                       (and ((cv+dv)*qv < av+bv+1) 
                            (av+bv < (cv+dv)*qv + (cv+dv)))] in
              if c then
-                   cons [qv] (ratTrans [cv] [dv] [av-qv*cv] [bv-qv*dv] xs)
+                   cons [qv] (ratTrans [cv] [dv] [av-qv*cv] [bv-qv*dv] [xsv])
              else 
-                   copy xs as xs1, xs2 in
-                   let [xv] = head xs1 in
-                    ratTrans [bv] [av+xv*bv] [dv] [cv+xv*dv] (tail xs2)
+                   let [xv] = head [xsv] in
+                    ratTrans [bv] [av+xv*bv] [dv] [cv+xv*dv] (tail [xsv])
    )))
 
 letu toDigits = 
@@ -165,7 +171,7 @@ letu toDigits =
             let [lid] = l in
             cons (head [lid]) (toDigits (ratTrans [10] [0] [0] [1] (tail [lid])))))
 
-letu e = memo (toDigits eContFrac)
+letu e = (toDigits eContFrac)
 
-letu ttt = printlist e [110]
+letu ttt = printlist e [500]
 letu ttu = printlist eContFrac [2100]

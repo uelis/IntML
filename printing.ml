@@ -102,7 +102,7 @@ let string_of_type (ty: Type.t): string =
       | Type.MuW(alpha, a) ->
           Buffer.add_string buf "mu<";
           s_typeW alpha;
-          Buffer.add_char buf ',';
+          Buffer.add_char buf '.';
           s_typeW a;
           Buffer.add_char buf '>'
       | Type.ContW(ret) ->
@@ -206,7 +206,7 @@ let abstract_string_of_typeU (ty: Type.t): string =
           Buffer.add_string buf (string_of_type t2);
           Buffer.add_char buf ']'
       | Type.NatW | Type.ZeroW | Type.OneW | Type.FunW _
-      | Type.SumW _ | Type.TensorW _ | Type.MuW _ | Type.ContW _->
+      | Type.SumW _ | Type.TensorW _ | Type.MuW _ | Type.ContW _ ->
           Buffer.add_string buf (string_of_type t);
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -219,7 +219,7 @@ let abstract_string_of_typeU (ty: Type.t): string =
 let string_of_term_const (c: term_const) : string =
   match c with
   | Cprint s -> "print(" ^ s ^ ")"
-  | Cbot -> "bot()"
+  | Cundef -> "undef"
   | Cintconst i -> Printf.sprintf "%i" i
   | Cintadd -> "intadd"
   | Cintsub -> "intsub"
@@ -228,9 +228,6 @@ let string_of_term_const (c: term_const) : string =
   | Cinteq -> "inteq"
   | Cintslt -> "intslt"
   | Cintprint -> "intprint"
-  | Chashnew -> "hash_new"
-  | Chashput -> "hash_put"
-  | Chashget -> "hash_get"
 
 let string_of_termW (term: Term.t): string =
   let buf = Buffer.create 80 in
@@ -340,6 +337,10 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_char buf ')'
       | InW(n, k, t1) ->
           Buffer.add_string buf (Printf.sprintf "in(%i, %i," n k);
+          s_termW t1;
+          Buffer.add_char buf ')'
+      | ContW(n, k, t1) ->
+          Buffer.add_string buf (Printf.sprintf "cont(%i, %i," n k);
           s_termW t1;
           Buffer.add_char buf ')'
       | TypeAnnot(t, _) ->

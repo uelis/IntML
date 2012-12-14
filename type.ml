@@ -45,9 +45,9 @@ let rec free_vars (b: t) : t list =
   match (find b).desc with
     | Var -> [find b]
     | NatW | ZeroW | OneW -> []
-    | ContW(b1) -> free_vars b1
     | TensorW(b1, b2) | FunW(b1, b2) | TensorU(b1, b2) | BoxU(b1, b2) ->
         free_vars b1 @ (free_vars b2)
+    | ContW(b1) -> free_vars b1
     | FunU(a1, b1, b2) -> 
         free_vars a1 @ (free_vars b1) @ (free_vars b2)
     | SumW(bs) -> List.concat (List.map free_vars bs)
@@ -63,13 +63,13 @@ let rec subst (f: t -> t) (b: t) : t =
     | ZeroW -> newty ZeroW
     | OneW -> newty OneW 
     | TensorW(b1, b2) -> newty(TensorW(subst f b1, subst f b2))
-    | ContW(b1) -> newty(ContW(subst f b1))
     | SumW(bs) -> newty(SumW(List.map (subst f) bs))
     | FunW(b1, b2) -> newty(FunW(subst f b1, subst f b2))
     | MuW(alpha, a) -> 
         let beta = newty Var in
         let a' = subst (fun x -> if find x == find alpha then beta else x) a in 
         newty(MuW(beta, subst f a'))
+    | ContW(b1) -> newty(ContW(subst f b1))
     | BoxU(a1, a2) -> newty(BoxU(subst f a1, subst f a2))
     | TensorU(b1, b2) -> newty(TensorU(subst f b1, subst f b2))
     | FunU(a1, b1, b2) -> newty(FunU(subst f a1, subst f b1, subst f b2))
@@ -94,6 +94,8 @@ let rec equals (u: t) (v: t) : bool =
             (equals 
                (subst (fun x -> if equals x alpha then gamma else x) a) 
                (subst (fun x -> if equals x beta then gamma else x) b) )
+        | ContW(u1), ContW(v1) -> 
+            equals u1 v1
         | FunU(u1, u2, u3), FunU(v1, v2, v3) ->
             (equals u1 v1) && (equals u2 v2) && (equals u3 v3)
         | SumW(lu), SumW(lv) ->            
@@ -130,8 +132,8 @@ let rec freshen_index_types (a: t) : t =
       | TensorW(b1, b2) -> newty(TensorW(freshen_index_types b1, freshen_index_types b2))
       | SumW(bs) -> newty(SumW(List.map freshen_index_types bs))
       | FunW(b1, b2) -> newty(FunW(freshen_index_types b1, freshen_index_types b2))
-      | ContW(b1) -> newty(ContW(freshen_index_types b1))
       | MuW(alpha, a) -> newty(MuW(alpha, freshen_index_types a))
+      | ContW(b1) -> newty(ContW(freshen_index_types b1))
       | BoxU(a1, a2) -> newty(BoxU(freshen_index_types a1, freshen_index_types a2))
       | TensorU(b1, b2) -> newty(TensorU(freshen_index_types b1, freshen_index_types b2))
       | FunU(a1, b1, b2) -> newty(FunU(newty Var, freshen_index_types b1, freshen_index_types b2))

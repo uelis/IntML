@@ -5,7 +5,7 @@
 
 type var = string
 
-let unusable_var = "unusable"
+let unusable_var = "_unusable"
 
 module Location = struct
   type pos = { column: int; line: int} 
@@ -16,7 +16,7 @@ end
 
 type term_const =
   | Cprint of string
-  | Cbot
+  | Cundef
   | Cintconst of int
   | Cintadd
   | Cintsub
@@ -25,9 +25,6 @@ type term_const =
   | Cinteq
   | Cintslt
   | Cintprint
-  | Chashnew
-  | Chashput
-  | Chashget
 
 type t =
     { desc: t_desc;      
@@ -44,8 +41,11 @@ and t_desc =
   | LambdaW of (var * (Type.t option)) * t 
   | FoldW of (Type.t * Type.t) * t
   | UnfoldW of (Type.t * Type.t) * t
+  | AssignW of (Type.t * Type.t) * t * t
+  | DeleteW of (Type.t * Type.t) * t
   | LoopW of t * (var * t)
   | LetBoxW of t * (var * t)           (* s, <x>t *)
+  | ContW of int * int * t
   | MemoU of t                    
   | SuspendU of t                    
   | ForceU of t                    
@@ -76,6 +76,10 @@ let mkLambdaW ((x, ty), t) = { desc = LambdaW((x, ty), t); loc = None }
 let mkLoopW s (x ,t) = { desc = LoopW(s, (x,t)); loc = None }
 let mkFoldW (alpha, a) s = { desc = FoldW((alpha, a), s); loc = None }
 let mkUnfoldW (alpha, a) s = { desc = UnfoldW((alpha, a), s); loc = None }
+let mkAssignW (alpha, a) s t = { desc = AssignW((alpha, a), s, t); loc = None }
+let mkDeleteW (alpha, a) s = { desc = DeleteW((alpha, a), s); loc = None }
+let mkContW i n t = { desc = ContW(i, n, t); loc = None }
+let mkLetCompW s (x, t) = mkAppW (mkLambdaW ((x, None), t)) s
 let mkPairU s t= { desc = PairU(s, t); loc = None }
 let mkLetU s ((x, y), t) = { desc = LetU(s, (x, y, t)); loc = None }
 let mkAppU s t = { desc = AppU(s, t); loc = None }
@@ -102,9 +106,9 @@ let rec free_vars (term: t) : var list =
   match term.desc with
     | Var(v) -> [v]
     | ConstW(_) | UnitW -> []
-    | InW(_,_,s) | FoldW(_, s) | UnfoldW(_, s) 
+    | InW(_,_,s) | FoldW(_, s) | UnfoldW(_, s) | DeleteW(_, s) | ContW(_, _,  s)
     | BoxTermU(s) | HackU(_, s) | MemoU(s) | SuspendU(s) | ForceU(s) -> free_vars s
-    | PairW(s, t) | PairU (s, t) | AppW (s, t) | AppU(s, t) -> 
+    | PairW(s, t) | PairU (s, t) | AppW (s, t) | AppU(s, t) | AssignW(_, s, t) -> 
         (free_vars s) @ (free_vars t)
     | LetW(s, (x, y, t)) | LetU(s, (x, y, t)) | CopyU(s, (x, y, t)) ->
         (free_vars s) @ (abs x (abs y (free_vars t)))
@@ -128,6 +132,9 @@ let rename_vars (f: var -> var) (term: t) : t =
     | LoopW(s, (x, t)) -> { term with desc = LoopW(rn s, (f x, rn t)) }
     | FoldW(ty, s) -> { term with desc = FoldW(ty, rn s) }
     | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, rn s) }
+    | AssignW(ty, s, t) -> { term with desc = AssignW(ty, rn s, rn t) }
+    | DeleteW(ty, s) -> { term with desc = DeleteW(ty, rn s) }
+    | ContW(i, n, s) -> { term with desc = ContW(i, n, rn s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(rn s) }
     | MemoU(s) -> { term with desc = MemoU(rn s) }
     | SuspendU(s) -> { term with desc = SuspendU(rn s) }
@@ -177,6 +184,9 @@ let map_type_annots (f: Type.t option -> Type.t option) (term: t) : t =
     | LoopW(s, (x, t)) -> { term with desc = LoopW(mta s, (x, mta t)) }
     | FoldW(ty, s) -> { term with desc = FoldW(ty, mta s) }
     | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, mta s) }
+    | AssignW(ty, s, t) -> { term with desc = AssignW(ty, mta s, mta t) }
+    | DeleteW(ty, s) -> { term with desc = DeleteW(ty, s) }
+    | ContW(i, n, s) -> { term with desc = ContW(i, n, s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
     | MemoU(s) -> { term with desc = MemoU(mta s) }
     | SuspendU(s) -> { term with desc = SuspendU(mta s) }
@@ -226,6 +236,9 @@ let head_subst (s: t) (x: var) (t: t) : t option =
       | LoopW(s, (x, t)) -> { term with desc = LoopW(sub sigma s, abs sigma (x, t)) }
       | FoldW(ty, s) -> { term with desc = FoldW(ty, sub sigma s) }
       | UnfoldW(ty, s) -> { term with desc = UnfoldW(ty, sub sigma s) }
+      | AssignW(ty, s, t) -> { term with desc = AssignW(ty, sub sigma s, sub sigma t) }
+      | DeleteW(ty, s) -> { term with desc = DeleteW(ty, sub sigma s) }
+      | ContW(i, n, s) -> { term with desc = ContW(i, n, sub sigma s) }
       | BoxTermU(s) -> { term with desc = BoxTermU(sub sigma s) }
       | SuspendU(s) -> { term with desc = SuspendU(sub sigma s) }
       | ForceU(s) -> { term with desc = ForceU(sub sigma s) }
@@ -309,6 +322,11 @@ let freshen_type_vars t =
         { term with desc = FoldW((fv alpha, Type.subst fv a), mta s) }
     | UnfoldW((alpha, a), s) -> 
         { term with desc = UnfoldW((fv alpha, Type.subst fv a), mta s) }
+    | AssignW((alpha, a), s, t) -> 
+        { term with desc = AssignW((fv alpha, Type.subst fv a), mta s, mta t) }
+    | DeleteW((alpha, a), s) -> 
+        { term with desc = DeleteW((fv alpha, Type.subst fv a), mta s) }
+    | ContW(i, n, s) -> { term with desc = ContW(i, n, mta s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
     | SuspendU(s) -> { term with desc = SuspendU(mta s) }
     | ForceU(s) -> { term with desc = ForceU(mta s) }

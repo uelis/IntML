@@ -94,24 +94,7 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
                           newty (FunW(intty, 
                                       newty (SumW([one; one])))))) in
         b, []
-  | ConstW(Chashnew) ->
-      let alpha = newty Type.Var in
-      let hashty = newty NatW in
-      let b = newty (FunW(alpha, hashty)) in
-        b, []
-  | ConstW(Chashget) ->
-      let alpha = newty Type.Var in
-      let beta = newty Type.Var in
-      let hashty = newty NatW in
-      let b = newty (FunW(hashty, newty (FunW(alpha, newty (SumW[beta; newty OneW]))))) in
-        b, []
-  | ConstW(Chashput) ->
-      let alpha = newty Type.Var in
-      let beta = newty Type.Var in
-      let hashty = newty NatW in
-      let b = newty (FunW(hashty, newty (FunW(alpha, newty (FunW(beta, newty OneW)))))) in
-        b, []
-  | ConstW(Cbot) ->
+  | ConstW(Cundef) ->
       let b = newty Var in
         b, []
   | UnitW ->
@@ -180,6 +163,21 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         a_unfolded,
         eq_expected_constraint t (newty (MuW(alpha, a)), a1) ::
         con1
+  | AssignW((alpha, a), t, s) -> 
+      let mua = newty (MuW(alpha, a)) in
+      let a_unfolded = 
+        Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
+      let a1, con1 = ptW c t in
+      let a2, con2 = ptW c s in
+        newty OneW,
+        eq_expected_constraint t (mua, a1) ::
+        eq_expected_constraint s (a_unfolded, a2) ::
+        con1 @ con2
+  | DeleteW((alpha, a), t) ->
+      let a1, con1 = ptW c t in
+        newty OneW,
+        eq_expected_constraint t (newty (MuW(alpha, a)), a1) ::
+        con1
   | LoopW(t1, (x, t2)) ->
       let a1, con1 = ptW c t1 in
       let alpha, beta = newty Var, newty Var in
@@ -196,6 +194,12 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         a2,
         eq_expected_constraint t1 (a1, newty (BoxU(newty OneW, alpha))) ::
         con1 @ con2
+  | Term.ContW(i, n, t) ->
+      let _, con = ptW c t in
+      let alpha = newty Var in
+        newty (ContW(alpha)),
+        con
+          (* TODO *)
   | TypeAnnot(t, None) -> 
       ptW c t
   | TypeAnnot(t, Some ty) ->
@@ -380,7 +384,7 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
         eq_expected_constraint t (a, ty) :: con
   | LoopW _  |LambdaW (_, _) | AppW (_, _) | CaseW (_, _) | InW (_, _, _) 
   | LetW (_, _) | LetBoxW(_,_) | PairW (_, _)|ConstW (_)|UnitW 
-  | FoldW _ | UnfoldW _ ->
+  | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ | Term.ContW _ ->
       raise (Typing_error (Some t, "Upper class term expected."))
 
 let raise_error (failed_eqn: U.failure_reason) =

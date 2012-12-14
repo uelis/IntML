@@ -48,8 +48,6 @@ module Unify(T : sig type t end) = struct
               union c2 c1
           | NatW, NatW | ZeroW, ZeroW | OneW, OneW | SumW([]), SumW([]) -> 
               ()
-          | ContW(t1), ContW(s1) ->
-              unify_raw (t1, s1 ,tag)
           | TensorW(t1, t2), TensorW(s1, s2) | FunW(t1, t2), FunW(s1, s2) 
           | BoxU(t1, t2), BoxU(s1, s2) | TensorU(t1, t2), TensorU(s1, s2) ->
               unify_raw (t1, s1 ,tag);
@@ -60,6 +58,8 @@ module Unify(T : sig type t end) = struct
           | MuW(alpha, a), MuW(beta, b) -> 
               unify_raw (alpha, beta, tag);
               unify_raw (a, b, tag)
+          | ContW(t1), ContW(s1) ->
+              unify_raw (t1, s1 ,tag)
           | FunU(a1, t1, t2), FunU(b1, s1, s2) -> 
               unify_raw (a1, b1, tag);
               unify_raw (t1, s1, tag);

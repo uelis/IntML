@@ -2,23 +2,33 @@
 #include <stdbool.h>
 #include <malloc.h>
 
-#define BLOCKSIZE 27
-#define NBLOCKS 1000
+#define BLOCKSIZE 200
+#define NBLOCKS 10000000
 
 void *mem;
 void* freestack[NBLOCKS];
 int stacktop;
-int nnn;
-
-void *uinit(int size) {
-    mem = malloc(NBLOCKS * BLOCKSIZE);
-}
 
 void *ualloc(int size) {
-  mem += BLOCKSIZE;
-  return mem;
+  static bool init = false;
+  if (!init) {
+    mem = malloc(NBLOCKS * BLOCKSIZE);
+    stacktop = 0;
+    for (int i = 0; i < NBLOCKS; i++) {
+      freestack[i] = mem + i * BLOCKSIZE;
+      stacktop = i;
+    }
+    init = true;
+  }
+  if (stacktop == 0) {
+    printf("oom\n");
+    exit(1);
+  }
+//  printf("st: %i\n", stacktop);
+  return freestack[stacktop--];
 }
 
 void ufree(void *mem) {
-  mem -= BLOCKSIZE;
+  freestack[++stacktop] = mem;
 }
+

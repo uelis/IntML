@@ -59,7 +59,7 @@ type instruction =
    | LWeak of wire (* \Tens A X *) * wire (* \Tens B X *) (* where B <= A *)
    | Epsilon of wire (* [A] *) * wire (* \Tens A [B] *) * wire (* [B] *)
    | Memo of wire (* X *) * wire (* X *)
-   | Grab of wire (* X *) * wire
+   | Grab of var list * wire (* X *) * wire
    | Force of wire (* X *) * (Term.var list * Term.t)
 
 type circuit = 
@@ -79,7 +79,7 @@ let rec wires (i: instruction list): wire list =
     | LWeak(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | Memo(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | Epsilon(w1, w2, w3) :: is -> w1 :: w2 :: w3 :: (wires is)
-    | Grab(w1, w2) :: is -> w1 :: w2 :: (wires is)
+    | Grab(_, w1, w2) :: is -> w1 :: w2 :: (wires is)
     | Force(w1, _ ) :: is -> w1 :: (wires is)
 
 let map_wires_instruction (f: wire -> wire): instruction -> instruction =
@@ -91,7 +91,7 @@ let map_wires_instruction (f: wire -> wire): instruction -> instruction =
     | Contr(w1, w2, w3) -> Contr(f w1, f w2, f w3)
     | Door(w1, w2) -> Door(f w1, f w2)
     | Memo(w1, w2) -> Memo(f w1, f w2)
-    | Grab(w1, w2) -> Grab(f w1, f w2)
+    | Grab(sigma, w1, w2) -> Grab(sigma, f w1, f w2)
     | Force(w, t) -> Force(f w, t)
     | ADoor(w1, w2) -> ADoor(f w1, f w2)
     | LWeak(w1, w2) -> LWeak(f w1, f w2)
@@ -174,7 +174,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
       | SuspendU(t) ->
           let (w_t, i_t) = compile_in_box unusable_var sigma gamma t in
           let w = fresh_wire () in
-            (w, Grab(w, flip w_t) :: i_t)
+            (w, Grab(sigma, w, flip w_t) :: i_t)
       | ForceU(k) ->
           let w = fresh_wire () in
             (w, [Force(w, (sigma, k))])
@@ -307,7 +307,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
             (w, ins)
       | LoopW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _)| InW (_, _, _)
       | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_)|UnitW
-      | FoldW _ | UnfoldW _ ->
+      | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ | ContW _ ->
           assert false 
   and compile_in_box (c: var) (sigma: var list) (gamma: ctx) (t: Term.t) =
     let (gamma_in_box, i_enter_box) = enter_box gamma in
@@ -366,25 +366,27 @@ let infer_types (c : circuit) : Type.t =
             Typing.eq_constraint 
               w1.type_forward (tensor sigma beta) ::
             (constraints rest)
-      | Grab(w1, wt) :: rest ->
+      | Grab(_, w1, wt) :: rest ->
           let sigma = Type.newty Type.Var in
-          (* let alpha = Type.newty Type.Var in *)
+          let alpha = Type.newty Type.Var in 
           let beta = Type.newty Type.Var in
-          (* let cont = Type.newty (Type.ContW alpha) in*)
-          let cont = Type.newty Type.Var in
+          let cont = Type.newty (Type.ContW (Type.newty (Type.ContW alpha))) in
+          let alpha' = Type.newty Type.Var in 
+          let cont' = Type.newty (Type.ContW alpha') in
             Typing.eq_constraint 
               w1.type_back (tensor sigma (Type.newty Type.OneW)) ::
             Typing.eq_constraint 
               w1.type_forward (tensor sigma cont) ::
             Typing.eq_constraint 
-              wt.type_back (tensor sigma (tensor cont beta)) ::
+              wt.type_back (tensor sigma (tensor cont' beta)) ::
             Typing.eq_constraint 
-              wt.type_forward (tensor sigma (tensor cont (Type.newty Type.OneW))) ::
+              wt.type_forward (tensor sigma (tensor cont' (Type.newty Type.OneW))) ::
             (constraints rest)
+              (* TODO: hier stimmt etwas nicht *)
       | Force(w1, (s, k)) :: rest ->
           let sigma = Type.newty Type.Var in
           let alpha = Type.newty Type.Var in
-          let cont = Type.newty (Type.ContW alpha) in
+          let cont = Type.newty (Type.ContW (Type.newty (Type.ContW alpha))) in
           let x = "x" in
           let k' = variant k in (* ensure "x" and "y" are fresh *) 
           let s' = List.map variant_var s in
@@ -587,7 +589,7 @@ let rec dot_of_circuit
           | Memo(w1, w2) -> 
               Printf.sprintf "\"Memo({%i,%i},{%i,%i})\"" 
                 w1.src w1.dst w2.src w2.dst
-          | Grab(w1, w2) -> 
+          | Grab(_, w1, w2) -> 
               Printf.sprintf "\"Grab({%i,%i},{%i,%i})\"" w1.src w1.dst w2.src w2.dst
           | Force(w1, _) -> 
               Printf.sprintf "\"Force({%i,%i})\"" w1.src w1.dst
@@ -700,7 +702,7 @@ let rec min i (ty: Type.t) : Term.t =
                                    if Type.equals alpha beta then mua 
                                    else beta) a in
         min (i+1) unfolded
-  | Type.ContW(ret) -> Printf.printf "min: cont\n"; raise Not_Leq
+  | Type.ContW(ret) -> Printf.printf "min: cont\n"; flush stdout; raise Not_Leq
   | Type.ZeroW | Type.SumW [] | Type.FunU(_, _, _) | Type.TensorU (_, _)
   | Type.BoxU(_,_) | Type.FunW (_, _) | Type.Link _->
       failwith "internal: min" 
@@ -768,12 +770,12 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
             ("x", None),
             Term.mkCaseW (Term.mkVar "x") 
               [("y", Term.mkAppW (project i a b1) (Term.mkVar "y"));
-               ("y", mkConstW Cbot)])
+               ("y", mkConstW Cundef)])
         with Not_Leq ->
           Term.mkLambdaW(
             ("x", None),
             Term.mkCaseW (Term.mkVar "x") 
-              [("y",  mkConstW Cbot);
+              [("y",  mkConstW Cundef);
                ("y", Term.mkAppW (project i a b2) (Term.mkVar "y"))])
         end 
 (*    | Type.TensorW(b1, b2) ->
@@ -793,7 +795,11 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
         let unfolded = 
           Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
           Term.mkLambdaW(("x", None),
-                         Term.mkAppW (project (i+1) a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x")))
+                         Term.mkLetCompW
+                           (Term.mkAppW (project (i+1) a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x")))
+                           ("y", Term.mkLetCompW
+                                   (Term.mkDeleteW (beta,b1) (Term.mkVar "x"))
+                                   (unusable_var, Term.mkVar "y")))
     | _ -> 
         raise Not_Leq in
   try
@@ -931,33 +937,33 @@ let message_passing_term (c: circuit): Term.t =
                          (mkPairW (mkInrW (mkVar d)) (mkVar y)))
                   ) 
                 ))
-            | Grab(w1, wt) when w1.src = dst ->
-                ("x", mkLetW (mkVar "x") (("sigma", "v"),
+            | Grab(_, w1, wt) when w1.src = dst ->
+                (x, mkLetW (mkVar x) ((sigma, unusable_var),
                                           in_k w1.src (max_wire_src_dst + 1) 
-                                            (mkPairW (mkVar "sigma")
+                                            (mkPairW (mkVar sigma)
                                                (mkLambdaW 
-                                                  (("m", None), 
-                                                   in_k wt.src (max_wire_src_dst + 1) 
-                                                     (mkPairW (mkVar "sigma") (mkVar "m"))
+                                                  ((y, None), 
+                                                   mkContW wt.src (max_wire_src_dst + 1)
+                                                     (mkPairW (mkVar sigma) (mkVar y))
                                                   )
                                                )
                                             )))
-            | Grab(w1, wt) when wt.src = dst ->
+            | Grab(_, w1, wt) when wt.src = dst ->
                 ("x", mkLetW (mkVar "x") (("sigma", "v"), 
-                                            (parse ("let (cont, m) = v in cont m"))))
+                                            (parse ("let (k, m) = v in k m"))))
             | Force(w1, k) when w1.src = dst ->
                 (x, mkLetW (mkVar x) ((sigma, y), 
                                           (mkAppW (let_tupleW sigma k) 
                                              (mkPairW 
                                                 (mkLambdaW 
-                                                   (("m", None), 
-                                                    in_k w1.src (max_wire_src_dst + 1) 
-                                                      (mkPairW (mkVar sigma) (mkVar "m"))
+                                                   ((c, None), 
+                                                    mkContW w1.src (max_wire_src_dst + 1) 
+                                                      (mkPairW (mkVar sigma) (mkVar c))
                                                    )
                                                 ) 
                                                 (mkVar y)
                                              ))))
-            | Memo(w1 (* X *) , w2 (* X *)) when w1.src = dst ->
+(*            | Memo(w1 (* X *) , w2 (* X *)) when w1.src = dst ->
                 (x, mkLetW (mkVar x) (("sigma", "v"),
                                           in_k w2.src (max_wire_src_dst + 1) 
                                             (parse (Printf.sprintf
@@ -974,7 +980,7 @@ let message_passing_term (c: circuit): Term.t =
                                      ("u", in_k w1.src (max_wire_src_dst + 1) 
                                            (parse (Printf.sprintf "let u = hashput (%i+1) 0 v in \
                                                    (sigma, v)" w1.src)))]
-                             ))
+                             ))*)
             | Door(w1 (* X *) , w2 (* \Tens A X *)) when w1.src = dst ->
                 (* <<sigma, c>, v> -> <sigma, <c, v>> *)
                 (x, mkLetW (mkVar x) ((x, v),
@@ -1070,7 +1076,7 @@ let message_passing_term (c: circuit): Term.t =
             if 0 = dst then (* output *)
               (x, in_k 0 (max_wire_src_dst + 1) (mkVar x))
             else (* wire must be unused because of weakening *)
-              (x, mkConstW Cbot)
+              (x, mkConstW Cundef)
   in
   (* the term describing what happens to dart number k *)
   let rec part src wrs =
@@ -1080,7 +1086,7 @@ let message_passing_term (c: circuit): Term.t =
               action c.output.src  
             else 
               let x = fresh_var () in 
-                (x, mkConstW Cbot)
+                (x, mkConstW Cundef)
       | w::rest ->
           if w.src = src then action w.dst else part src rest
   in

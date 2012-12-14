@@ -8,7 +8,6 @@ type env = (var * value) list
 and value =
   | NatPredV 
   | IntV of int
-  | FoldV of (Type.t * Type.t) * value
   | UnitV 
   | InV of int * int * value
   | PairV of value * value
@@ -19,20 +18,7 @@ and value =
   | IntsubV of value option
   | IntmulV of value option
   | IntdivV of value option
-  | HashputV of value option * value option
-  | HashgetV of value option
-  | HashnewV
   | IntprintV
-
-let memtbls = Hashtbl.create 2
-let memtbl i = 
-  try 
-    Hashtbl.find memtbls i 
-  with 
-    | Not_found ->
-        let t = (Hashtbl.create 10) in
-          Hashtbl.replace memtbls i t;
-          t
 
 let rec cv2termW (v: value) : Term.t =
   match v with 
@@ -40,35 +26,17 @@ let rec cv2termW (v: value) : Term.t =
     | IntV(i) -> mkConstW (Cintconst(i))
     | InV(n, i, v1) -> mkInW n i (cv2termW v1)
     | PairV(v1, v2) -> mkPairW (cv2termW v1) (cv2termW v2)
-    | FoldV((alpha, a), v) -> mkFoldW (alpha, a) (cv2termW v)
+(*    | FoldV((alpha, a), v) -> mkFoldW (alpha, a) (cv2termW v) *)
     | _ -> assert false
-
-type succOrMin =
-  | Succ of value
-  | Min of value
-
-(* Equality on values of basic type:
- * A ::= 1 | int | A*A | A+A | mu alpha. A(alpha)
- *)
-let rec eq (ty: Type.t) (v1: value) (v2: value) : bool =
-  match Type.finddesc ty, v1, v2 with
-  | Type.Var, _, _ -> 
-      Printf.printf "warning: trying to evaluate polymophic eq; instantiating variables with 1\n";
-      true
-  | Type.OneW, _, _ -> true
-  | Type.NatW, IntV(v), IntV(w) -> v=w
-  | Type.MuW(_), FoldV(_, v), FoldV(_, w) -> v=w
-  | Type.TensorW(a, b), PairV(v11, v12), PairV(v21, v22) -> eq a v11 v21 && eq b v12 v22
-  | Type.SumW(l), InV(m, i, v1'), InV(n, j, v2') -> 
-         (m = n) && (i = j) && (eq (List.nth l i) v1' v2')
-  | _ -> false
 
 let newid =
   let n = ref 0 in
     fun () -> n := !n + 1; !n
 
+let heap = Hashtbl.create 2
+
 let rec eval (t: Term.t) (sigma : env) : value =
-  (* Printf.printf "%s\n\n" (Printing.string_of_termW t); *)
+(*  Printf.printf "%s\n\n" (Printing.string_of_termW t);  *)
   match t.desc with 
     | Var(x) -> List.assoc x sigma
     | UnitW -> UnitV 
@@ -84,10 +52,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | ConstW(Cintsub) -> IntsubV(None)
     | ConstW(Cintmul) -> IntmulV(None)
     | ConstW(Cintdiv) -> IntdivV(None)
-    | ConstW(Chashnew) -> HashnewV
-    | ConstW(Chashput) -> HashputV(None, None)
-    | ConstW(Chashget) -> HashgetV(None)
-    | ConstW(Cbot) ->  failwith "nontermination!"
+    | ConstW(Cundef) ->  failwith "undefined!"
     | PairW(t1, t2) -> 
         let v1 = eval t1 sigma in
         let v2 = eval t2 sigma in
@@ -95,7 +60,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | LetW(t1, (x1, x2, t2)) ->
        (match eval t1 sigma with
         | PairV(v1, v2) -> eval t2 ((x1, v1) :: (x2, v2) :: sigma)
-        | _ -> failwith "Internal: Pairs"
+        | _ -> failwith (Printf.sprintf "Internal: Pairs (%s)" (Printing.string_of_termW t))
        )
     | InW(n, i, t1) -> InV(n, i, eval t1 sigma)
     | CaseW(t1, l) ->
@@ -119,13 +84,31 @@ let rec eval (t: Term.t) (sigma : env) : value =
             | _ -> failwith "Internal: evaluation of loop" in
           loop v1
     | FoldW((alpha, a), t) ->
+        let id = newid () in
         let v = eval t sigma in
-          FoldV((alpha, a), v)
+          Hashtbl.replace heap id v; 
+          IntV id
     | UnfoldW(_, t) ->
         (match eval t sigma with
-           | FoldV(_, v) -> v
-           | _ -> failwith "Internal: unfold applied to non-fold value."
-        )
+           | IntV id -> 
+               (try Hashtbl.find heap id with 
+                 | Not_found -> failwith "Internal: unfold applied to a deallocated value.")
+           | _ -> assert false)
+    | AssignW((alpha, a), s, t) ->
+        let vs = eval s sigma in
+        let vt = eval t sigma in
+        (match vs with
+           | IntV id -> Hashtbl.replace heap id vt;
+                        UnitV
+           | _ -> assert false)
+    | DeleteW((alpha, a), s) ->
+        let vs = eval s sigma in
+        (match vs with
+           | IntV id -> Hashtbl.remove heap id;
+                        UnitV
+           | _ -> assert false)
+    | ContW(i, n, s) ->
+        eval (Compile.in_k i n s) sigma           
     | LetBoxW(t1, (x, t2)) ->
         let s1, a1 = Compile.compile_termU t1 in
         let v1 = eval (mkAppW s1 mkUnitW) sigma in
@@ -133,6 +116,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | TypeAnnot(t, _) -> eval t sigma
     | HackU (_, _)|CopyU (_, _)|CaseU (_, _, _)|LetBoxU (_, _)|BoxTermU _
     | LambdaU (_, _)|AppU (_, _)|LetU (_, _)|PairU (_, _) | MemoU(_)
+    | ForceU _ | SuspendU _
       -> assert false
 
 and appV (v1: value) (v2: value) : value = 
@@ -180,26 +164,6 @@ and appV (v1: value) (v2: value) : value =
         (match v2 with
            | IntV(v2') -> Printf.printf "%i" v2'; UnitV
            | _ -> assert false)
-    | HashnewV ->
-        IntV (newid ())
-    | HashputV(None, None) -> HashputV(Some v2, None)
-    | HashputV(Some table, None) -> HashputV(Some table, Some v2)
-    | HashputV(Some table, Some key) -> 
-        (match table with
-           | IntV t -> 
-(*               Printf.printf "put: %i\n" (Valtbl.length memtbl); *)
-               Hashtbl.replace (memtbl t) key v2; 
-               UnitV 
-           | _ -> assert false)
-    | HashgetV(None) -> HashgetV(Some v2)
-    | HashgetV(Some v3) -> 
-        (match v3 with
-           | IntV t -> 
-(*               Printf.printf "get %s\n" (Printing.string_of_termW (cv2termW
- *               v2)); *)
-               (try InV(2, 0, Hashtbl.find (memtbl t) v2) with 
-                 | Not_found -> InV(2, 1, UnitV))
-           | _ -> assert false)
     | _ -> failwith "Internal: Cannot apply non-functional value."
 
 exception FunctionalValue
@@ -211,7 +175,7 @@ let eval_closed (t: Term.t) : Term.t option =
       | IntV(i) -> mkConstW (Cintconst(i))
       | InV(n, i, v1) -> mkInW n i (cv2termW v1)
       | PairV(v1, v2) -> mkPairW (cv2termW v1) (cv2termW v2)
-      | FoldV((alpha, a), v) -> mkFoldW (alpha, a) (cv2termW v)
+(*     | FoldV((alpha, a), v) -> mkFoldW (alpha, a) (cv2termW v) *)
       | _ -> raise FunctionalValue in    
   let v = eval t [] in
     try 

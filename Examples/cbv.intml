@@ -8,24 +8,25 @@ letw and : 2 -> 2 -> 2 =
 letw or = fun (x : 2) -> fun (y : 2) ->
   if x then true else y
 
-letw fixw = fun sigmax ->
-  let (sigma, x) = sigmax in 
+letw fixw = fun x ->
   case x of 
     inl(lx) -> 
       let (l,x) = lx in
         case x of
           inl(bq) ->
             let (b,q) = bq in
-              inl(fold<'c.1+'b*'c> inr(b,l), inr(q))
+              inl(fold<'c.1+'b*'c> (inr(b,l)), inr(q))
         | inr(a) ->
-            case unfold<'c.1+'b*'c> l of
+            let r = unfold<'c.1+'b*'c> l in
+            let u = delete<'c.1+'b*'c> l in 
+            case r of
               inl(nl) -> 
                  inr(a)
             | inr(cns) ->
                let (hd, tl) = cns in
                  inl(tl, inl(hd, a))
   | inr(q) -> 
-     inl(fold<'c.1+'b*'c> inl(), inr(q))
+     inl(fold<'c.1+'b*'c> (inl()), inr(q))
 
 letu fix = hack fixw
  as {'c (* mu 'c. 1 + 'b*'c *)}({'b}'a --o 'a) --o 'a
@@ -137,6 +138,6 @@ letu stepl = (fun a -> step (fun x -> fun k -> a (fun b -> b x k)))
 letu fixv = fun step ->
               fix (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
 
-letu tt = app (fixv step1) (val [12])
+letu tt = app (fixv step1) (val [35])
 letu testfib = let [v] = tt (fun r -> r) in [print v]
 

@@ -19,7 +19,7 @@ end
 
 type term_const =
   | Cprint of string
-  | Cbot
+  | Cundef
   | Cintconst of int
   | Cintadd
   | Cintsub
@@ -28,9 +28,6 @@ type term_const =
   | Cinteq
   | Cintslt
   | Cintprint
-  | Chashnew
-  | Chashput
-  | Chashget
 
 type t = { desc: t_desc;      
            loc: Location.t }
@@ -46,8 +43,11 @@ and t_desc =
   | LambdaW of (var * Type.t option) * t (* <x>s *)
   | FoldW of (Type.t * Type.t) * t
   | UnfoldW of (Type.t * Type.t) * t
+  | AssignW of (Type.t * Type.t) * t * t
+  | DeleteW of (Type.t * Type.t) * t
   | LoopW of t * (var * t) 
   | LetBoxW of t * (var * t)             (* s, <x>t *)
+  | ContW of int * int * t
   | MemoU of t                    
   | SuspendU of t                    
   | ForceU of t                    
@@ -79,6 +79,10 @@ val mkTrW : t -> t
 val mkLoopW : t -> (var * t) -> t
 val mkFoldW : Type.t * Type.t -> t -> t
 val mkUnfoldW : Type.t * Type.t -> t -> t
+val mkAssignW : Type.t * Type.t -> t -> t -> t
+val mkDeleteW : Type.t * Type.t -> t -> t
+val mkContW : int -> int -> t -> t
+val mkLetCompW : t -> (var * t) -> t
 val mkPairU : t -> t -> t
 val mkLetU : t -> (var * var) * t -> t
 val mkAppU : t -> t -> t
