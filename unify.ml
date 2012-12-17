@@ -46,15 +46,15 @@ module Unify(T : sig type t end) = struct
               union c1 c2
           | _, Var -> 
               union c2 c1
-          | NatW, NatW | ZeroW, ZeroW | OneW, OneW | SumW([]), SumW([]) -> 
+          | NatW, NatW | ZeroW, ZeroW | OneW, OneW -> 
               ()
           | TensorW(t1, t2), TensorW(s1, s2) | FunW(t1, t2), FunW(s1, s2) 
           | BoxU(t1, t2), BoxU(s1, s2) | TensorU(t1, t2), TensorU(s1, s2) ->
               unify_raw (t1, s1 ,tag);
               unify_raw (t2, s2, tag)
-          | SumW(t1 :: tl1), SumW(s1 :: sl1) -> 
-              unify_raw (t1, s1, tag);
-              unify_raw (newty (SumW(tl1)), newty (SumW(sl1)), tag) 
+          | DataW(i, ts), DataW(j, ss) when i = j -> 
+              List.iter (fun (t, s) -> unify_raw (t, s, tag))
+                (List.combine ts ss)
           | MuW(alpha, a), MuW(beta, b) -> 
               unify_raw (alpha, beta, tag);
               unify_raw (a, b, tag)
@@ -84,7 +84,7 @@ module Unify(T : sig type t end) = struct
                 | TensorW(t1, t2) | FunW(t1, t2)
                 | BoxU(t1, t2) | TensorU(t1, t2) -> dfs t1; dfs t2
                 | FunU(t1, t2, t3) -> dfs t1; dfs t2; dfs t3
-                | SumW(l) -> List.iter dfs l
+                | DataW(_, l) -> List.iter dfs l
                 | _ -> ()
             end;
             r.mark <- mark_done

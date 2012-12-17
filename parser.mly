@@ -10,12 +10,9 @@ open Parsing
 open Term
 open Decls
 
-let error pos msg =
-    print_string msg;
-    Printf.printf " at position %i.\n"
-        (pos.pos_cnum - pos.pos_bol + 1);
-    flush stdout;
-    raise Exit
+let error msg =
+  Printf.printf "Syntax Error: %s\n" msg;
+  raise Parsing.Parse_error
 
 let mkTerm d : Term.t =
   let s = Parsing.symbol_start_pos () in 
@@ -24,10 +21,6 @@ let mkTerm d : Term.t =
     Location.line = pos.pos_lnum; 
     Location.column = pos.pos_cnum - pos.pos_bol + 1 } in
   { Term.desc = d; loc = Some({Location.start_pos = lp s; Location.end_pos = lp e }) } 
-
-let warn msg =
-  let s = Parsing.symbol_start_pos () in 
-  Printf.printf "Warning: %s in line %i\n" msg s.pos_lnum
 
 let type_vars = Hashtbl.create 10 
 
@@ -65,6 +58,8 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokSemicolon
 %token TokSharp
 %token TokMu
+%token TokKwType
+%token TokKwUnit
 %token TokDelete
 %token TokFold
 %token TokUnfold
@@ -85,7 +80,7 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokOne
 %token TokLet 
 %token TokAs
-%token TokOf 
+%token TokKwOf 
 %token TokIn 
 %token TokKwCopy
 %token TokCase
@@ -103,9 +98,11 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokVertbar
 %token <int> TokNum
 %token <string> TokIdent 
+%token <string> TokConstr 
 %token <string> TokString 
 %token TokEof
 
+%left TokVertbar 
 %left TokEquals 
 %left TokLAngle
 %left TokPlus TokMinus
@@ -135,12 +132,16 @@ top_query:
       { Query.DirTerm2($2, $3, $4) }
     | TokSharp TokIdent TokNum TokEof
       { Query.DirInt($2, $3) }
+    | dataW
+      { Query.DirData($1) }
 
 decls:
     | TokEof
       { [] }
     | decl decls
       { $1 :: $2 }
+    | dataW decls
+      { $2 }
 
 decl:
     | TokLetW identifier TokEquals termW
@@ -164,12 +165,7 @@ termW:
     | TokLet TokLParen identifier TokComma identifier TokRParen TokEquals termW TokIn termW
       { mkTerm (LetW($8, ($3, $5, $10))) }
     | TokKwIf termW TokKwThen termW TokKwElse termW
-      { mkTerm (CaseW($2, [(unusable_var, $4); (unusable_var, $6)])) }
-    | TokCase termW TokOf 
-          TokKwInl TokLParen identifier TokRParen TokRightArrow termW 
-          TokVertbar
-          TokKwInr TokLParen identifier TokRParen TokRightArrow termW
-       { mkTerm (CaseW($2, [($6, $9); ($13, $16)])) }
+      { mkTerm (CaseW(Type.Data.boolid, $2, [(unusable_var, $4); (unusable_var, $6)])) }
     | TokLet identifier TokEquals termW TokLoop termW
        { mkTerm (LoopW ($4, ($2, $6))) }
     | TokLet identifier TokEquals termW TokIn termW
@@ -190,12 +186,47 @@ termW:
        { mkTerm (AssignW(($4, $6), $1, $8)) }
     | TokDelete TokLAngle typeW TokDot typeW TokRAngle termW
        { mkTerm (DeleteW(($3, $5), $7)) }
-    | TokKwInl termW_atom
-       { mkTerm (InW(2, 0, $2)) }
-    | TokKwInr termW_atom
-       { mkTerm (InW(2, 1, $2)) }
+    | TokCase termW TokKwOf termW_cases
+       { let id, c = $4 in
+         let sorted_c = List.sort (fun (i, x, t) (j, y, s) -> compare i j) c in
+         let indices = List.map (fun (i, x, t) -> i) sorted_c in
+         let cases = List.map (fun (i, x, t) -> (x,t)) sorted_c in
+         let n = List.length (Type.Data.constructor_names id) in
+         (* Check that there is a case for all constructors *)
+         if (indices = Listutil.init n (fun i -> i)) then
+           mkTerm (CaseW(id, $2, cases))
+         else
+           error "case must match each constructor exactly once!"
+       }
+    | termW_constr 
+       { let id, i = $1 in mkTerm (InW(id, i, mkTerm UnitW)) }
+    | termW_constr termW_atom
+       { let id, i = $1 in mkTerm (InW(id, i, $2)) }
     | termW_app
        { $1 } 
+
+termW_constr:
+    | TokConstr
+       { try Type.Data.find_constructor $1 
+           with Not_found -> 
+             (* TODO: message *)
+             error (Printf.sprintf "Undefined constructor %s" $1)
+       }
+
+term_case:
+    | termW_constr TokRightArrow 
+       { let id, i = $1 in (id, i, unusable_var) }
+    | termW_constr TokLParen identifier TokRParen TokRightArrow 
+       { let id, i = $1 in (id, i, $3) }
+
+termW_cases:
+    | term_case termW
+       { let id, i, x = $1 in (id, [i,x,$2]) } 
+    | term_case termW TokVertbar termW_cases
+       {  let id, i, x = $1 in
+          let id', r = $4 in
+            if id = id' then (id, (i, x, $2)::r) 
+            else error "Constructors from different types used in case." } 
 
 termW_app:
     | termW_atom 
@@ -227,6 +258,43 @@ termW_atom:
     | TokLParen termW TokColon typeW TokRParen
        { mkTerm (TypeAnnot($2, Some $4)) }
 
+dataW:
+    | TokKwType datadeclW TokEquals constructorsW
+      { let id, params = $2 in
+        let cons = $4 in
+          Type.Data.make id; 
+          List.iter (Type.Data.add_param id) params;
+          List.iter (fun (cname, cargty) -> 
+                      Type.Data.add_constructor id cname cargty)
+          cons;
+          id
+       }
+
+datadeclW:
+    | identifier
+      { $1, [] }
+    | identifier TokLAngle dataparamsW TokRAngle 
+      { let ty = $1 in
+        let params = $3 in
+          ty, params }
+
+dataparamsW:      
+    | TokQuote identifier
+      { [type_var $2] }
+    | TokQuote identifier TokComma dataparamsW
+      { let var = type_var $2 in
+        let vars = $4 in
+          if List.exists (fun alpha -> Type.equals var alpha) vars then
+             error "Type variable appears twice in parameter list."
+          else 
+             var::vars }
+
+constructorsW:
+    | TokConstr TokKwOf typeW
+      { [$1, $3] }
+    | TokConstr TokKwOf typeW TokVertbar constructorsW
+      { ($1, $3) :: $5 }
+
 typeW:
     | typeW_summand
       { $1 }
@@ -239,7 +307,7 @@ typeW_summand:
     | typeW_factor
       { $1 }
     | typeW_summand TokPlus typeW_factor
-      { Type.newty (Type.SumW[$1; $3]) }
+      { Type.newty (Type.DataW(Type.Data.sumid 2, [$1; $3])) }
 
 typeW_factor:
     | typeW_atom
@@ -252,22 +320,22 @@ typeW_atom:
       { type_var $2 }
     | TokCont TokLAngle typeW TokRAngle
       { Type.newty (Type.ContW($3)) } 
-    | TokNum 
-      { let rec nat_ty n = 
-          match n with
-          | 0 -> Type.newty (Type.ZeroW)
-          | 1 -> Type.newty (Type.OneW)
-          | 2 -> Type.newty (Type.SumW[Type.newty (Type.OneW); Type.newty (Type.OneW)])
-          | n -> if n mod 2 = 0 then              
-                   Type.newty (Type.TensorW (nat_ty (n/2), nat_ty 2))
-                 else
-                   Type.newty (Type.SumW [nat_ty (n-1); nat_ty 1])
-        in  nat_ty $1
-      }
+    | TokKwUnit
+      { Type.newty (Type.OneW) }
     | TokKwNat
       { Type.newty (Type.NatW) }
+    | identifier
+      { Type.newty (Type.DataW($1, [])) }
+    | identifier TokLAngle typeW_list TokRAngle 
+      { Type.newty (Type.DataW($1, $3)) }
     | TokLParen typeW TokRParen
       { $2 }
+
+typeW_list:
+    | typeW 
+      { [$1] }
+    | typeW typeW_list
+      { $1 :: $2 }
 
 termU:    
     | TokLambda identifier TokRightArrow termU 
@@ -282,15 +350,31 @@ termU:
        { mkTerm (LetBoxU($6, ($3, $8))) }
     | TokKwCopy termU TokAs identifier TokComma identifier TokIn termU
        { mkTerm (CopyU($2, ($4, $6, $8))) }
-    | TokCase termW TokOf 
-          TokKwInl TokLParen identifier TokRParen TokRightArrow termU 
-          TokVertbar
-          TokKwInr TokLParen identifier TokRParen TokRightArrow termU
-       { mkTerm (CaseU($2, ($6, $9), ($13, $16))) } 
+    | TokCase termW TokKwOf termU_cases
+       { let id, c = $4 in
+         let sorted_c = List.sort (fun (i, x, t) (j, y, s) -> compare i j) c in
+         let indices = List.map (fun (i, x, t) -> i) sorted_c in
+         let cases = List.map (fun (i, x, t) -> (x,t)) sorted_c in
+         let n = List.length (Type.Data.constructor_names id) in
+         (* Check that there is a case for all constructors *)
+         if (indices = Listutil.init n (fun i -> i)) then
+           mkTerm (CaseU(id, $2, cases))
+         else
+           error "case must match each constructor exactly once!"
+       }
     | TokKwIf termW TokKwThen termU TokKwElse termU
-       { mkTerm (CaseU($2, (unusable_var, $4), (unusable_var, $6))) }
+       { mkTerm (CaseU(Type.Data.boolid, $2, [(unusable_var, $4); (unusable_var, $6)])) }
     | termU_app
        { $1 }
+
+termU_cases:
+    | term_case termU
+       { let id, i, x = $1 in (id, [i,x,$2]) } 
+    | term_case termU TokVertbar termU_cases
+       {  let id, i, x = $1 in
+          let id', r = $4 in
+            if id = id' then (id, (i, x, $2)::r) 
+            else error "Constructors from different types used in case." } 
 
 termU_app:
     | termU_atom 

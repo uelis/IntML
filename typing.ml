@@ -92,7 +92,7 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
       let one = newty OneW in
       let b = newty (FunW(intty, 
                           newty (FunW(intty, 
-                                      newty (SumW([one; one])))))) in
+                                      newty (DataW(Data.boolid, [])))))) in
         b, []
   | ConstW(Cundef) ->
       let b = newty Var in
@@ -113,25 +113,39 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
           a2, 
           eq_expected_constraint t1 (a1, newty (TensorW(alpha, beta))) :: 
         con1 @ con2
-  | InW(n, k, t1) ->
+  | InW(id, k, t1) ->
       let a1, con1 = ptW c t1 in
-      let alphas = fresh_tyVars n in
-        newty (SumW(alphas)),
-        eq_expected_constraint t1 (a1, List.nth alphas k) ::
+      let n = Data.params id in
+      let params = fresh_tyVars n in
+      let data = newty (DataW(id, params)) in
+        (* TODO: check that constructor exists? *)
+      let argtype = List.nth (Data.constructor_types id params) k in
+      let fresh_data, fresh_argtype =
+        match freshen_list [data; argtype] with
+           | [fd; fa] -> fd, fa 
+          | _ -> assert false in
+        fresh_data,
+        eq_expected_constraint t1 (a1, fresh_argtype) ::
         con1
-  | CaseW(s, l) ->
+  | CaseW(id, s, l) -> 
       let a1, con1 = ptW c s in
-      let n = List.length l in      
-      let alphas = fresh_tyVars n in
+      let fresh_data, fresh_argtypes =
+        let n = Data.params id in
+        let params = fresh_tyVars n in
+        let data = newty (DataW(id, params)) in
+        let argtypes = Data.constructor_types id params in
+          match freshen_list (data :: argtypes) with
+            | fd :: fas -> fd, fas 
+            | _ -> assert false in
       let beta = newty Var in
-      let lalphas = List.combine l alphas in 
+      let l_args = List.combine l fresh_argtypes in 
       let cons = List.fold_right 
-                   (fun ((x, u), alpha) cons -> 
-                      let a2, con2 = ptW ((x, alpha) :: c) u in
+                   (fun ((x, u), argty) cons -> 
+                      let a2, con2 = ptW ((x, argty) :: c) u in
                         eq_expected_constraint u (a2, beta) :: con2 @ cons) 
-                   lalphas con1 in
+                   l_args con1 in
         beta, 
-        eq_expected_constraint s (a1, newty (SumW(alphas))) :: cons
+        eq_expected_constraint s (a1, fresh_data) :: cons
   | AppW(s, t) ->
       let a1, con1 = ptW c s in
       let a2, con2 = ptW c t in
@@ -193,7 +207,7 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
       let alpha, beta = newty Var, newty Var in
       let a2, con2 = ptW ((x, alpha)::c) t2 in
         beta,
-        eq_expected_constraint t2 (a2, newty (SumW[beta; a1])) ::
+        eq_expected_constraint t2 (a2, newty (DataW(Data.sumid 2, [beta; a1]))) ::
         con1 @ con2
   | LetBoxW(t1, (xc, t2)) ->
       (* TODO: should allow t1 to appear in context c. 
@@ -314,21 +328,32 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
                         t in
       let gamma = fresh_index_types banged_gamma in
       let conC = leq_index_types 
-                   (dot (newty (SumW[alpha1; alpha2])) gamma) 
+                   (dot (newty (DataW(Data.sumid 2, [alpha1; alpha2]))) gamma) 
                    banged_gamma in
       let tyX, conX = ptU c gamma s in
         tyY,
         eq_expected_constraint s (tyX, beta) ::
         conX @ conC @ conY
-  | CaseU(f, (x, s), (y, t)) ->
-      let tyf, conf = ptW c f in
-      let alpha, beta = newty Var, newty Var in
-      let tys, cons = ptU ((x, alpha) :: c) phi s in
-      let tyt, cont = ptU ((y, beta) :: c) phi t in
-        tyt,
-        eq_expected_constraint f (tyf, newty (SumW[alpha; beta])) ::
-        eq_expected_constraint s (tys, tyt) ::
-        conf @ cons @ cont
+  | CaseU(id, s, l) -> 
+      let a1, con1 = ptW c s in
+        (* TODO: appears twice *)
+      let fresh_data, fresh_argtypes =
+        let n = Data.params id in
+        let params = fresh_tyVars n in
+        let data = newty (DataW(id, params)) in
+        let argtypes = Data.constructor_types id params in
+          match freshen_list (data :: argtypes) with
+            | fd :: fas -> fd, fas 
+            | _ -> assert false in
+      let beta = newty Var in
+      let l_args = List.combine l fresh_argtypes in 
+      let cons = List.fold_right 
+                   (fun ((x, u), argty) cons -> 
+                      let a2, con2 = ptU ((x, argty) :: c) phi u in
+                        eq_expected_constraint u (a2, beta) :: con2 @ cons) 
+                   l_args con1 in
+        beta, 
+        eq_expected_constraint s (a1, fresh_data) :: cons
   | BoxTermU(f) ->
       let tyW, con = ptW c f in
         newty (BoxU(newty OneW, tyW)), 
@@ -392,8 +417,8 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
       let a, con = ptU c phi t in
         a,
         eq_expected_constraint t (a, ty) :: con
-  | LoopW _  |LambdaW (_, _) | AppW (_, _) | CaseW (_, _) | InW (_, _, _) 
-  | LetW (_, _) | LetBoxW(_,_) | PairW (_, _)|ConstW (_)|UnitW 
+  | LoopW _  |LambdaW (_, _) | AppW (_, _) | CaseW (_, _, _) | InW (_, _, _) 
+  | LetW (_, _) | LetBoxW(_,_) | PairW (_, _) | ConstW (_) | UnitW 
   | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ | Term.ContW _
   | EmbedW _ | ProjectW _ ->
       raise (Typing_error (Some t, "Upper class term expected."))
@@ -462,7 +487,7 @@ let solve_constraints (con: type_constraint list) : unit =
       | [] -> ()
       | (a, alpha) :: rest ->
           let b = 
-            try newty (SumW[a; Type.Typetbl.find m (Type.find alpha)]) with Not_found -> a 
+            try newty (DataW(Data.sumid 2, [a; Type.Typetbl.find m (Type.find alpha)])) with Not_found -> a 
           in
             Type.Typetbl.replace m (Type.find alpha) b;
             join_lower_bounds rest in

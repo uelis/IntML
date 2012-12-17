@@ -12,7 +12,6 @@ type t =
      mutable mark : int;
      mutable id : int
    }
-
 and desc = 
   | Link of t
   | Var
@@ -20,13 +19,30 @@ and desc =
   | ZeroW
   | OneW
   | TensorW of t * t
-  | SumW of t list
+  | DataW of string * t list
   | FunW of t * t
   | MuW of t * t
   | ContW of t
   | BoxU of t * t
   | TensorU of t * t
   | FunU of t * t * t
+
+module Data: 
+sig
+  type id = string
+  val sumid : int -> id
+  val boolid : id
+
+  val params : id -> int
+  val constructor_names : id -> string list 
+  val constructor_types : id -> t list -> t list
+
+  val find_constructor: string -> id * int
+
+  val make : string -> unit
+  val add_param : id -> t -> unit
+  val add_constructor : id -> string -> t -> unit
+end
 
 val newty : desc -> t
 val next_mark : unit -> int                      
@@ -40,6 +56,7 @@ val equals : t -> t -> bool
 val free_vars: t -> t list                         
 val subst: (t -> t) -> t -> t
 val freshen: t -> t
+val freshen_list: t list -> t list
 val freshen_index_types: t -> t
 
 (* Given upper class type X, returns the pair (X^-, X^+). *)

@@ -177,6 +177,9 @@ let rec exec_query (ds: typed_decls) (q: query) : typed_decls =
                                      " cat output circuit.sim.pdf"))
         end;
         ds
+    | DirData(id) ->
+        print_string (string_of_data id);
+        ds
     | _ -> 
         Printf.printf "Unknown command.\n";
         ds

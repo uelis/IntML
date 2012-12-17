@@ -68,18 +68,21 @@ let string_of_type (ty: Type.t): string =
   and s_typeW_summand (t: Type.t) =
     if check_rec (1, t) then
     match (Type.finddesc t) with
-      | Type.SumW([t1; t2]) ->
+      | Type.DataW(id, [t1; t2]) when id = Type.Data.sumid 2 ->
           s_typeW_summand t1; 
           Buffer.add_string buf " + ";
           s_typeW_factor t2
-      | Type.SumW([]) ->
+      | Type.DataW(id, []) when id = Type.Data.sumid 0 ->
           Buffer.add_string buf "0"
-      | Type.SumW(t1 :: l) ->
-          Buffer.add_string buf "Sum(";
+      | Type.DataW(id, [])  ->
+          Buffer.add_string buf id
+      | Type.DataW(id, t1 :: l) ->
+          Buffer.add_string buf id;
+          Buffer.add_string buf "<";
           s_typeW_summand t1;           
           List.iter (fun t2 -> s_typeW_summand t2; 
                                Buffer.add_string buf ", ") l;
-          Buffer.add_string buf ")";
+          Buffer.add_string buf ">";
       | _ -> 
           s_typeW_factor t
   and s_typeW_factor (t: Type.t) =
@@ -98,7 +101,7 @@ let string_of_type (ty: Type.t): string =
           Buffer.add_string buf (name_of_typevar t)
       | Type.NatW -> Buffer.add_string buf "int"
       | Type.ZeroW -> Buffer.add_char buf '0'
-      | Type.OneW -> Buffer.add_char buf '1'
+      | Type.OneW -> Buffer.add_string buf "unit"
       | Type.MuW(alpha, a) ->
           Buffer.add_string buf "mu<";
           s_typeW alpha;
@@ -109,7 +112,7 @@ let string_of_type (ty: Type.t): string =
           Buffer.add_string buf "cont<";
           s_typeW ret;
           Buffer.add_char buf '>'
-      | Type.FunW _ | Type.SumW _ | Type.TensorW _ ->
+      | Type.FunW _ | Type.DataW _ | Type.TensorW _ ->
           Buffer.add_char buf '(';
           s_typeW t;
           Buffer.add_char buf ')';
@@ -157,7 +160,7 @@ let string_of_type (ty: Type.t): string =
           s_typeW t2;
           Buffer.add_char buf ']'
       | Type.ZeroW | Type.OneW | Type.FunW _ | Type.NatW
-      | Type.SumW _ | Type.TensorW _ | Type.MuW _ | Type.ContW _ ->
+      | Type.DataW _ | Type.TensorW _ | Type.MuW _ | Type.ContW _ ->
           s_typeW t
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -206,7 +209,7 @@ let abstract_string_of_typeU (ty: Type.t): string =
           Buffer.add_string buf (string_of_type t2);
           Buffer.add_char buf ']'
       | Type.NatW | Type.ZeroW | Type.OneW | Type.FunW _
-      | Type.SumW _ | Type.TensorW _ | Type.MuW _ | Type.ContW _ ->
+      | Type.DataW _ | Type.TensorW _ | Type.MuW _ | Type.ContW _ ->
           Buffer.add_string buf (string_of_type t);
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -261,25 +264,14 @@ let string_of_termW (term: Term.t): string =
           s_termW t1;
           Buffer.add_string buf " in ";
           s_termW t2
-      | CaseW(t1, [(x, t2); (y, t3)]) ->
-          Buffer.add_string buf "case ";
-          s_termW t1;
-          Buffer.add_string buf " of inl(";
-          Buffer.add_string buf x;
-          Buffer.add_string buf ") -> ";
-          s_termW t2;
-          Buffer.add_string buf " | inr(";
-          Buffer.add_string buf y;
-          Buffer.add_string buf ") -> ";
-          s_termW t3
-      | CaseW(t1, l) ->
+      | CaseW(id, t1, l) ->
           Buffer.add_string buf "case ";
           s_termW t1;
           Buffer.add_string buf " of ";
-          let n = List.length l in
           let k = ref 0 in 
           List.iter (fun (x, t) -> 
-                       Buffer.add_string buf (Printf.sprintf "| in(%i, %i, %s) -> " n !k x);
+                       let conname = List.nth (Type.Data.constructor_names id) !k in
+                       Buffer.add_string buf (Printf.sprintf "| %s(%s) -> " conname x);
                        k := !k + 1;
                        s_termW t) l
       | LoopW(t1, (x, t2)) ->
@@ -289,6 +281,10 @@ let string_of_termW (term: Term.t): string =
           s_termW t1;
           Buffer.add_string buf " loop ";
           s_termW t2
+      | InW(id, k, t1) ->
+          let cname = List.nth (Type.Data.constructor_names id) k in
+          Buffer.add_string buf cname;
+          s_termW_atom t1
       | FoldW((alpha, a), t1) ->
           Buffer.add_string buf "fold<";
           Buffer.add_string buf (string_of_type alpha);
@@ -356,25 +352,13 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf ", ";
           s_termW t2;
           Buffer.add_char buf ')'
-      | InW(2, 0, t1) -> 
-          Buffer.add_string buf "inl(";
-          s_termW t1;
-          Buffer.add_char buf ')'
-      | InW(2, 1, t1) -> 
-          Buffer.add_string buf "inr(";
-          s_termW t1;
-          Buffer.add_char buf ')'
-      | InW(n, k, t1) ->
-          Buffer.add_string buf (Printf.sprintf "in(%i, %i," n k);
-          s_termW t1;
-          Buffer.add_char buf ')'
       | ContW(n, k, t1) ->
           Buffer.add_string buf (Printf.sprintf "cont(%i, %i," n k);
           s_termW t1;
           Buffer.add_char buf ')'
       | TypeAnnot(t, _) ->
           s_termW_atom t
-      | LambdaW(_, _) | LetW(_, _) | CaseW(_, _)
+      | LambdaW(_, _) | LetW(_, _) | CaseW(_, _, _)
       | LoopW(_) | AppW(_, _) | FoldW _ | UnfoldW _ | DeleteW _ | AssignW _ ->
           Buffer.add_char buf '(';
           s_termW t;
@@ -383,3 +367,27 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf "(cannot print upper class terms yet)" 
   in s_termW term; 
      Buffer.contents buf
+
+let string_of_data id =
+  let buf = Buffer.create 80 in
+  let name = id in
+  let cnames = Type.Data.constructor_names id in
+  let nparams = Type.Data.params id in
+  let params = Listutil.init nparams (fun x -> Type.newty Type.Var) in
+  let ctypes = Type.Data.constructor_types id params in
+  let cs = List.combine cnames ctypes in
+    Buffer.add_string buf "type ";
+    Buffer.add_string buf name;
+    if (nparams > 0) then begin
+      Buffer.add_string buf "<";
+      Buffer.add_string buf (String.concat "," (List.map string_of_type params));
+      Buffer.add_string buf ">";
+    end;
+    Buffer.add_string buf " = ";
+    Buffer.add_string buf 
+      (String.concat " | " 
+         (List.map (fun (n, t) -> 
+                      Printf.sprintf "%s of %s" n (string_of_type t)) cs));
+    Buffer.contents buf
+
+

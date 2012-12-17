@@ -37,8 +37,8 @@ and t_desc =
   | UnitW 
   | PairW of t * t
   | LetW of t * (var * var * t)          (* s, <x,y>t *)
-  | InW of int * int * t                 (* in_n(k,t) *)
-  | CaseW of t * ((var * t) list)        (* s, <x1>t1, <x2>t2, ... *)
+  | InW of Type.Data.id * int * t    (* in_n(k,t) *)
+  | CaseW of Type.Data.id * t * ((var * t) list)        (* s, <x1>t1, <x2>t2, ... *)
   | AppW of t * t                        (* s, t *)
   | LambdaW of (var * Type.t option) * t (* <x>s *)
   | FoldW of (Type.t * Type.t) * t
@@ -59,7 +59,7 @@ and t_desc =
   | LambdaU of (var * Type.t option) * t     
   | BoxTermU of t                        (* s *)
   | LetBoxU of t * (var * t)             (* s, <x>t *)
-  | CaseU of t * (var * t) * (var * t)   (* s, <x>t1, <y>t2 *)
+  | CaseU of Type.Data.id * t * ((var * t) list)     
   | CopyU of t * (var * var * t)         (* s, <x,y>t *)
   | HackU of Type.t option * t                (* s, t *)
   | TypeAnnot of t * (Type.t option)
@@ -71,10 +71,10 @@ val mkPairW : t -> t -> t
 val mkLetW : t -> (var * var) * t -> t
 val mkFstW : t -> t
 val mkSndW : t -> t
-val mkInW : int -> int -> t -> t
+val mkInW : Type.Data.id -> int -> t -> t
 val mkInlW : t -> t
 val mkInrW : t -> t
-val mkCaseW : t -> (var * t) list -> t
+val mkCaseW : Type.Data.id -> t -> (var * t) list -> t
 val mkAppW : t -> t -> t
 val mkLambdaW : (var * Type.t option) * t -> t
 val mkTrW : t -> t
@@ -93,7 +93,7 @@ val mkAppU : t -> t -> t
 val mkLambdaU : (var * Type.t option) * t -> t
 val mkBoxTermU : t -> t
 val mkLetBoxU : t -> var * t -> t
-val mkCaseU : t -> var * t -> var * t -> t
+val mkCaseU : Type.Data.id -> t -> (var * t) list -> t
 val mkCopyU : t -> (var * var) * t -> t
 val mkHackU : Type.t option -> t -> t
 val mkTypeAnnot : t -> Type.t option -> t

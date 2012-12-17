@@ -9,7 +9,7 @@ and value =
   | NatPredV 
   | IntV of int
   | UnitV 
-  | InV of int * int * value
+  | InV of Type.Data.id * int * value
   | PairV of value * value
   | FunV of env * var * Term.t
   | InteqV of value option
@@ -48,7 +48,20 @@ let rec embed i (a: Type.t) (b: Type.t) : Term.t =
   if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
   else 
     match Type.finddesc b with
-    | Type.SumW[b1; b2] ->
+      | Type.DataW(id, l) ->
+          let cs = Type.Data.constructor_types id l in
+          let rec inject l n =
+            match l with 
+              | [] -> raise Not_Leq
+              | b1 :: bs ->
+                  try
+                    Term.mkLambdaW(("x", None), 
+                                   Term.mkInW id n 
+                                     (Term.mkAppW (embed i a b1) (Term.mkVar "x")))
+                  with Not_Leq -> inject bs (n + 1) in
+            inject cs 0
+    (* TODO
+     * | Type.SumW[b1; b2] ->
         begin try 
           Term.mkLambdaW(("x", None), 
                          Term.mkInlW 
@@ -58,6 +71,7 @@ let rec embed i (a: Type.t) (b: Type.t) : Term.t =
                          Term.mkInrW 
                            (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
         end 
+     *)
     | Type.TensorW(b1, b2) ->
         raise Not_Leq
 (*        begin try 
@@ -93,6 +107,25 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
   if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
   else 
     match Type.finddesc b with
+      | Type.DataW(id, l) ->
+          let cs = Type.Data.constructor_types id l in
+          let rec out l n =
+            match l with 
+              | [] -> raise Not_Leq
+              | b1 :: bs ->
+                  try
+                    Term.mkLambdaW(
+                      ("x", None),
+                      Term.mkCaseW id (Term.mkVar "x") 
+                        (Listutil.init (List.length cs)
+                           (fun j-> 
+                              if j = n then 
+                                ("y", Term.mkAppW (project i a b1) (Term.mkVar "y"))
+                              else
+                                (unusable_var, mkConstW Cundef))))
+                  with Not_Leq -> out bs (n + 1) in
+            out cs 0
+        (* TODO
     | Type.SumW[b1; b2] ->
         begin try 
           Term.mkLambdaW(
@@ -107,6 +140,7 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
               [(unusable_var,  mkConstW Cundef);
                ("y", Term.mkAppW (project i a b2) (Term.mkVar "y"))])
         end 
+         *)
 (*    | Type.TensorW(b1, b2) ->
         begin try 
           Term.mkLambdaW(("x", None), 
@@ -166,9 +200,9 @@ let rec eval (t: Term.t) (sigma : env) : value =
         | _ -> failwith (Printf.sprintf "Internal: Pairs (%s)" (Printing.string_of_termW t))
        )
     | InW(n, i, t1) -> InV(n, i, eval t1 sigma)
-    | CaseW(t1, l) ->
+    | CaseW(_, t1, l) ->
        (match eval t1 sigma with
-          | InV(n, i, v1) -> 
+          | InV(_, i, v1) -> 
               let (x2, t2) = List.nth l i in
                 eval t2 ((x2, v1) :: sigma)
           | _ -> failwith "Internal: Case distinction"
@@ -182,8 +216,8 @@ let rec eval (t: Term.t) (sigma : env) : value =
         let v1 = eval t1 sigma in
         let rec loop v = 
           match eval t2 ((x, v) :: sigma) with
-            | InV(2, 0, v2) -> v2
-            | InV(2, 1, v2) -> loop v2
+            | InV(id, 0, v2) when id = Type.Data.sumid 2 -> v2
+            | InV(id, 1, v2) when id = Type.Data.sumid 2 -> loop v2
             | _ -> failwith "Internal: evaluation of loop" in
           loop v1
     | FoldW((alpha, a), t) ->
@@ -239,13 +273,19 @@ and appV (v1: value) (v2: value) : value =
     | InteqV(Some v3) -> 
         (match v3, v2 with
            | IntV(v3'), IntV(v2') -> 
-               if v3' = v2' then InV(2, 0, UnitV) else InV(2, 1, UnitV)
+               if v3' = v2' then 
+                 let id, i = Type.Data.find_constructor "True" in
+                   InV(id, i, UnitV) 
+               else 
+                 let id, i = Type.Data.find_constructor "False" in
+                   InV(id, i, UnitV) 
            | _ -> assert false)
     | IntsltV(None) -> IntsltV(Some v2)
     | IntsltV(Some v3) -> 
         (match v3, v2 with
            | IntV(v3'), IntV(v2') -> 
-               if v3' < v2' then InV(2, 0, UnitV) else InV(2, 1, UnitV)
+               if v3' < v2' then InV(Type.Data.sumid 2, 0, UnitV) 
+               else InV(Type.Data.sumid 2, 1, UnitV)
            | _ -> assert false)
     | IntaddV(None) -> IntaddV(Some v2)
     | IntaddV(Some v3) -> 

@@ -35,8 +35,8 @@ and t_desc =
   | UnitW 
   | PairW of t * t
   | LetW of t * (var * var * t)        (* s, <x,y>t *)
-  | InW of int * int * t               (* in_n(k,t) *)
-  | CaseW of t * ((var * t) list)      (* s, <x>t1, <y>t2 *)
+  | InW of Type.Data.id * int * t               (* in_n(k,t) *)
+  | CaseW of Type.Data.id * t * ((var * t) list)      (* s, <x>t1, <y>t2 *)
   | AppW of t * t                      (* s, t *)
   | LambdaW of (var * (Type.t option)) * t 
   | FoldW of (Type.t * Type.t) * t
@@ -57,7 +57,7 @@ and t_desc =
   | LambdaU of (var * (Type.t option)) * t     
   | BoxTermU of t                      (* s *)
   | LetBoxU of t * (var * t)           (* s, <x>t *)
-  | CaseU of t * (var * t) * (var * t) (* s, <x>t1, <y>t2 *)
+  | CaseU of Type.Data.id * t * ((var * t) list) 
   | CopyU of t * (var * var * t)       (* s, <x,y>t *)
   | HackU of (Type.t option) * t       (* s, t *)
   | TypeAnnot of t * (Type.t option)
@@ -70,9 +70,9 @@ let mkLetW s ((x, y), t) = { desc = LetW(s, (x, y, t)); loc = None }
 let mkFstW s = mkLetW s (("x", "y"), mkVar "x")
 let mkSndW s = mkLetW s (("x", "y"), mkVar "y")
 let mkInW n k t = { desc = InW(n, k, t); loc = None }
-let mkInlW t = { desc = InW(2, 0, t); loc = None }
-let mkInrW t = { desc = InW(2, 1, t); loc = None }
-let mkCaseW s l = { desc = CaseW(s, l); loc = None }
+let mkInlW t = { desc = InW(Type.Data.sumid 2, 0, t); loc = None }
+let mkInrW t = { desc = InW(Type.Data.sumid 2, 1, t); loc = None }
+let mkCaseW id s l = { desc = CaseW(id, s, l); loc = None }
 let mkAppW s t = { desc = AppW(s, t); loc = None }
 let mkLambdaW ((x, ty), t) = { desc = LambdaW((x, ty), t); loc = None }
 let mkLoopW s (x ,t) = { desc = LoopW(s, (x,t)); loc = None }
@@ -90,7 +90,7 @@ let mkAppU s t = { desc = AppU(s, t); loc = None }
 let mkLambdaU ((x, ty), t) = { desc = LambdaU((x, ty), t); loc = None }
 let mkBoxTermU s = { desc = BoxTermU(s); loc = None }
 let mkLetBoxU s (x, t) = { desc = LetBoxU(s, (x, t)); loc = None }
-let mkCaseU s (x1, t1) (x2, t2) = { desc = CaseU(s, (x1, t1), (x2, t2)); loc = None }
+let mkCaseU id s l = { desc = CaseU(id, s, l); loc = None }
 let mkCopyU s ((x, y), t) = { desc = CopyU(s, (x, y, t)); loc = None }
 let mkHackU ty t = { desc = HackU(ty, t); loc = None }
 let mkTypeAnnot t a = { desc = TypeAnnot(t, a); loc = None }
@@ -121,10 +121,8 @@ let rec free_vars (term: t) : var list =
         abs x (free_vars t) 
     | LetBoxW(s, (x, t)) | LetBoxU(s, (x, t)) | LoopW(s, (x, t)) ->
         (free_vars s) @ (abs x (free_vars t))
-    | CaseW(s, l) ->
+    | CaseW(_, s, l) | CaseU(_, s, l) ->
         (free_vars s) @ (List.fold_right (fun (x, t) fv -> (abs x (free_vars t)) @ fv) l [])
-    | CaseU(s, (x, t), (y, u)) ->
-        (free_vars s) @ (abs x (free_vars t)) @ (abs y (free_vars u))
     | TypeAnnot(t, ty) ->
         free_vars t
 
@@ -158,10 +156,10 @@ let rename_vars (f: var -> var) (term: t) : t =
     | LambdaU((x, ty), t) -> { term with desc = LambdaU((f x, ty), rn t) } 
     | LetBoxW(s, (x, t)) -> { term with desc = LetBoxW(rn s, (f x, rn t)) }
     | LetBoxU(s, (x, t)) -> { term with desc = LetBoxU(rn s, (f x, rn t)) }
-    | CaseW(s, l) -> 
-        { term with desc = CaseW(rn s, List.map (fun (x, t) -> (f x, rn t)) l) } 
-    | CaseU(s, (x, t), (y, u)) ->
-        { term with desc = CaseU(rn s, (f x, rn t), (f y, rn u)) } 
+    | CaseW(id, s, l) ->
+        { term with desc = CaseW(id, rn s, List.map (fun (x, t) -> (f x, rn t)) l) } 
+    | CaseU(id, s, l) -> 
+        { term with desc = CaseU(id, rn s, List.map (fun (x, t) -> (f x, rn t)) l) } 
     | TypeAnnot(t, ty) -> { term with desc = TypeAnnot(rn t, ty) }
   in rn term
        
@@ -212,10 +210,10 @@ let map_type_annots (f: Type.t option -> Type.t option) (term: t) : t =
     | LambdaU((x, ty), t) -> { term with desc = LambdaU((x, f ty), mta t) } 
     | LetBoxW(s, (x, t)) -> { term with desc = LetBoxW(mta s, (x, mta t)) }
     | LetBoxU(s, (x, t)) -> { term with desc = LetBoxU(mta s, (x, mta t)) }
-    | CaseW(s, l) -> 
-        { term with desc = CaseW(mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
-    | CaseU(s, (x, t), (y, u)) ->
-        { term with desc = CaseU(mta s, (x, mta t), (y, mta u)) } 
+    | CaseW(id, s, l) -> 
+        { term with desc = CaseW(id, mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
+    | CaseU(id, s, l) -> 
+        { term with desc = CaseU(id, mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
     | TypeAnnot(t, ty) -> { term with desc = TypeAnnot(mta t, f ty) }
   in mta term
 
@@ -270,10 +268,10 @@ let head_subst (s: t) (x: var) (t: t) : t option =
           { term with desc = LambdaU((x', ty), t') } 
       | LetBoxW(s, (x, t)) -> { term with desc = LetBoxW(sub sigma s, abs sigma (x, t)) }
       | LetBoxU(s, (x, t)) -> { term with desc = LetBoxU(sub sigma s, abs sigma (x, t)) }
-      | CaseW(s, l) -> 
-          { term with desc = CaseW(sub sigma s, List.map (fun (x, t) -> abs sigma (x, t)) l) } 
-      | CaseU(s, (x, t), (y, u)) ->
-          { term with desc = CaseU(sub sigma s, abs sigma (x, t), abs sigma (y, u)) } 
+      | CaseW(id, s, l) -> 
+          { term with desc = CaseW(id, sub sigma s, List.map (fun (x, t) -> abs sigma (x, t)) l) } 
+      | CaseU(id, s, l) -> 
+          { term with desc = CaseU(id, sub sigma s, List.map (fun (x, t) -> abs sigma (x, t)) l) } 
       | TypeAnnot(t, ty) ->
           { term with desc = TypeAnnot(sub sigma t, ty) } 
   and abs sigma (y, u) = 
@@ -358,10 +356,10 @@ let freshen_type_vars t =
     | LambdaU((x, ty), t) -> { term with desc = LambdaU((x, f ty), mta t) } 
     | LetBoxW(s, (x, t)) -> { term with desc = LetBoxW(mta s, (x, mta t)) }
     | LetBoxU(s, (x, t)) -> { term with desc = LetBoxU(mta s, (x, mta t)) }
-    | CaseW(s, l) -> 
-        { term with desc = CaseW(mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
-    | CaseU(s, (x, t), (y, u)) ->
-        { term with desc = CaseU(mta s, (x, mta t), (y, mta u)) } 
+    | CaseW(id, s, l) -> 
+        { term with desc = CaseW(id, mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
+    | CaseU(id, s, l) -> 
+        { term with desc = CaseU(id, mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
     | TypeAnnot(t, ty) -> { term with desc = TypeAnnot(mta t, f ty) }
   in mta t
 
@@ -370,7 +368,7 @@ let mkTrW t =
   let y = "y" in
   let t' = variant t in
     mkLambdaW ((x, None), 
-               mkCaseW (mkAppW t' (mkInlW (mkVar x)))
+               mkCaseW (Type.Data.sumid 2) (mkAppW t' (mkInlW (mkVar x)))
                  [(y, mkVar y);
                   (y, mkLoopW (mkVar y) (y, mkAppW t' (mkInrW (mkVar y))))])
 

@@ -224,9 +224,10 @@ let rec payload_size (a: Type.t) : int =
               | NatW -> 1
               | ContW(_) -> 2
               | TensorW(a1, a2) -> p_s a1 + (p_s a2)
-              | SumW[a1; a2] -> (max (p_s a1) (p_s a2))
+              | DataW(id, [a1; a2]) when id = Type.Data.sumid 2 -> 
+                  (max (p_s a1) (p_s a2))
               | MuW _ -> 1
-              | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
+              | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | DataW _ -> assert false
         in
           Type.Typetbl.add payload_size_memo a size;
           size
@@ -243,9 +244,10 @@ let attrib_size (a: Type.t) : int =
               | Link _ -> assert false
               | Var | ZeroW | OneW | NatW | ContW _ -> 0
               | TensorW(a1, a2) -> a_s a1 + (a_s a2)
-              | SumW[a1; a2] -> 1 + (max (a_s a1) (a_s a2))
+              | DataW(id, [a1; a2]) when id = Type.Data.sumid 2 -> 
+                  1 + max (a_s a1) (a_s a2)
               | MuW _ -> 0
-              | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | SumW _ -> assert false
+              | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | DataW _ -> assert false
         in
           Type.Typetbl.add attrib_size_memo a size;
           size
@@ -304,7 +306,7 @@ let unpack_encoded_value (packed_enc: Llvm.llvalue) (a: Type.t) : encoded_value 
   let len_p = payload_size a in
   let len_a = attrib_size a in
   let pl = Listutil.init len_p (fun i -> Llvm.build_extractvalue packed_enc i "p" builder) in
-  let at = Listutil.init len_a (fun i -> Llvm.build_extractvalue packed_enc (len_p + i) "p" builder) in
+  let at = Listutil.init len_a (fun i -> Llvm.build_extractvalue packed_enc (len_p + i) "a" builder) in
     {payload = pl; attrib = Bitvector.of_list at}
 
 (* TODO: 
@@ -331,19 +333,18 @@ let build_term
       | LetW(t1, (x, y, t2)) ->
           let alpha = Type.newty Type.Var in
             mkLetW (mkTypeAnnot (annotate_term t1) (Some alpha)) ((x, y), annotate_term t2)
-      | InW(2, 0, t1) -> 
+      | InW(id, 0, t1) when id = Type.Data.sumid 2 -> 
           let alpha = Type.newty Type.Var in
             mkTypeAnnot (mkInlW (annotate_term t1)) (Some alpha)
-      | InW(2, 1, t1) -> 
+      | InW(id, 1, t1)  when id = Type.Data.sumid 2 -> 
           let alpha = Type.newty Type.Var in
             mkTypeAnnot (mkInrW (annotate_term t1)) (Some alpha)
       | InW(_, _, _) -> assert false
-      | CaseW(t1, [(x, t2); (y, t3)]) ->
+      | CaseW(id, t1, [(x, t2); (y, t3)]) when id = Type.Data.sumid 2 ->
           let alpha = Type.newty Type.Var in
-              (mkCaseW 
+              (mkCaseW id
                  (mkTypeAnnot (annotate_term t1) (Some alpha)) 
                  [(x, annotate_term t2); (y, annotate_term t3)])
-      | CaseW(_, _) -> assert false
       | AppW(t1, t2) -> mkAppW (annotate_term t1) (annotate_term t2)
       | LambdaW((x, a), t1) -> mkLambdaW ((x, a), annotate_term t1)
       | LoopW(t1, (x, t2)) -> 
@@ -417,6 +418,7 @@ let build_term
               | _ -> assert false
           end
       | ConstW(rel) when (rel = Cinteq || rel = Cintslt) ->
+          (* TODO: check *)
           begin
             match args with
               | t1enc :: t2enc :: args' ->
@@ -477,40 +479,46 @@ let build_term
                                            (y, {payload = syp; attrib = sya }) :: ctx) t args
               | _ -> assert false
           end
-      | TypeAnnot({ desc = InW(2, i, t) }, Some a) ->
+      | TypeAnnot({ desc = InW(id, i, t) }, Some a) when id = Type.Data.sumid 2 ->
           assert (args = []);
           let tenc = build_annotatedterm ctx t [] in
           let branch = Llvm.const_int (Llvm.integer_type context 1) i in
           let attrib_branch = Bitvector.concat tenc.attrib (Bitvector.of_list [branch]) in
           let denc = { payload = tenc.payload; attrib = attrib_branch} in
             build_truncate_extend denc a
-      | CaseW({ desc = TypeAnnot(u, Some a) }, [(x, s); (_, {desc = TypeAnnot({ desc = ConstW(Cundef) }, Some _)})]) -> 
+      | CaseW(id, { desc = TypeAnnot(u, Some a) }, [(x, s); (_, {desc = TypeAnnot({ desc = ConstW(Cundef) }, Some _)})])
+          when id = Type.Data.sumid 2
+        -> 
           let uenc = build_annotatedterm ctx u [] in
           let ax, ay = 
             match Type.finddesc a with
-              | Type.SumW [ax; ay] -> ax, ay
+              | Type.DataW(id, [ax; ay]) when id = Type.Data.sumid 2 -> ax, ay
               | _ -> assert false in
           assert (Bitvector.length uenc.attrib > 0);
           let xya, cond = Bitvector.takedrop (Bitvector.length (uenc.attrib) - 1) uenc.attrib in
           let xyenc = {payload = uenc.payload; attrib = xya } in
           let xenc = build_truncate_extend xyenc ax in
               build_annotatedterm ((x, xenc) :: ctx) s args 
-      | CaseW({ desc = TypeAnnot(u, Some a) }, [(_, {desc = TypeAnnot({ desc = ConstW(Cundef) }, Some _)}); (y, t)]) -> 
+      | CaseW(id, { desc = TypeAnnot(u, Some a) }, [(_, {desc = TypeAnnot({ desc = ConstW(Cundef) }, Some _)}); (y, t)]) 
+          when id = Type.Data.sumid 2
+        -> 
           let uenc = build_annotatedterm ctx u [] in
           let ax, ay = 
             match Type.finddesc a with
-              | Type.SumW [ax; ay] -> ax, ay
+              | Type.DataW(id, [ax; ay]) when id = Type.Data.sumid 2 -> ax, ay
               | _ -> assert false in
           assert (Bitvector.length uenc.attrib > 0);
           let xya, cond = Bitvector.takedrop (Bitvector.length (uenc.attrib) - 1) uenc.attrib in
           let xyenc = {payload = uenc.payload; attrib = xya } in
           let yenc = build_truncate_extend xyenc ay in
             build_annotatedterm ((y, yenc) :: ctx) t args
-      | CaseW({ desc = TypeAnnot(u, Some a) }, [(x, s); (y, t)]) -> 
+      | CaseW(id, { desc = TypeAnnot(u, Some a) }, [(x, s); (y, t)]) 
+          when id = Type.Data.sumid 2
+        -> 
           let uenc = build_annotatedterm ctx u [] in
           let ax, ay = 
             match Type.finddesc a with
-              | Type.SumW [ax; ay] -> ax, ay
+              | Type.DataW(id, [ax; ay]) when id = Type.Data.sumid 2 -> ax, ay
               | _ -> assert false in
           assert (Bitvector.length uenc.attrib > 0);
           let xya, cond = Bitvector.takedrop (Bitvector.length (uenc.attrib) - 1) uenc.attrib in
@@ -550,7 +558,7 @@ let build_term
       | LoopW(u, (x, { desc = TypeAnnot(t, Some a) })) -> 
           let ax, ay = 
             match Type.finddesc a with
-              | Type.SumW [ax; ay] -> ax, ay
+              | Type.DataW(id, [ax; ay]) when id = Type.Data.sumid 2 -> ax, ay
               | _ -> assert false in
           let uenc = build_annotatedterm ctx u [] in
           let block_init = Llvm.insertion_block builder in                             
@@ -839,7 +847,7 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
            | Branch(src, x, lets, (s, (xl, bodyl, dst1), (xr, bodyr, dst2))) ->
                begin
                  let lets', t = reduce (
-                      mkLets lets ( mkCaseW s 
+                      mkLets lets ( mkCaseW (Type.Data.sumid 2) s 
                                       [(xl, mkInlW bodyl) ;
                                        (xr, mkInrW bodyr) ])) in
                  let src_block = get_block src.name in
@@ -847,7 +855,8 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                    let senc = Hashtbl.find phi_nodes src.name in
                    let tenc = build_term the_module get_dynamic_dest_block
                                 [(x, senc)] [(x, src.message_type)] (mkLets lets' t)
-                                (Type.newty (Type.SumW[dst1.message_type; dst2.message_type])) in
+                                (Type.newty (Type.DataW(Type.Data.sumid 2,
+                                                        [dst1.message_type; dst2.message_type]))) in
                    let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - 1) tenc.attrib in
                    let denc12 = { payload = tenc.payload; attrib = da } in
                    let denc1 = build_truncate_extend denc12 dst1.message_type in

@@ -128,16 +128,17 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
                   let lets2, t2' = reduce t2 in
                     lets2 @ ((t1', (x,y)) :: lets1), t2'
           end
-    | CaseW(s, [(u, su); (v, sv)]) ->
+    | CaseW(id, s, [(u, su); (v, sv)]) when id = Type.Data.sumid 2 ->
         let letss, rs = reduce s in
           begin
             match rs.Term.desc with
-              | InW(2, 0, rs0) ->
+              | InW(id, 0, rs0) ->
                   let letsu, ru = reduce (Term.subst rs0 u su) in
                     letsu @ letss, ru
-              | InW(2, 1, rs1) ->
+              | InW(id, 1, rs1) ->
                   let letsu, rv = reduce (Term.subst rs1 v sv) in
                     letsu @ letss, rv
+                (* TODO : data *)
 (*              | CaseW(s1, [(x, sx); (y, sy)]) ->
                   let x' = fresh_var () in
                   let y' = fresh_var () in
@@ -150,7 +151,7 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
                   let letsv, rv = reduce sv in
                   let x = fresh_var () in
                   let y = fresh_var () in
-                    (mkPairW (mkCaseW rs [(u, mkLets letsu ru); (v, mkLets letsv rv)]) mkUnitW, (x, y)) :: letss, 
+                    (mkPairW (mkCaseW id rs [(u, mkLets letsu ru); (v, mkLets letsv rv)]) mkUnitW, (x, y)) :: letss, 
                     mkVar x
           end
     | AppW(t1, t2) ->
@@ -266,8 +267,10 @@ let trace (c: circuit) : func =
                <sigma, inr(v)> @ w3  |-->  <sigma, v> @ w2 *)
               begin
                 match v.Term.desc with
-                  | InW(2, 0, v') -> trace src w1.dst lets (sigma, v')
-                  | InW(2, 1, v') -> trace src w2.dst lets (sigma, v')
+                  | InW(id, 0, v') when id = Type.Data.sumid 2 -> 
+                      trace src w1.dst lets (sigma, v')
+                  | InW(id, 1, v') when id = Type.Data.sumid 2 -> 
+                      trace src w2.dst lets (sigma, v')
                   | _ -> 
                       (* Printf.printf "%s\n" (Printing.string_of_termW v); *)
                       let v' = fresh_var () in 
@@ -304,7 +307,6 @@ let trace (c: circuit) : func =
               let _, b_token = unTensorW w2.type_forward in
               let b, _ = unTensorW b_token in
               let (c, v'), lets' = unpair v lets in
-              let c' = if Type.equals a b then c else mkProjectW (b, a) c in
               let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Evaluation.project b a) c) v') in
                 trace src w2.dst (rlets @ lets') (sigma, v'')
           | LWeak(w1 (* \Tens A X *), 
@@ -314,7 +316,6 @@ let trace (c: circuit) : func =
               let _, b_token = unTensorW w2.type_back in
               let b, _ = unTensorW b_token in
               let (c, v'), lets' = unpair v lets in
-              let c' = if Type.equals a b then c else mkEmbedW (b, a) c in
               let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Evaluation.embed b a) c) v') in
                 trace src w1.dst (rlets @ lets') (sigma, v'')
           | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w3.src ->
@@ -341,8 +342,10 @@ let trace (c: circuit) : func =
               begin
                 let (c', v'), lets' = unpair v lets in
                   match c'.Term.desc with
-                    | InW(2, 0, c) -> trace src w2.dst lets' (sigma, mkPairW c v')
-                    | InW(2, 1, c) -> trace src w3.dst lets' (sigma, mkPairW c v')
+                    | InW(id, 0, c) when id = Type.Data.sumid 2 -> 
+                        trace src w2.dst lets' (sigma, mkPairW c v')
+                    | InW(id, 1, c) when id = Type.Data.sumid 2 -> 
+                        trace src w3.dst lets' (sigma, mkPairW c v')
                     | _ ->
                         let c = fresh_var () in
                           (*                      assert (Type.equals src.message_type w1.type_back); *)

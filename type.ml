@@ -3,7 +3,6 @@ type t =
       mutable mark : int;
       mutable id : int
     }
-
 and desc = 
   | Link of t
   | Var
@@ -11,7 +10,7 @@ and desc =
   | ZeroW
   | OneW
   | TensorW of t * t
-  | SumW of t list
+  | DataW of string * t list
   | FunW of t * t
   | MuW of t * t
   | ContW of t
@@ -19,6 +18,8 @@ and desc =
   | TensorU of t * t
   | FunU of t * t * t                          
 
+
+                      
 let next_id = ref 0                      
 let newty d = 
   incr next_id; { desc = d; mark = 0; id = !next_id }
@@ -50,7 +51,7 @@ let rec free_vars (b: t) : t list =
     | ContW(b1) -> free_vars b1
     | FunU(a1, b1, b2) -> 
         free_vars a1 @ (free_vars b1) @ (free_vars b2)
-    | SumW(bs) -> List.concat (List.map free_vars bs)
+    | DataW(_, bs) -> List.concat (List.map free_vars bs)
     | MuW(alpha, a) -> 
         let fva = free_vars a in
           List.filter (fun beta -> not (find beta == find alpha)) fva
@@ -63,7 +64,7 @@ let rec subst (f: t -> t) (b: t) : t =
     | ZeroW -> newty ZeroW
     | OneW -> newty OneW 
     | TensorW(b1, b2) -> newty(TensorW(subst f b1, subst f b2))
-    | SumW(bs) -> newty(SumW(List.map (subst f) bs))
+    | DataW(id, bs) -> newty(DataW(id, List.map (subst f) bs))
     | FunW(b1, b2) -> newty(FunW(subst f b1, subst f b2))
     | MuW(alpha, a) -> 
         let beta = newty Var in
@@ -98,10 +99,11 @@ let rec equals (u: t) (v: t) : bool =
             equals u1 v1
         | FunU(u1, u2, u3), FunU(v1, v2, v3) ->
             (equals u1 v1) && (equals u2 v2) && (equals u3 v3)
-        | SumW(lu), SumW(lv) ->            
-            List.fold_right 
+        | DataW(idu, lu), DataW(idv, lv) ->     
+            (idu = idv) &&
+            (List.fold_right 
               (fun (u1, v1) e -> e && (equals u1 v1)) 
-              (List.combine lu lv) true
+              (List.combine lu lv) true)
         | Link _, _ | _, Link _ -> assert false
         | _, _ -> 
             false
@@ -114,7 +116,7 @@ struct
 end
 )
 
-let freshen t = 
+let freshen_list ts = 
   let vm = Typetbl.create 10 in
   let fv x = 
     try 
@@ -124,13 +126,18 @@ let freshen t =
         Typetbl.add vm (find x) y;
         y
   in
-    subst fv t
+    List.map (subst fv) ts
+
+let freshen t = 
+  match freshen_list [t] with
+    | [f] -> f
+    | _ -> assert false
 
 let rec freshen_index_types (a: t) : t =
     match (find a).desc with
       | Var | ZeroW | OneW | NatW -> a
       | TensorW(b1, b2) -> newty(TensorW(freshen_index_types b1, freshen_index_types b2))
-      | SumW(bs) -> newty(SumW(List.map freshen_index_types bs))
+      | DataW(id, bs) -> newty(DataW(id, List.map freshen_index_types bs))
       | FunW(b1, b2) -> newty(FunW(freshen_index_types b1, freshen_index_types b2))
       | MuW(alpha, a) -> newty(MuW(alpha, freshen_index_types a))
       | ContW(b1) -> newty(ContW(freshen_index_types b1))
@@ -138,6 +145,93 @@ let rec freshen_index_types (a: t) : t =
       | TensorU(b1, b2) -> newty(TensorU(freshen_index_types b1, freshen_index_types b2))
       | FunU(a1, b1, b2) -> newty(FunU(newty Var, freshen_index_types b1, freshen_index_types b2))
       | Link _ -> assert false
+
+module Data =
+struct
+  type id = string
+
+  type d = { name : string;
+             params : t list;
+             constructors : (string * t) list }
+
+  let datatypes = Hashtbl.create 10
+  let boolid = 
+    Hashtbl.add datatypes "bool"
+      { name = "bool"; params = []; 
+        constructors = ["True", newty OneW;
+                        "False", newty OneW] };
+    "bool"
+
+  let sumid =
+    let sumtypes = Hashtbl.create 10 in
+      fun (n : int) ->
+        try Hashtbl.find sumtypes n 
+        with Not_found ->
+              let name = "sum" ^ (string_of_int n) in
+              let l = Listutil.init n (fun i -> i, newty Var) in
+              let params = List.map snd l in
+              let constructors = List.map (fun (i, alpha) -> 
+                                             (if n = 2 && i = 0 then "Inl" 
+                                             else if n = 2 && i = 1 then "Inr" 
+                                             else Printf.sprintf "In_%i_%i" n i), 
+                                             alpha) l in
+              let d = { name = name; params = params; constructors = constructors } in
+                Hashtbl.add datatypes name d;
+                Hashtbl.add sumtypes n name;
+                name
+                  
+  (* declare nullary and binary sums by default; all others are declared on demand *)
+  let _ = ignore (sumid 0); ignore (sumid 2)
+
+  let params id = List.length (Hashtbl.find datatypes id).params
+  let constructor_names id = 
+    let cs = (Hashtbl.find datatypes id).constructors in
+      List.map fst cs
+
+  let constructor_types id newparams = 
+    let cs = (Hashtbl.find datatypes id).constructors in
+    let ts = List.map snd cs in
+    let ps = (Hashtbl.find datatypes id).params in
+    let param_subst alpha = 
+      let l = List.combine ps newparams in
+        try List.assoc alpha l with Not_found -> alpha in
+      List.map (subst param_subst ) ts
+                     
+  exception Found of id * int 
+
+  let find name =
+    try
+      Hashtbl.iter (fun id d -> 
+                      Array.iteri (fun i (cname, _) ->
+                                    if cname = name then raise (Found (id, 0)))
+                        (Array.of_list d.constructors)) datatypes;
+        raise Not_found
+    with Found (id, i) -> id
+
+  let find_constructor name =
+    try
+      Hashtbl.iter (fun id d -> 
+                      Array.iteri (fun i (cname, _) ->
+                                    if cname = name then raise (Found (id, i)))
+                        (Array.of_list d.constructors)) datatypes;
+        raise Not_found
+    with Found (id, i) -> id, i
+
+  let make name = 
+    Hashtbl.add datatypes name { name = name; params = []; constructors = [] }
+
+  let add_param id var = 
+    let d = Hashtbl.find datatypes id in
+    let d' = { d with params = d.params @ [var] } in
+      Hashtbl.replace datatypes id d'
+
+  (* TODO: check for duplicates, parameters *)
+  let add_constructor id name arg =
+    let d = Hashtbl.find datatypes id in
+    let d' = { d with constructors = d.constructors @ [name, arg] } in
+      Hashtbl.replace datatypes id d'
+end
+
   
 let question_answer_pair s : t * t =
   let vm = Typetbl.create 10 in
@@ -157,11 +251,13 @@ let question_answer_pair s : t * t =
       | TensorU(b1, b2) ->
           let (bm1, bp1) = qap b1 in
           let (bm2, bp2) = qap b2 in
-            (newty (SumW[bm1; bm2]), newty (SumW[bp1; bp2]))
+            (newty (DataW(Data.sumid 2, [bm1; bm2])), 
+             newty (DataW(Data.sumid 2, [bp1; bp2])))
       | FunU(a, b1, b2) ->
           let (bm1, bp1) = qap b1 in
           let (bm2, bp2) = qap b2 in
-            (newty (SumW[newty (TensorW(a, bp1)); bm2]), 
-             newty (SumW[newty (TensorW(a, bm1)); bp2]))
+            (newty (DataW(Data.sumid 2, [newty (TensorW(a, bp1)); bm2])), 
+             newty (DataW(Data.sumid 2, [newty (TensorW(a, bm1)); bp2])))
       | _ -> failwith "error"
   in qap s
+

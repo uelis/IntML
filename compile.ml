@@ -53,7 +53,9 @@ type instruction =
      Axiom of wire (* [f] *) * (Term.var list * Term.t)
    | Tensor of wire (* X *) * wire (* Y *) * wire (* X \otimes Y *)
    | Der of wire (* \Tens A X *) * wire (* X *) * (Term.var list * Term.t)
-   | Contr of wire (* \Tens{A+B} X *) * wire (* \Tens A X *) * wire (* \Tens B X *)
+ (*  | Contr of wire (* \Tens{A+B} X *) * wire (* \Tens A X *) * wire (* \Tens B
+                                                                       X *) *)
+   | Case of wire * (wire list)
    | Door of wire (* X *) * wire (* \Tens A X *)
    | ADoor of wire (* \Tens (A x B) X *) * wire (* \Tens B X *) 
    | LWeak of wire (* \Tens A X *) * wire (* \Tens B X *) (* where B <= A *)
@@ -73,7 +75,7 @@ let rec wires (i: instruction list): wire list =
     | Axiom(w1, _) :: is -> w1 :: (wires is)
     | Tensor(w1, w2, w3) :: is -> w1 :: w2 :: w3 :: (wires is)
     | Der(w1, w2, _) :: is -> w1 :: w2 :: (wires is)
-    | Contr(w1, w2, w3) :: is -> w1 :: w2 :: w3 :: (wires is)
+    | Case(w1, ws) :: is -> w1 :: ws @ (wires is)
     | Door(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | ADoor(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | LWeak(w1, w2) :: is -> w1 :: w2 :: (wires is)
@@ -88,7 +90,7 @@ let map_wires_instruction (f: wire -> wire): instruction -> instruction =
     | Axiom(w, t) -> Axiom(f w, t)
     | Tensor(w1, w2, w3) -> Tensor(f w1, f w2, f w3)
     | Der(w1, w2, t) -> Der(f w1, f w2, t)
-    | Contr(w1, w2, w3) -> Contr(f w1, f w2, f w3)
+    | Case(w1, ws) -> Case(f w1, List.map f ws)
     | Door(w1, w2) -> Door(f w1, f w2)
     | Memo(w1, w2) -> Memo(f w1, f w2)
     | Grab(sigma, w1, w2) -> Grab(sigma, f w1, f w2)
@@ -228,38 +230,45 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
           let w_x = fresh_wire () in
           let w_y = fresh_wire () in
           let (w_t, i_t) = compile sigma ((x, w_x) :: (y, w_y) :: gamma_t) t in
-            (w_t, Contr(flip w_s, w_x, w_y) :: i_s @ i_t)
-      | CaseU(f, (x, s), (y, t)) ->
-          let duplicate_and_enter_wire (w: wire) 
-                : wire * wire * instruction list =
-            let w', wl, wr = fresh_wire (), fresh_wire (), fresh_wire () in
-            let wl_in_box, wr_in_box = fresh_wire (), fresh_wire () in
-            (wl_in_box, wr_in_box, 
-             [Der(w', flip w, (sigma, fresh_vars_for_missing_annots f)); 
-              Contr(flip w', wl, wr);
-              Door(wl_in_box, flip wl); Door(wr_in_box, flip wr)])
+            (w_t, Case(flip w_s, [w_x; w_y]) :: i_s @ i_t)
+      | CaseU(id, f, ts) -> (* [(x, s); (y, t)]) when id = Type.Data.sumid 2 -> *)
+          let n = List.length ts in
+          let copy_and_enter_wire (w: wire) 
+                : wire list * instruction list =
+            let w'= fresh_wire () in
+            let ws = Listutil.init n (fun _ -> fresh_wire ()) in
+            let ws_in_box = Listutil.init n (fun _ -> fresh_wire ()) in
+            let doors = List.map (fun (w, w_in_box) -> Door(w_in_box, flip w))
+                          (List.combine ws ws_in_box) in
+              ws_in_box, 
+              [Der(w', flip w, (sigma, fresh_vars_for_missing_annots f)); 
+               Case(flip w', ws)] @ doors
           in 
-          let rec duplicate_and_enter_ctx (c: ctx)
-                : ctx * ctx * instruction list =
+          let rec copy_and_enter_ctx (c: ctx)
+                : ctx list * instruction list =
             match c with 
-              | [] -> ([], [], [])
+              | [] -> (Listutil.init n (fun _ -> []), [])
               | (x, w) :: rest -> 
-                  let (wl, wr, is) = duplicate_and_enter_wire w in
-                  let (dl, dr, i') = duplicate_and_enter_ctx rest in
-                    ((x, wl) :: dl, (x, wr) :: dr, is @ i')
+                  let (ws, is) = copy_and_enter_wire w in
+                  let (cs, i') = copy_and_enter_ctx rest in
+                    (List.map (fun (w, c) -> (x, w) :: c) (List.combine ws cs),
+                     is @ i')
           in
-          let (gammal, gammar, i_dup) = duplicate_and_enter_ctx gamma in
-          let (w_s_in_box, i_s) = compile (x :: sigma) gammal s in
-          let (w_t_in_box, i_t) = compile (y :: sigma) gammar t in
-          let w_s, w_t = fresh_wire (), fresh_wire () in
-          let i_leavebox = [Door(flip w_s_in_box, w_s); 
-                            Door(flip w_t_in_box, w_t)] in
+          let (gammas, i_dup) = copy_and_enter_ctx gamma in
+          let (ts_in_box, i_ts) = 
+              (List.fold_right (fun (gamma, (x, t)) (ws, is) -> 
+                                  let w', is' = compile (x :: sigma) gamma t in
+                                    w' :: ws, is' @ is
+              ) (List.combine gammas ts) ([], [])) in
+          let ws = Listutil.init n (fun _ -> fresh_wire ()) in
+          let i_leavebox = List.map (fun (t, w) -> Door(flip t, w))
+                             (List.combine ts_in_box ws) in
           let w_join = fresh_wire () in
-          let i_join = [Contr(w_join, flip w_s, flip w_t)] in
+          let i_join = [Case(w_join, List.map flip ws)] in
           let w = fresh_wire () in
           let i_der = [Der(flip w_join, w, 
                            (sigma, fresh_vars_for_missing_annots f))] in
-            (w, i_der @ i_join @ i_leavebox @ i_s @ i_t @ i_dup)
+            (w, i_der @ i_join @ i_leavebox @ i_ts @ i_dup)
       | BoxTermU(t) ->
           let w = fresh_wire () in
             (w, [Axiom(w, 
@@ -305,7 +314,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
             U.unify w.type_forward (tyTensor(sigma1, typ));
             U.unify w.type_back (tyTensor(sigma1, tym)); 
             (w, ins)
-      | LoopW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _)| InW (_, _, _)
+      | LoopW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _, _)| InW (_, _, _)
       | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_)|UnitW
       | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ | ContW _ 
       | EmbedW _ | ProjectW _ ->
@@ -333,7 +342,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
  *)
 let infer_types (c : circuit) : Type.t =
   let tensor s t = Type.newty (Type.TensorW(s, t)) in
-  let sum s t = Type.newty (Type.SumW [s; t]) in
+  let sum s t = Type.newty (Type.DataW(Type.Data.sumid 2, [s; t])) in
   let rec constraints (instructions: instruction list) 
         : Typing.type_constraint list  =
     match instructions with
@@ -677,13 +686,17 @@ let rec in_k (k: int) (n: int) (t: Term.t): Term.t =
   if k = 0 then
     mkInlW t
   else
-    mkInrW (mkInW (n-1) (k-1) t)
+    mkInrW (mkInW (Type.Data.sumid (n-1)) (k-1) t)
 
 (* inverse to in_k: out_k (in_k k n t) n = (k, t) *)
 let rec out_k (t: Term.t) (n: int) : int * Term.t =
   match t.desc with
-  | InW(2, 0, s) -> (0, s)
-  | InW(2, 1, {desc = InW(n', k, s)}) when n = n' + 1 -> (k + 1, s)
+  | InW(id, 0, s) when id = Type.Data.sumid 2 -> 
+      (0, s)
+  | InW(id, 1, {desc = InW(id', k, s)}) 
+      when (id = Type.Data.sumid 2) && 
+           (id' = Type.Data.sumid (n - 1)) -> 
+      (k + 1, s)
   | _ -> failwith "out_k"
 
 
@@ -761,7 +774,7 @@ let message_passing_term (c: circuit): Term.t =
             | Tensor(w1, w2, w3) when w3.src = dst ->
                 (x, mkLetW (mkVar x)
                            ((sigma, x),
-                             mkCaseW (mkVar x) 
+                             mkCaseW (Type.Data.sumid 2) (mkVar x) 
                                     [(v, in_k w1.src (max_wire_src_dst + 1) 
                                            (mkPairW (mkVar sigma) (mkVar v))) ;
                                      (v, in_k w2.src (max_wire_src_dst + 1) 
@@ -785,7 +798,7 @@ let message_passing_term (c: circuit): Term.t =
                     w3 (* \Tens B X *)) when w1.src = dst  ->
                 (x, mkLetW (mkVar x) ((sigma, v),
                   mkLetW (mkVar v) ((c, v),
-                    mkCaseW (mkVar c) 
+                    mkCaseW (Type.Data.sumid 2) (mkVar c) 
                          [(c, in_k w2.src (max_wire_src_dst + 1) 
                                 (mkPairW (mkVar sigma) 
                                    (mkPairW (mkVar c) (mkVar v)))) ;
@@ -972,9 +985,9 @@ let message_passing_term (c: circuit): Term.t =
     let x = fresh_var () in
     let y = fresh_var () in
     let rec mkitoj i j = if i > j then [] else i :: (mkitoj (i+1) j) in
-    (x, mkCaseW (mkVar x) 
+    (x, mkCaseW (Type.Data.sumid 2) (mkVar x) 
           [part 0 all_wires;
-            (y, mkCaseW (mkVar y) 
+            (y, mkCaseW (Type.Data.sumid (max_wire_src_dst + 1)) (mkVar y) 
                   (List.map (fun k -> part k all_wires) 
                      (mkitoj 1 max_wire_src_dst)))])
   in 

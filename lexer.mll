@@ -28,7 +28,8 @@ let white = [' ' '\t']+
 let num = ['0'-'9']
 let alpha = ['a'-'z'] | ['A'-'Z'] | '\\'
 let nat = num*
-let ident =  alpha (alpha | num | '_' | ''' )*
+let ident =  ['a'-'z'] (alpha | num | '_' | ''' )*
+let constr =  ['A'-'Z'] (alpha | num | '_' | ''' )*
 
 rule main = parse
   | '\n'       { incr_linenum lexbuf; main lexbuf }
@@ -56,6 +57,8 @@ rule main = parse
   | '='        { TokEquals }
   | ":="       { TokColonEquals }
   | "mu"       { TokMu }
+  | "type"     { TokKwType }
+  | "unit"     { TokKwUnit }
   | "delete"   { TokDelete }
   | "fold"     { TokFold }
   | "unfold"   { TokUnfold }
@@ -63,19 +66,16 @@ rule main = parse
   | "then"     { TokKwThen }
   | "else"     { TokKwElse }
   | "print"    { TokKwPrint }
-  | "bool"     { TokKwBool }
   | "int"      { TokKwNat }
   | "eq"       { TokKwEq }
   | "hack"     { TokKwHack }
   | "copy"     { TokKwCopy }
   | "let"      { TokLet }
   | "as"       { TokAs }
-  | "of"       { TokOf }
+  | "of"       { TokKwOf }
   | "in"       { TokIn }
   | "case"     { TokCase }
   | "loop"     { TokLoop }
-  | "inl"      { TokKwInl }
-  | "inr"      { TokKwInr }
   | "letw"     { TokLetW }
   | "letu"     { TokLetU }
   | "memo"     { TokMemo }
@@ -87,6 +87,7 @@ rule main = parse
   | "|"        { TokVertbar }
   | nat        { TokNum (int_of_string (Lexing.lexeme lexbuf)) }
   | ident      { TokIdent (Lexing.lexeme lexbuf) }
+  | constr     { TokConstr (Lexing.lexeme lexbuf) }
   | eof        { TokEof } 
   | "(*"       { comments 0 lexbuf}
   | "\""       { let buf = Buffer.create 1 in
