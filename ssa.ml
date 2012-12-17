@@ -328,7 +328,7 @@ let trace (c: circuit) : func =
               (* <sigma, <v,w>> @ w2  |-->  <sigma, w> @ w3 *)
               let rlets, v' = reduce (mkSndW v) in
               trace src w3.dst (rlets @ lets) (sigma, v')
-          | Contr(w1, w2, w3) when dst = w2.src -> 
+    (*      | Contr(w1, w2, w3) when dst = w2.src -> 
               (*  <sigma, <v,w>> @ w2         |-->  <sigma, <inl(v),w>> @ w1 *) 
               let (c, v'), lets' = unpair v lets in
                 trace src w1.dst lets' (sigma, mkPairW (mkInlW c) v')
@@ -353,7 +353,7 @@ let trace (c: circuit) : func =
                                  (c', 
                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w2.dst; message_type = w2.type_forward}),
                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w3.dst; message_type = w3.type_forward})))
-              end
+              end*)
            | Grab(s, w1, wt) when w1.src = dst ->
                 trace src w1.dst lets
                    (sigma, mkContW wt.dst (max_wire_src_dst + 1) sigma)

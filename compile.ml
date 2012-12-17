@@ -55,7 +55,7 @@ type instruction =
    | Der of wire (* \Tens A X *) * wire (* X *) * (Term.var list * Term.t)
  (*  | Contr of wire (* \Tens{A+B} X *) * wire (* \Tens A X *) * wire (* \Tens B
                                                                        X *) *)
-   | Case of wire * (wire list)
+   | Case of Type.Data.id * wire * (wire list)
    | Door of wire (* X *) * wire (* \Tens A X *)
    | ADoor of wire (* \Tens (A x B) X *) * wire (* \Tens B X *) 
    | LWeak of wire (* \Tens A X *) * wire (* \Tens B X *) (* where B <= A *)
@@ -75,7 +75,7 @@ let rec wires (i: instruction list): wire list =
     | Axiom(w1, _) :: is -> w1 :: (wires is)
     | Tensor(w1, w2, w3) :: is -> w1 :: w2 :: w3 :: (wires is)
     | Der(w1, w2, _) :: is -> w1 :: w2 :: (wires is)
-    | Case(w1, ws) :: is -> w1 :: ws @ (wires is)
+    | Case(_, w1, ws) :: is -> w1 :: ws @ (wires is)
     | Door(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | ADoor(w1, w2) :: is -> w1 :: w2 :: (wires is)
     | LWeak(w1, w2) :: is -> w1 :: w2 :: (wires is)
@@ -90,7 +90,7 @@ let map_wires_instruction (f: wire -> wire): instruction -> instruction =
     | Axiom(w, t) -> Axiom(f w, t)
     | Tensor(w1, w2, w3) -> Tensor(f w1, f w2, f w3)
     | Der(w1, w2, t) -> Der(f w1, f w2, t)
-    | Case(w1, ws) -> Case(f w1, List.map f ws)
+    | Case(id, w1, ws) -> Case(id, f w1, List.map f ws)
     | Door(w1, w2) -> Door(f w1, f w2)
     | Memo(w1, w2) -> Memo(f w1, f w2)
     | Grab(sigma, w1, w2) -> Grab(sigma, f w1, f w2)
@@ -230,7 +230,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
           let w_x = fresh_wire () in
           let w_y = fresh_wire () in
           let (w_t, i_t) = compile sigma ((x, w_x) :: (y, w_y) :: gamma_t) t in
-            (w_t, Case(flip w_s, [w_x; w_y]) :: i_s @ i_t)
+            (w_t, Case(Type.Data.sumid 2, flip w_s, [w_x; w_y]) :: i_s @ i_t)
       | CaseU(id, f, ts) -> (* [(x, s); (y, t)]) when id = Type.Data.sumid 2 -> *)
           let n = List.length ts in
           let copy_and_enter_wire (w: wire) 
@@ -242,7 +242,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
                           (List.combine ws ws_in_box) in
               ws_in_box, 
               [Der(w', flip w, (sigma, fresh_vars_for_missing_annots f)); 
-               Case(flip w', ws)] @ doors
+               Case(id, flip w', ws)] @ doors
           in 
           let rec copy_and_enter_ctx (c: ctx)
                 : ctx list * instruction list =
@@ -264,7 +264,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
           let i_leavebox = List.map (fun (t, w) -> Door(flip t, w))
                              (List.combine ts_in_box ws) in
           let w_join = fresh_wire () in
-          let i_join = [Case(w_join, List.map flip ws)] in
+          let i_join = [Case(id, w_join, List.map flip ws)] in
           let w = fresh_wire () in
           let i_der = [Der(flip w_join, w, 
                            (sigma, fresh_vars_for_missing_annots f))] in
@@ -451,32 +451,28 @@ let infer_types (c : circuit) : Type.t =
             Typing.eq_constraint
               w2.type_back (tensor sigma2 alpha2) ::
             (constraints rest)
-      | Contr(w1 (* \Tens{A+B} X *), 
-              w2 (* \Tens A X *), w3 (* \Tens B X *)) :: rest ->
+      | Case(id, w1 (* \Tens{A+B} X *), ws) :: rest ->
+          let n = Type.Data.params id in
+          let params = Listutil.init n (fun _ -> Type.newty Type.Var) in
+          let data = Type.newty (Type.DataW(id, params)) in
+          let conss = Type.Data.constructor_types id params in
           let sigma1 = Type.newty Type.Var in
-          let alpha1 = Type.newty Type.Var in
-          let beta1 = Type.newty Type.Var in
           let gamma1 = Type.newty Type.Var in
+          let gamma2 = Type.newty Type.Var in
             Typing.eq_constraint
               w1.type_forward 
-              (tensor sigma1 (tensor (sum alpha1 beta1) gamma1)) ::
-            Typing.eq_constraint
-              w2.type_back (tensor sigma1 (tensor alpha1 gamma1)) ::
-            Typing.eq_constraint
-              w3.type_back (tensor sigma1 (tensor beta1 gamma1)) ::
-            let sigma2 = Type.newty Type.Var in
-            let alpha2 = Type.newty Type.Var in
-            let beta2 = Type.newty Type.Var in
-            let gamma2 = Type.newty Type.Var in
-            Typing.eq_constraint
-              w2.type_forward 
-              (tensor sigma2 (tensor alpha2 gamma2)) ::
-            Typing.eq_constraint
-              w3.type_forward
-              (tensor sigma2 (tensor beta2 gamma2)) ::
+              (tensor sigma1 (tensor data gamma1)) ::
             Typing.eq_constraint
               w1.type_back 
-              (tensor sigma2 (tensor (sum alpha2 beta2) gamma2)) ::
+              (tensor sigma1 (tensor data gamma2)) ::
+            (List.map (fun (w, alpha) ->
+                         Typing.eq_constraint
+                           w.type_back (tensor sigma1 (tensor alpha gamma1)))
+               (List.combine ws conss)) @
+            (List.map (fun (w, alpha) ->
+                         Typing.eq_constraint
+                           w.type_forward (tensor sigma1 (tensor alpha gamma2)))
+               (List.combine ws conss)) @
             (constraints rest)
       | Door(w1 (* X *) , w2 (* \Tens A X *))::rest ->
           let sigma1 = Type.newty Type.Var in
@@ -590,9 +586,10 @@ let rec dot_of_circuit
           | Der(w1, w2, _) -> 
               Printf.sprintf "\"Der({%i,%i},{%i,%i})\"" 
                 w1.src w1.dst w2.src w2.dst 
-          | Contr(w1, w2, w3) -> 
-              Printf.sprintf "\"Contr({%i,%i},{%i,%i},{%i,%i})\"" 
-                w1.src w1.dst w2.src w2.dst w3.src w3.dst
+          | Case(id, w1, ws) -> 
+              Printf.sprintf "\"Contr(%s, {%i,%i},%s)\"" 
+                id w1.src w1.dst 
+                (String.concat "," (List.map (fun w -> Printf.sprintf "{%i,%i}" w.src w.dst) ws))
           | Door(w1, w2) -> 
               Printf.sprintf "\"Door({%i,%i},{%i,%i})\"" 
                 w1.src w1.dst w2.src w2.dst
@@ -622,7 +619,7 @@ let rec dot_of_circuit
           | Axiom(_, _) -> "hack(...)"
           | Tensor(_, _, _) -> "&otimes;"
           | Der(_, _, _) -> "&pi;_..."
-          | Contr(_, _, _) -> "a+"
+          | Case(_, _, _) -> "case"
           | Memo(_, _) -> "memo"
           | Grab(_) -> "grab"
           | Force(_, _) -> "force"
@@ -793,39 +790,28 @@ let message_passing_term (c: circuit): Term.t =
                     (mkPairW (mkVar sigma) 
                        (mkPairW (let_tupleW sigma f) (mkVar v)))
                 ))
-            | Contr(w1 (* \Tens{A+B} X *), 
-                    w2 (* \Tens A X *), 
-                    w3 (* \Tens B X *)) when w1.src = dst  ->
+            | Case(id, w1, ws) when w1.src = dst  ->
                 (x, mkLetW (mkVar x) ((sigma, v),
                   mkLetW (mkVar v) ((c, v),
-                    mkCaseW (Type.Data.sumid 2) (mkVar c) 
-                         [(c, in_k w2.src (max_wire_src_dst + 1) 
-                                (mkPairW (mkVar sigma) 
-                                   (mkPairW (mkVar c) (mkVar v)))) ;
-                          (d, in_k w3.src (max_wire_src_dst + 1) 
-                                (mkPairW (mkVar sigma) 
-                                   (mkPairW (mkVar d) (mkVar v)))) ]
+                    mkCaseW id (mkVar c) 
+                      (List.map (fun w -> 
+                                   (c, in_k w.src (max_wire_src_dst + 1) 
+                                         (mkPairW (mkVar sigma) 
+                                            (mkPairW (mkVar c) (mkVar v))))) ws)
                     )
                   )
                 )
-            | Contr(w1 (* \Tens{A+B} X *), 
-                    w2 (* \Tens A X *), 
-                    w3 (* \Tens B X *)) when w2.src = dst  ->
+            | Case(id, w1, ws) when List.mem dst (List.map (fun w -> w.src) ws) -> 
+                let n = List.length ws in
+                let wsi = List.combine 
+                            (List.map (fun w -> w.src) ws)
+                            (Listutil.init n (fun i -> i)) in
+                let i = List.assoc dst wsi in
                 (x, mkLetW (mkVar x) ((sigma, v), 
                   mkLetW (mkVar v) ((c, y),
                     in_k w1.src (max_wire_src_dst + 1) 
                       (mkPairW (mkVar sigma) 
-                         (mkPairW (mkInlW (mkVar c)) (mkVar y)))
-                  ) 
-                ))
-            | Contr(w1 (* \Tens{A+B} X *), 
-                    w2 (* \Tens A X *), 
-                    w3 (* \Tens B X *)) when w3.src = dst  ->
-                (x, mkLetW (mkVar x) ((sigma, v),
-                  mkLetW (mkVar v) ((d, y),
-                    in_k w1.src (max_wire_src_dst + 1) 
-                      (mkPairW (mkVar sigma) 
-                         (mkPairW (mkInrW (mkVar d)) (mkVar y)))
+                         (mkPairW (mkInW id i (mkVar c)) (mkVar y)))
                   ) 
                 ))
             | Grab(_, w1, wt) when w1.src = dst ->

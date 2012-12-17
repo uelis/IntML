@@ -177,3 +177,12 @@ letu e = (toDigits eContFrac)
 
 letu ttt = printlist e [500]
 letu ttu = printlist eContFrac [2100]
+
+type three<'a> = One of 'a | Two of unit | Three of 'a*'a
+
+letu xxx = fun x ->
+   let [v] = x in
+   case v of
+     One(a) -> [a]
+   | Two -> [1]
+   | Three(p) -> [let (x,y)=p in x]
