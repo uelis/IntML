@@ -333,13 +333,9 @@ let build_term
       | LetW(t1, (x, y, t2)) ->
           let alpha = Type.newty Type.Var in
             mkLetW (mkTypeAnnot (annotate_term t1) (Some alpha)) ((x, y), annotate_term t2)
-      | InW(id, 0, t1) when id = Type.Data.sumid 2 -> 
+      | InW(id, i, t1) -> 
           let alpha = Type.newty Type.Var in
-            mkTypeAnnot (mkInlW (annotate_term t1)) (Some alpha)
-      | InW(id, 1, t1)  when id = Type.Data.sumid 2 -> 
-          let alpha = Type.newty Type.Var in
-            mkTypeAnnot (mkInrW (annotate_term t1)) (Some alpha)
-      | InW(_, _, _) -> assert false
+            mkTypeAnnot (mkInW id i (annotate_term t1)) (Some alpha)
       | CaseW(id, t1, [(x, t2); (y, t3)]) (* when id = Type.Data.sumid 2 *) ->
           let alpha = Type.newty Type.Var in
               (mkCaseW id
@@ -476,7 +472,7 @@ let build_term
                                            (y, {payload = syp; attrib = sya }) :: ctx) t args
               | _ -> assert false
           end
-      | TypeAnnot({ desc = InW(id, i, t) }, Some a) when id = Type.Data.sumid 2 ->
+      | TypeAnnot({ desc = InW(id, i, t) }, Some a) ->
           assert (args = []);
           let tenc = build_annotatedterm ctx t [] in
           let branch = Llvm.const_int (Llvm.integer_type context 1) i in
@@ -818,10 +814,14 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                  ) dsts
            | Branch(src, x, lets, (id, s, cases)) (* (xl, bodyl, dst1), (xr, bodyr, dst2)) *) ->
                begin
+                 let n = List.length cases in
+                 let params = List.map (fun (x, b, dst) -> dst.message_type) cases in
+                 let sumid = Type.Data.sumid n in
+                 let sum = Type.newty (Type.DataW(Type.Data.sumid n, params)) in
                  let lets', t = 
                    reduce (mkLets lets (mkCaseW id s 
                                           (Listutil.mapi 
-                                             (fun i (x, body, _) -> (x, mkInW id i body))
+                                             (fun i (x, body, _) -> (x, mkInW sumid i body))
                                              cases
                                           ))) in
                    let else_block = Llvm.append_block context "else" func in
@@ -830,12 +830,9 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                  let src_block = get_block src.name in
                    Llvm.position_at_end src_block builder;
                    let senc = Hashtbl.find phi_nodes src.name in
-                   let params = List.map (fun (x, b, dst) -> dst.message_type) cases in
-                   let data = Type.newty (Type.DataW(id, params)) in
                    let tenc = build_term the_module get_dynamic_dest_block
                                 [(x, senc)] [(x, src.message_type)] (mkLets lets' t)
-                                data in
-                   let n = List.length cases in
+                                sum in
                    let cond, da = Bitvector.takedrop tenc.attrib (singleton_profile (log n))in
                    let denc_all = { payload = tenc.payload; attrib = da } in
                    let dencs = List.map (fun (x, b, dst) -> build_truncate_extend denc_all dst.message_type) cases in

@@ -15,8 +15,8 @@ let part n l =
     (List.rev h, t)
 
 let mapi f l =
-  let i, r = List.fold_right (fun x (i, r) -> i + 1, f i x :: r) l (0, []) in
-    r
+  let i = ref 0 in
+    List.map (fun x -> let r = f !i x in incr i; r) l
 
 let iteri f l =  
   ignore (mapi f l)
