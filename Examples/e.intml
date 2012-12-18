@@ -3,7 +3,6 @@ letw continue = fun x -> Inr(x)
 
 type list<'a> = Nil of unit | Cons of 'a * list<'a>
 
-(*
 letw fixw = fun x ->
   case x of 
     Inl(lx) -> 
@@ -25,8 +24,8 @@ letw fixw = fun x ->
 
 letu fix = hack fixw
  as {list<'b>}({'b}'a --o 'a) --o 'a
-*)
 
+(*
 letw fixw = fun x ->
   case x of 
     Inl(lx) -> 
@@ -49,7 +48,7 @@ letw fixw = fun x ->
 
 letu fix = hack fixw
  as {'c (* mu 'c. 1 + 'b*'c *)}({'b}'a --o 'a) --o 'a
-
+*)
 (*
 type lazylist<'a> = 
         Susp of cont<cont<'a>>

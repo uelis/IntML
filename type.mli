@@ -36,6 +36,8 @@ sig
   val params : id -> int
   val constructor_names : id -> string list 
   val constructor_types : id -> t list -> t list
+  val is_recursive : id -> bool
+(*  val is_mutable : id -> bool *)
 
   val find_constructor: string -> id * int
 

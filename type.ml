@@ -195,8 +195,21 @@ struct
     let param_subst alpha = 
       let l = List.combine ps newparams in
         try List.assoc alpha l with Not_found -> alpha in
-      List.map (subst param_subst ) ts
-                     
+      List.map (subst param_subst) ts
+
+  let is_recursive id =
+    let rec check_rec a =
+      match finddesc a with
+        | Var | ZeroW | OneW | NatW -> false
+        | ContW(b1) -> check_rec b1
+        | TensorW(b1, b2) | FunW(b1, b2) -> check_rec b1 || (check_rec b2)
+        | DataW(id', bs) -> id = id' || List.exists check_rec bs
+        | MuW(alpha, a) -> false
+        | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | Link _ -> assert false in 
+    let freshparams = Listutil.init (params id) (fun i -> newty Var) in
+    let ct = constructor_types id freshparams in
+      List.exists check_rec ct
+
   exception Found of id * int 
 
   let find name =

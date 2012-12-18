@@ -164,7 +164,6 @@ struct
         (Llvm.undef struct_type) 
 
   let unpack p v = 
-    let struct_type = packing_type p in
     let pos = ref 0 in
     let rec extract n =
       if n = 0 then []
@@ -218,7 +217,7 @@ type encoded_value = {
  * Attrib: x.a
  *)
 
-(* TODO: account for recursive types *)                       
+(* TODO: Account for recursive types *)                       
 
 let rec payload_size (a: Type.t) : int = 
   let payload_size_memo = Type.Typetbl.create 5 in
@@ -235,8 +234,11 @@ let rec payload_size (a: Type.t) : int =
               | ContW(_) -> 2
               | TensorW(a1, a2) -> p_s a1 + (p_s a2)
               | DataW(id, ps) -> 
-                  let cs = Type.Data.constructor_types id ps in
-                    List.fold_right (fun c m -> max (p_s c) m) cs 0
+                  if Type.Data.is_recursive id then
+                    1
+                  else 
+                    let cs = Type.Data.constructor_types id ps in
+                      List.fold_right (fun c m -> max (p_s c) m) cs 0
               | MuW _ -> 1
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) -> assert false
         in
@@ -244,6 +246,7 @@ let rec payload_size (a: Type.t) : int =
           size
   in p_s a
 
+(* aufräumen *)       
 let attrib_size (a: Type.t) : profile =
   let attrib_size_memo = Type.Typetbl.create 5 in
   let rec a_s a = 
@@ -260,22 +263,25 @@ let attrib_size (a: Type.t) : profile =
                                                   | Some x, None | None, Some x -> Some x
                                                   | None, None -> None) (a_s a1) (a_s a2)
               | DataW(id, ps) -> 
-                  begin
-                    let cs = Type.Data.constructor_types id ps in
-                    let n = List.length cs in
-                    let mx = List.fold_right (fun c mx ->
-                                                (M.merge (fun i x' y' -> 
-                                                            match x', y' with
-                                                              | Some x, Some y -> Some (max x y)
-                                                              | Some x, None | None, Some x -> Some x
-                                                              | None, None -> None) 
-                                                   (a_s c) mx)) cs M.empty in
-                    let i = log n in
-                      try
-                        let ni = M.find i mx in
-                          M.add i (ni + 1) mx
-                      with Not_found -> M.add i 1 mx
-                  end
+                  if Type.Data.is_recursive id then
+                    M.empty
+                  else
+                    begin
+                      let cs = Type.Data.constructor_types id ps in
+                      let n = List.length cs in
+                      let mx = List.fold_right (fun c mx ->
+                                                  (M.merge (fun i x' y' -> 
+                                                              match x', y' with
+                                                                | Some x, Some y -> Some (max x y)
+                                                                | Some x, None | None, Some x -> Some x
+                                                                | None, None -> None) 
+                                                     (a_s c) mx)) cs M.empty in
+                      let i = log n in
+                        try
+                          let ni = M.find i mx in
+                            M.add i (ni + 1) mx
+                        with Not_found -> M.add i 1 mx
+                    end
               | MuW _ -> M.empty
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) -> assert false
         in
@@ -351,7 +357,7 @@ let build_term
             mkLetW (mkTypeAnnot (annotate_term t1) (Some alpha)) ((x, y), annotate_term t2)
       | InW(id, i, t1) -> 
           let alpha = Type.newty Type.Var in
-            mkTypeAnnot (mkInW id i (annotate_term t1)) (Some alpha)
+            mkTypeAnnot (mkInW id i (annotate_term t1)) (Some alpha)              
       | CaseW(id, t1, cases)  ->
           let alpha = Type.newty Type.Var in
               (mkCaseW id
@@ -495,16 +501,50 @@ let build_term
           let branch = Llvm.const_int (Llvm.integer_type context (log n)) i in
           let attrib_branch = Bitvector.pair (Bitvector.singleton (log n) branch) tenc.attrib in
           let denc = { payload = tenc.payload; attrib = attrib_branch} in
-            build_truncate_extend denc a 
+          if Type.Data.is_recursive id then
+            let i64 = Llvm.i64_type context in
+            let malloctype = Llvm.function_type 
+                               (Llvm.pointer_type (Llvm.i8_type context)) 
+                               (Array.of_list [i64]) in
+            let malloc = Llvm.declare_function "malloc" malloctype the_module in
+            let cs_types = 
+              match Type.finddesc a with
+                | Type.DataW(id, ps) -> Type.Data.constructor_types id ps 
+                | _ -> assert false in
+            let a_unfolded = Type.newty (Type.DataW(Type.Data.sumid n, cs_types)) in
+            let a_struct = packing_type a_unfolded in
+            let denc_packed = pack_encoded_value (build_truncate_extend denc a_unfolded) a_unfolded in
+            let mem_i8ptr = Llvm.build_call malloc (Array.of_list [Llvm.size_of a_struct]) 
+                              "memi8" builder in
+            let mem_a_struct_ptr = Llvm.build_bitcast mem_i8ptr (Llvm.pointer_type a_struct) 
+                                     "memstruct" builder in
+              ignore (Llvm.build_store denc_packed mem_a_struct_ptr builder);
+              let pl = Llvm.build_ptrtoint mem_a_struct_ptr i64 "memint" builder in
+                {payload = [pl]; attrib = Bitvector.null}
+          else 
+              build_truncate_extend denc a 
       | CaseW(id, { desc = TypeAnnot(u, Some a) }, cases) 
 (*          when id = Type.Data.sumid 2 *)
         ->           
-          let uenc = build_annotatedterm ctx u [] in
           let n = List.length cases in
           let cs_types = 
             match Type.finddesc a with
               | Type.DataW(id, ps) -> Type.Data.constructor_types id ps 
               | _ -> assert false in
+          let uenc = 
+            if Type.Data.is_recursive id then
+              let a_unfolded = Type.newty (Type.DataW(Type.Data.sumid n, cs_types)) in
+              let a_struct = packing_type a_unfolded in
+                begin
+                  match build_annotatedterm ctx u args with
+                    | {payload = [tptrint] } ->
+                        let tptr = Llvm.build_inttoptr tptrint (Llvm.pointer_type a_struct) "tptr" builder in
+                        let tstruct = Llvm.build_load tptr "tstruct" builder in
+                          unpack_encoded_value tstruct a_unfolded
+                    | _ -> assert false
+                end
+                else    
+                  build_annotatedterm ctx u [] in
 (*          assert (Bitvector.length uenc.attrib > 0); *)
           let cond, xya = Bitvector.takedrop uenc.attrib (singleton_profile (log n)) in
           let xyenc = {payload = uenc.payload; attrib = xya } in
