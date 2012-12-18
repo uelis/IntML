@@ -1,35 +1,35 @@
-letw true : 2 = inl()
-letw false : 2 = inr()
-letw not : 2 -> 2 =
+letw true  = Inl()
+letw false  = Inr()
+letw not  =
   fun x -> if x then false else true
-letw and : 2 -> 2 -> 2 = 
+letw and  = 
   fun x -> fun y ->
     if x then (if y then true else false) else false
-letw or = fun (x : 2) -> fun (y : 2) ->
-  if x then true else y
+letw or = fun x  -> fun y  ->
+  case x of True -> True | False -> y
 
 letw fixw = fun x ->
   case x of 
-    inl(lx) -> 
+    Inl(lx) -> 
       let (l,x) = lx in
-        case x of
-          inl(bq) ->
+       ( case x of
+          Inl(bq) ->
             let (b,q) = bq in
-              inl(fold<'c.1+'b*'c> (inr(b,l)), inr(q))
-        | inr(a) ->
-            let r = unfold<'c.1+'b*'c> l in
-            let u = delete<'c.1+'b*'c> l in  
-            case r of
-              inl(nl) -> 
-                 inr(a)
-            | inr(cns) ->
+              Inl(fold<'c.unit+'b*'c> (Inr(b,l)), Inr(q))
+        | Inr(a) ->
+            let r = unfold<'c.unit+'b*'c> l in
+            let u = delete<'c.unit+'b*'c> l in  
+            (case r of
+              Inl(nl) -> 
+                 Inr(a)
+            | Inr(cns) ->
                let (hd, tl) = cns in
-                 inl(tl, inl(hd, a))
-  | inr(q) -> 
-     inl(fold<'c.1+'b*'c> (inl()), inr(q))
+                 Inl(tl, Inl(hd, a))))
+  | Inr(q) -> 
+     Inl(fold<'c.unit+'b*'c> (Inl()), Inr(q))
 
 letu fix = hack fixw
- as {'c (* mu 'c. 1 + 'b*'c *)}({'b}'a --o 'a) --o 'a
+ as {'c (* mu 'c. unit + 'b*'c *)}({'b}'a --o 'a) --o 'a
 
 
 letu val = fun n -> fun k -> k n
@@ -44,8 +44,8 @@ letu add = fun k -> k (fun n -> fun k1 ->
 letu if0 = fun x1 -> fun x2 -> fun k -> k (fun n -> fun k ->
                         let [nv] = n in
                         case nv = 0 of
-                          inl(true) -> x1 k
-                        | inr(false) -> x2 k)
+                          True -> x1 k
+                        | False -> x2 k)
 letu add1 = fun k -> k (fun n -> fun k1 -> 
                         let [nv] = n in 
                           k1 (fun m -> fun k2 -> 
@@ -114,8 +114,8 @@ letu step1 =
      val (fun x -> mem (fun k ->
           let [xv] = x in
           case xv < 2 of
-            inl(true) -> val [1] k
-          | inr(false) -> 
+            True -> val [1] k
+          | False -> 
               app (app add (f1 [xv - 1])) (f2 [xv - 2]) k 
          ))
 
@@ -126,8 +126,8 @@ letu step =
          k1 (fun n -> eval (fun k2 ->
                         let [nv] = n in 
                         case or (nv = 0) (nv = 1) of
-                          inl(true) -> k2 [1]
-                        | inr(false) -> 
+                          True -> k2 [1]
+                        | False -> 
                              f1 [nv - 1] 
                              (fun m -> let [mv] = m in
                              f2 [nv - 2] 

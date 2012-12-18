@@ -486,7 +486,9 @@ let solve_constraints (con: type_constraint list) : unit =
       | [] -> ()
       | (a, alpha) :: rest ->
           let b = 
-            try newty (DataW(Data.sumid 2, [a; Type.Typetbl.find m (Type.find alpha)])) with Not_found -> a 
+            try a :: Type.Typetbl.find m (Type.find alpha) with Not_found -> [a]
+(*              newty (DataW(Data.sumid 2, [a; Type.Typetbl.find m (Type.find
+ *              alpha)])) with Not_found -> a *)
           in
             Type.Typetbl.replace m (Type.find alpha) b;
             join_lower_bounds rest in
@@ -506,7 +508,10 @@ let solve_constraints (con: type_constraint list) : unit =
     join_lower_bounds ineqs;
     (* Add equations for lower bounds. *)    
     let ineqs = 
-      Type.Typetbl.fold (fun alpha a l -> (a, alpha) :: l)
+      Type.Typetbl.fold (fun alpha a l -> 
+                           match a with
+                             | [a0] -> (a0, alpha) :: l
+                             | _ -> (newty (DataW(Data.sumid (List.length a), a)), alpha) :: l)
         m [] 
     in
     (*

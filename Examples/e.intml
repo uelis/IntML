@@ -212,3 +212,5 @@ letu xxx = fun x ->
      One(a) -> [a]
    | Two -> [1]
    | Three(p) -> [let (x,y)=p in x]
+
+letu yyy = let [a] = xxx [Three(3,4)] in [print a]

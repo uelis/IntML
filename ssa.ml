@@ -40,11 +40,11 @@ let string_of_block b =
         (String.concat "" (List.map (fun (t, (x, y)) -> 
                                        Printf.sprintf "  val (%s, %s) = %s\n" 
                                          x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
-        (Printf.sprintf "  in case %s of\n" (Printing.string_of_termW cond)) ^
-        (String.concat " | "
-           (List.map (fun (l, lb, lg) ->
-                        Printf.sprintf "    inl(%s) => l%i(%s)\n" l lg.name (Printing.string_of_termW lb))
-              cases
+        (Printf.sprintf "  in case %s of\n     | " (Printing.string_of_termW cond)) ^
+        (String.concat "     | "
+           (List.map (fun (cname, (l, lb, lg)) ->
+                        Printf.sprintf "%s(%s) => l%i(%s)\n" cname l lg.name (Printing.string_of_termW lb))
+              (List.combine (Type.Data.constructor_names id) cases)
            ))
     | Return(l, x, bndgs, body, retty) ->
         (Printf.sprintf "and l%i(%s)=\n  let" 
@@ -131,30 +131,23 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
                   let lets2, t2' = reduce t2 in
                     lets2 @ ((t1', (x,y)) :: lets1), t2'
           end
-    | CaseW(id, s, [(u, su); (v, sv)]) (* when id = Type.Data.sumid 2*) ->
+    | CaseW(id, s, cases) ->
         let letss, rs = reduce s in
           begin
             match rs.Term.desc with
-              | InW(id, 0, rs0) ->
+              | InW(id, i, rs0) ->
+                  let u, su = List.nth cases i in
                   let letsu, ru = reduce (Term.subst rs0 u su) in
                     letsu @ letss, ru
-              | InW(id, 1, rs1) ->
-                  let letsu, rv = reduce (Term.subst rs1 v sv) in
-                    letsu @ letss, rv
-                (* TODO : data *)
-(*              | CaseW(s1, [(x, sx); (y, sy)]) ->
-                  let x' = fresh_var () in
-                  let y' = fresh_var () in
-                  let sx' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) sx in
-                  let sy' = Term.rename_vars (fun z -> if z = x then x' else if z = y then y' else z) sy in
-                    mkCaseW s1 [(x', reduce (mkCaseW sx' [(u, su); (v, sv)])); 
-                                (y', reduce (mkCaseW sy' [(u, su); (v, sv)]))]*)
-              | _ -> 
-                  let letsu, ru = reduce su in
-                  let letsv, rv = reduce sv in
+              | _ ->
+                  let reduced_cases =
+                    List.fold_right (fun (u, su) reduced_cases ->
+                                       let letsu, ru = reduce su in
+                                         (u, mkLets letsu ru) :: reduced_cases)
+                      cases [] in
                   let x = fresh_var () in
                   let y = fresh_var () in
-                    (mkPairW (mkCaseW id rs [(u, mkLets letsu ru); (v, mkLets letsv rv)]) mkUnitW, (x, y)) :: letss, 
+                    (mkPairW (mkCaseW id rs reduced_cases) mkUnitW, (x, y)) :: letss, 
                     mkVar x
           end
     | AppW(t1, t2) ->

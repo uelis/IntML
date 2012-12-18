@@ -358,7 +358,7 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_char buf ')'
       | TypeAnnot(t, _) ->
           s_termW_atom t
-      | LambdaW(_, _) | LetW(_, _) | CaseW(_, _, _)
+      | LambdaW(_, _) | LetW(_, _) | CaseW(_, _, _) | InW _ 
       | LoopW(_) | AppW(_, _) | FoldW _ | UnfoldW _ | DeleteW _ | AssignW _ ->
           Buffer.add_char buf '(';
           s_termW t;
