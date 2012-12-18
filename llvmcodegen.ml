@@ -68,7 +68,7 @@ struct
               let vn1, _ = Listutil.part ln vn in
               M.add n vn1 v1) profile M.empty},
     { bits = M.fold (fun n vn v2 ->
-              let ln = M.find n profile in
+              let ln = try M.find n profile with Not_found -> 0 in
               let _, vn2 = Listutil.part ln vn in
               M.add n vn2 v2) v.bits M.empty}
 
@@ -79,8 +79,11 @@ struct
           | [] -> Llvm.undef (Llvm.integer_type context i) :: (fill_cut i [] (n-1)) 
           | x::xs -> x :: (fill_cut i xs (n-1)) in
       { bits = M.fold (fun n vn v' ->
-                let ln = M.find n profile in
-                  M.add n (fill_cut n vn ln) v') v.bits M.empty }
+                         try 
+                           let ln = M.find n profile in
+                             M.add n (fill_cut n vn ln) v'
+                         with Not_found -> v'
+      ) v.bits M.empty }
 
   let llvalue_of_singleton v = 
     List.hd (snd (M.choose v.bits))
@@ -122,9 +125,50 @@ struct
     let ns = List.map fst (M.bindings y.bits) in
       List.iter (fun n -> add_incoming_n (M.find n y.bits, blocky) (M.find n x.bits)) ns 
 
-  let packing_type p = failwith "not implemented"
-  let pack x = failwith "not implemented"
-  let unpack x = failwith "not implemented"
+  let to_profile (x: t) : profile =
+    M.fold (fun n xs m -> M.add n (List.length xs) m) x.bits M.empty
+
+  let packing_type p = 
+    let bndgs = M.bindings p in
+    let struct_members = List.fold_right 
+                 (fun (i, n) args ->
+                    Array.append (Array.make n (Llvm.integer_type context i))
+                      args) bndgs (Array.make 0 (Llvm.integer_type context 1)) in
+    let struct_type = Llvm.packed_struct_type context struct_members in
+      struct_type 
+
+  let pack x = 
+    let struct_type = packing_type (to_profile x) in
+    let bndgs = M.bindings x.bits in
+    let struct_content = 
+      List.fold_right (fun (i, xs) vals -> xs @ vals) bndgs [] in
+    let n = List.length struct_content in
+    let struct_content_with_indices = 
+      List.combine 
+        (Listutil.init n (fun i -> i)) 
+        struct_content in
+      List.fold_right 
+        (fun (i,v) s -> Llvm.build_insertvalue s v i "pack" builder) 
+        struct_content_with_indices
+        (Llvm.undef struct_type) 
+
+  let unpack p v = 
+    let struct_type = packing_type p in
+    let pos = ref 0 in
+    let rec extract n =
+      if n = 0 then []
+      else 
+        let h = Llvm.build_extractvalue v !pos "unpack" builder in
+          incr pos;
+          h :: (extract (n-1))
+    in
+    let rec extract_bndgs b =
+      match b with
+        | [] -> M.empty
+        | (i, n) :: rest -> 
+            M.add i (extract n) (extract_bndgs rest)
+    in
+      { bits = extract_bndgs (M.bindings p) }
 end
 
 type encoded_value = {
@@ -163,6 +207,8 @@ type encoded_value = {
  * Attrib: x.a
  *)
 
+(* TODO: account for recursive types *)                       
+
 let rec payload_size (a: Type.t) : int = 
   let payload_size_memo = Type.Typetbl.create 5 in
   let rec p_s a = 
@@ -177,8 +223,9 @@ let rec payload_size (a: Type.t) : int =
               | NatW -> 1
               | ContW(_) -> 2
               | TensorW(a1, a2) -> p_s a1 + (p_s a2)
-              | DataW(id, [a1; a2]) -> 
-                  (max (p_s a1) (p_s a2))
+              | DataW(id, ps) -> 
+                  let cs = Type.Data.constructor_types id ps in
+                  List.fold_right (fun p m -> max (p_s p) m) cs 0
               | MuW _ -> 1
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) -> assert false
         in
@@ -201,13 +248,18 @@ let attrib_size (a: Type.t) : profile =
                                                   | Some x, Some y -> Some (x+y)
                                                   | Some x, None | None, Some x -> Some x
                                                   | None, None -> None) (a_s a1) (a_s a2)
-              | DataW(id, [a1; a2]) -> 
-                  M.merge (fun n x' y' -> 
-                               let c = if n = 1 then 1 else 0 in
-                               match x', y' with
-                                 | Some x, Some y -> Some (c + (max x y))
-                                 | Some x, None | None, Some x -> Some (c + x)
-                                 | None, None -> None) (a_s a1) (a_s a2)
+              | DataW(id, ps) -> 
+                  begin
+                    let [a1; a2] = Type.Data.constructor_types id ps in
+                    let mx = M.merge (fun i x' y' -> 
+                                        match x', y' with
+                                          | Some x, Some y -> Some (max x y)
+                                          | Some x, None | None, Some x -> Some x
+                                          | None, None -> None) (a_s a1) (a_s a2) in
+                      try
+                        M.add 1 ((M.find 1 mx) + 1) mx
+                      with Not_found -> M.add 1 1 mx
+                  end
               | MuW _ -> M.empty
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) -> assert false
         in
@@ -435,9 +487,9 @@ let build_term
 (*          when id = Type.Data.sumid 2 *)
         -> 
           let uenc = build_annotatedterm ctx u [] in
-          let ax, ay = 
+          let [ax; ay] = 
             match Type.finddesc a with
-              | Type.DataW(id, [ax; ay]) when id = Type.Data.sumid 2 -> ax, ay
+              | Type.DataW(id, ps) -> Type.Data.constructor_types id ps 
               | _ -> assert false in
 (*          assert (Bitvector.length uenc.attrib > 0); *)
           let cond, xya = Bitvector.takedrop uenc.attrib (singleton_profile 1) in

@@ -3,6 +3,7 @@ letw continue = fun x -> Inr(x)
 
 type list<'a> = Nil of unit | Cons of 'a * list<'a>
 
+(*
 letw fixw = fun x ->
   case x of 
     Inl(lx) -> 
@@ -24,6 +25,30 @@ letw fixw = fun x ->
 
 letu fix = hack fixw
  as {list<'b>}({'b}'a --o 'a) --o 'a
+*)
+
+letw fixw = fun x ->
+  case x of 
+    Inl(lx) -> 
+      let (l,x) = lx in
+       (case x of
+          Inl(bq) ->
+            let (b,q) = bq in
+              Inl(fold<'c.unit+'b*'c> (Inr(b,l)), Inr(q))
+        | Inr(a) ->
+            let r = unfold<'c.unit+'b*'c> l in
+            let u = delete<'c.unit+'b*'c> l in  
+            (case r of
+              Inl(nl) -> 
+                 Inr(a)
+            | Inr(cns) ->
+               let (hd, tl) = cns in
+                 Inl(tl, Inl(hd, a)) ))
+  | Inr(q) -> 
+     Inl(fold<'c.unit+'b*'c> (Inl()), Inr(q))
+
+letu fix = hack fixw
+ as {'c (* mu 'c. 1 + 'b*'c *)}({'b}'a --o 'a) --o 'a
 
 (*
 type lazylist<'a> = 
