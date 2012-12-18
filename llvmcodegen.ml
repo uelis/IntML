@@ -8,6 +8,9 @@ let position_at_start block builder =
   let block_begin = Llvm.instr_begin block in
     Llvm.position_builder block_begin builder
 
+let rec log i =
+  if i > 1 then 1 + (log (i - i/2)) else 0
+
 (* Encapsulate bit vectors to make it easy to change the llvm-encoding. *)
 module Bitvector :
 sig 
@@ -844,7 +847,7 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                               dynamic_connect_to src_block v dst.name;
                               build_coercion_block dst
                  ) dsts
-           | Branch(src, x, lets, (s, (xl, bodyl, dst1), (xr, bodyr, dst2))) ->
+  (*         | Branch(src, x, lets, (id, s, cases)) (* (xl, bodyl, dst1), (xr, bodyr, dst2)) *)) ->
                begin
                  let lets', t = reduce (
                       mkLets lets ( mkCaseW (Type.Data.sumid 2) s 
@@ -853,12 +856,15 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                  let src_block = get_block src.name in
                    Llvm.position_at_end src_block builder;
                    let senc = Hashtbl.find phi_nodes src.name in
+                   let params = List.map (fun (x, b, dst) -> dst.message_type) cases in
+                   let data = Type.newty (Type.DataW(id, params)) in
                    let tenc = build_term the_module get_dynamic_dest_block
                                 [(x, senc)] [(x, src.message_type)] (mkLets lets' t)
-                                (Type.newty (Type.DataW(Type.Data.sumid 2,
-                                                        [dst1.message_type; dst2.message_type]))) in
-                   let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - 1) tenc.attrib in
-                   let denc12 = { payload = tenc.payload; attrib = da } in
+                                params in
+                   let n = List.length cases in
+                   let da, cond = Bitvector.takedrop (Bitvector.length tenc.attrib - (log n)) tenc.attrib in
+                   let denc_all = { payload = tenc.payload; attrib = da } in
+                   let dencs = List.map (fun (x, b, dst) -> build_truncate_extend denc12 dst1.message_type)
                    let denc1 = build_truncate_extend denc12 dst1.message_type in
                    let denc2 = build_truncate_extend denc12 dst2.message_type in
                    let cond' = Bitvector.extractvalue cond 0 in
@@ -867,7 +873,7 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                                (get_block dst1.name) builder);
                      connect_to src_block denc1 dst1.name;
                      connect_to src_block denc2 dst2.name
-               end
+               end *)
            | Return(src, x, lets, body, return_type) ->
                Llvm.position_at_end (get_block src.name) builder;
                let senc = Hashtbl.find phi_nodes src.name in

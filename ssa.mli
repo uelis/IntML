@@ -9,7 +9,7 @@ type block =
     Unreachable of label
   | Direct of label * Term.var * let_bindings * Term.t * label
   | InDirect of label * Term.var * let_bindings * Term.t * (label list)
-  | Branch of label * Term.var * let_bindings * (Term.t * (Term.var * Term.t * label) * (Term.var * Term.t * label))
+  | Branch of label * Term.var * let_bindings * (Type.Data.id * Term.t * (Term.var * Term.t * label) list)
   | Return of label * Term.var * let_bindings * Term.t * Type.t
 
 type func = {

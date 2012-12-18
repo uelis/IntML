@@ -10,7 +10,7 @@ type block =
     Unreachable of label
   | Direct of label * Term.var * let_bindings * Term.t * label
   | InDirect of label * Term.var * let_bindings * Term.t * (label list) (* all destinations must accept the same message type *)
-  | Branch of label * Term.var * let_bindings * (Term.t * (Term.var * Term.t * label) * (Term.var * Term.t * label))
+  | Branch of label * Term.var * let_bindings * (Type.Data.id * Term.t * (Term.var * Term.t * label) list)
   | Return of label * Term.var * let_bindings * Term.t * Type.t
 
 let string_of_block b =
@@ -34,15 +34,18 @@ let string_of_block b =
            (Printing.string_of_termW body)
            (String.concat "," (List.map (fun l -> Printf.sprintf "l%i" l.name) goals))
         )
-    | Branch(la, x, bndgs, (cond, (l, lb, lg), (r, rb, rg))) ->
+    | Branch(la, x, bndgs, (id, cond, cases)) ->
         (Printf.sprintf "and l%i(%s)=\n  let" 
           la.name x (* (Printing.string_of_type la.message_type)*)) ^
         (String.concat "" (List.map (fun (t, (x, y)) -> 
                                        Printf.sprintf "  val (%s, %s) = %s\n" 
                                          x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
         (Printf.sprintf "  in case %s of\n" (Printing.string_of_termW cond)) ^
-        (Printf.sprintf "    inl(%s) => l%i(%s)\n" l lg.name (Printing.string_of_termW lb)) ^
-        (Printf.sprintf "  | inr(%s) => l%i(%s)\nend\n" r rg.name (Printing.string_of_termW rb)) 
+        (String.concat " | "
+           (List.map (fun (l, lb, lg) ->
+                        Printf.sprintf "    inl(%s) => l%i(%s)\n" l lg.name (Printing.string_of_termW lb))
+              cases
+           ))
     | Return(l, x, bndgs, body, retty) ->
         (Printf.sprintf "and l%i(%s)=\n  let" 
           l.name x (*(Printing.string_of_type l.message_type)*)) ^
@@ -276,9 +279,9 @@ let trace (c: circuit) : func =
                       let v' = fresh_var () in 
                         (*                      assert (Type.equals src.message_type w3.type_back);*)
                         Branch(src, "z", lets,
-                               (v, 
-                                (v', mkPairW sigma (mkVar v'), {name = w1.dst; message_type = w1.type_forward}), 
-                                (v', mkPairW sigma (mkVar v'), {name = w2.dst; message_type = w2.type_forward})))
+                               (Type.Data.sumid 2, v, 
+                                [(v', mkPairW sigma (mkVar v'), {name = w1.dst; message_type = w1.type_forward});
+                                (v', mkPairW sigma (mkVar v'), {name = w2.dst; message_type = w2.type_forward})]))
               end
           | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w1.src ->
               let rlets, v' = reduce (mkSndW v) in
@@ -328,32 +331,32 @@ let trace (c: circuit) : func =
               (* <sigma, <v,w>> @ w2  |-->  <sigma, w> @ w3 *)
               let rlets, v' = reduce (mkSndW v) in
               trace src w3.dst (rlets @ lets) (sigma, v')
-    (*      | Contr(w1, w2, w3) when dst = w2.src -> 
+          | Case(id, w1, ws) when List.mem dst (List.map (fun w -> w.src) ws) -> 
               (*  <sigma, <v,w>> @ w2         |-->  <sigma, <inl(v),w>> @ w1 *) 
+                let n = List.length ws in
+                let wsi = List.combine 
+                            (List.map (fun w -> w.src) ws)
+                            (Listutil.init n (fun i -> i)) in
+                let i = List.assoc dst wsi in
               let (c, v'), lets' = unpair v lets in
-                trace src w1.dst lets' (sigma, mkPairW (mkInlW c) v')
-          | Contr(w1, w2, w3) when dst = w3.src -> 
-              (* <sigma, <v,w>> @ w3         |-->  <sigma, <inr(v),w>> @ w1 *)
-              let (c, v'), lets' = unpair v lets in
-                trace src w1.dst lets' (sigma, mkPairW (mkInrW c) v')
-          | Contr(w1, w2, w3) when dst = w1.src -> 
+                trace src w1.dst lets' (sigma, mkPairW (mkInW id i c) v')
+          | Case(id, w1, ws) when dst = w1.src -> 
               (*   <sigma, <inl(v), w>> @ w1   |-->  <sigma, <v,w>> @ w2
                <sigma, <inr(v), w>> @ w1   |-->  <sigma, <v,w>> @ w3 *)
               begin
                 let (c', v'), lets' = unpair v lets in
                   match c'.Term.desc with
-                    | InW(id, 0, c) when id = Type.Data.sumid 2 -> 
-                        trace src w2.dst lets' (sigma, mkPairW c v')
-                    | InW(id, 1, c) when id = Type.Data.sumid 2 -> 
-                        trace src w3.dst lets' (sigma, mkPairW c v')
+                    | InW(id, i, c) -> 
+                        trace src (List.nth ws i).dst lets' (sigma, mkPairW c v')
                     | _ ->
                         let c = fresh_var () in
                           (*                      assert (Type.equals src.message_type w1.type_back); *)
                           Branch(src, "z", lets', 
-                                 (c', 
-                                  (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w2.dst; message_type = w2.type_forward}),
-                                  (c, mkPairW sigma (mkPairW (mkVar c) v'), {name = w3.dst; message_type = w3.type_forward})))
-              end*)
+                                 (id, c', 
+                                  List.map (fun w ->
+                                               (c, mkPairW sigma (mkPairW (mkVar c) v'), 
+                                                {name = w.dst; message_type = w.type_forward})) ws))
+              end
            | Grab(s, w1, wt) when w1.src = dst ->
                 trace src w1.dst lets
                    (sigma, mkContW wt.dst (max_wire_src_dst + 1) sigma)
@@ -382,8 +385,8 @@ let trace (c: circuit) : func =
                 block :: trace_all dst
             | InDirect(_, _, _, _, dsts) ->
                 block :: (List.concat (List.map trace_all dsts))
-            | Branch(_, _, _, (_, (_, _, dst1), (_, _, dst2))) ->
-                block :: trace_all dst1 @ trace_all dst2 
+            | Branch(_, _, _, (_, _, cases)) ->
+                block :: (List.concat (List.map (fun (_, _, dst) -> trace_all dst) cases))
       end in
   let blocks = trace_all {name = c.output.src; message_type = c.output.type_back} in
     { func_name = "f";
