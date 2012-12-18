@@ -177,10 +177,10 @@ let rec payload_size (a: Type.t) : int =
               | NatW -> 1
               | ContW(_) -> 2
               | TensorW(a1, a2) -> p_s a1 + (p_s a2)
-              | DataW(id, [a1; a2]) when id = Type.Data.sumid 2 -> 
+              | DataW(id, [a1; a2]) -> 
                   (max (p_s a1) (p_s a2))
               | MuW _ -> 1
-              | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | DataW _ -> assert false
+              | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) -> assert false
         in
           Type.Typetbl.add payload_size_memo a size;
           size
@@ -201,7 +201,7 @@ let attrib_size (a: Type.t) : profile =
                                                   | Some x, Some y -> Some (x+y)
                                                   | Some x, None | None, Some x -> Some x
                                                   | None, None -> None) (a_s a1) (a_s a2)
-              | DataW(id, [a1; a2]) when id = Type.Data.sumid 2 -> 
+              | DataW(id, [a1; a2]) -> 
                   M.merge (fun n x' y' -> 
                                let c = if n = 1 then 1 else 0 in
                                match x', y' with
@@ -209,7 +209,7 @@ let attrib_size (a: Type.t) : profile =
                                  | Some x, None | None, Some x -> Some (c + x)
                                  | None, None -> None) (a_s a1) (a_s a2)
               | MuW _ -> M.empty
-              | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | DataW _ -> assert false
+              | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) -> assert false
         in
           Type.Typetbl.add attrib_size_memo a size;
           size
@@ -288,7 +288,7 @@ let build_term
           let alpha = Type.newty Type.Var in
             mkTypeAnnot (mkInrW (annotate_term t1)) (Some alpha)
       | InW(_, _, _) -> assert false
-      | CaseW(id, t1, [(x, t2); (y, t3)]) when id = Type.Data.sumid 2 ->
+      | CaseW(id, t1, [(x, t2); (y, t3)]) (* when id = Type.Data.sumid 2 *) ->
           let alpha = Type.newty Type.Var in
               (mkCaseW id
                  (mkTypeAnnot (annotate_term t1) (Some alpha)) 
@@ -432,7 +432,7 @@ let build_term
           let denc = { payload = tenc.payload; attrib = attrib_branch} in
             build_truncate_extend denc a
       | CaseW(id, { desc = TypeAnnot(u, Some a) }, [(x, s); (y, t)]) 
-          when id = Type.Data.sumid 2
+(*          when id = Type.Data.sumid 2 *)
         -> 
           let uenc = build_annotatedterm ctx u [] in
           let ax, ay = 
@@ -602,7 +602,7 @@ let build_term
                  build_annotatedterm ((x, t2enc) :: ctx) t1 args')
       | _ -> 
           Printf.printf "%s\n" (Printing.string_of_termW t);
-          failwith "TODO"
+          failwith "TODO_llvm"
   in
   let t_annotated = mkTypeAnnot (freshen_type_vars (annotate_term t)) (Some a) in
  (*   Printf.printf "%s\n" (Printing.string_of_termW t_annotated); *)

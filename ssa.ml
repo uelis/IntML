@@ -131,7 +131,7 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
                   let lets2, t2' = reduce t2 in
                     lets2 @ ((t1', (x,y)) :: lets1), t2'
           end
-    | CaseW(id, s, [(u, su); (v, sv)]) when id = Type.Data.sumid 2 ->
+    | CaseW(id, s, [(u, su); (v, sv)]) (* when id = Type.Data.sumid 2*) ->
         let letss, rs = reduce s in
           begin
             match rs.Term.desc with
@@ -174,7 +174,7 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
           end
     | _ -> 
         Printf.printf "%s\n" (Printing.string_of_termW t);
-        failwith "TODO"
+        failwith "TODO_ssa"
 
 let trace (c: circuit) : func =
   (* Supply of fresh variable names. 
