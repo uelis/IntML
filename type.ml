@@ -168,6 +168,11 @@ struct
   let _ = ignore (sumid 0); ignore (sumid 2)
 
   let params id = List.length (Hashtbl.find datatypes id).params
+
+  let constructor_count id =
+    let cs = (Hashtbl.find datatypes id).constructors in
+      List.length cs
+                    
   let constructor_names id = 
     let cs = (Hashtbl.find datatypes id).constructors in
       List.map fst cs

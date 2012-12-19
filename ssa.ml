@@ -6,6 +6,7 @@ type label = {
   message_type: Type.t
 }               
 type let_bindings = (Term.t * (Term.var * Term.var)) list 
+(* Branch must have at least two sucessors *)
 type block = 
     Unreachable of label
   | Direct of label * Term.var * let_bindings * Term.t * label
@@ -357,7 +358,7 @@ let trace (c: circuit) : func =
     else 
       begin
         let block = trace src src.name [(mkVar "z",(sigma,x))] (mkVar sigma, mkVar x) in
-          (* Printf.printf "%s" (string_of_block block);  *)
+           Printf.printf "%s" (string_of_block block);  
           Hashtbl.add entry_points src.name ();
           match block with
             | Unreachable(_) | Return(_) -> [block]

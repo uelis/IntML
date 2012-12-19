@@ -1,6 +1,3 @@
-letw return = fun x -> Inl(x)
-letw continue = fun x -> Inr(x)
-
 type list<'a> = Nil of unit | Cons of 'a * list<'a>
 
 letw fixw = fun x ->
@@ -12,9 +9,7 @@ letw fixw = fun x ->
              let (b,q) = bq in
                Inl(Cons(b,l), Inr(q))
          | Inr(a) ->
-(*            let r = unfold<'c.unit+'b*'c> l in
-            let u = delete<'c.unit+'b*'c> l in *)
-             (case l of (* TODO *)
+             (delete l of (* TODO *)
                 Nil -> Inr(a)
               | Cons(hdtl) ->
                  let (hd, tl) = hdtl in
@@ -103,21 +98,15 @@ letu cycle =
   (fix (fun cycle -> cons [1] cycle))
 
 letu printlist =
-  fun l ->
-  fun j ->
-  let [jv] = j in
-  fix (fun p -> 
-         fun i ->
-         fun l -> 
+  fix (fun printlist -> 
+         fun l -> fun i -> 
            let [iv] = i in
-           if iv = jv then [()] 
+           if iv = 0 then [()] 
              else
                 let [lid] = l in 
-                let [xv] = head [lid] in
-                let [u] = [print xv] in
+                let [u] = let [xv] = head [lid] in [print xv] in
           (*      let [u] = [if iv + 1 < jv then print ", " else ()] in *)
-                  p [iv + 1] (tail [lid])) 
-    [0] l
+                  printlist (tail [lid]) [iv - 1]) 
 
 letu aux =
   fix (fun aux -> fun n ->
@@ -137,6 +126,16 @@ letw and : bool -> bool -> bool =
 letw or = fun (x : bool) -> fun (y : bool) ->
   case x of True -> True | False -> y
 
+letu andalso : [bool] --> [bool] --> [bool] =
+  fun x -> fun y ->
+    let [b] = x in
+      if b then y else [False]
+
+letu orelse : [bool] --> [bool] --> [bool] =
+  fun x -> fun y ->
+    let [b] = x in
+      if b then [True] else y
+
 letu ratTrans =
    (fix ((fun ratTrans ->
           fun a -> fun b -> fun c -> fun d -> fun xs ->
@@ -144,18 +143,17 @@ letu ratTrans =
              let [bv] = b in
              let [cv] = c in
              let [dv] = d in
-             let [qv] = [if dv = 0 then 1 else bv/dv] in
              let [xsv] = xs in
-             let [c] = [
-              and (or (signum cv = signum dv) (abs cv < abs dv)) 
-                      (and ((cv+dv)*qv < av+bv+1) 
-                           (av+bv < (cv+dv)*qv + (cv+dv)))] in
-             case c of
-               True ->
-                   cons [qv] (ratTrans [cv] [dv] [av-qv*cv] [bv-qv*dv] [xsv])
-             | False ->
-                   let [xv] = head [xsv] in
-                    ratTrans [bv] [av+xv*bv] [dv] [cv+xv*dv] (tail [xsv])
+             let [c] = 
+               andalso 
+                 (orelse [signum cv = signum dv] [abs cv < abs dv])
+                 (andalso [(cv+dv)*(bv/dv) < av+bv+1]
+                          [av+bv < (cv+dv)*(bv/dv) + (cv+dv)]) in
+             if c then
+                cons [bv/dv] (ratTrans [cv] [dv] [av-(bv/dv)*cv] [bv-(bv/dv)*dv] [xsv])
+             else 
+                let [xv] = head [xsv] in
+                 ratTrans [bv] [av+xv*bv] [dv] [cv+xv*dv] (tail [xsv])
    )))
 
 letu toDigits = 
@@ -179,3 +177,4 @@ letu xxx = fun x ->
    | Three(p) -> [let (x,y)=p in x]
 
 letu yyy = let [a] = xxx [Three(3,4)] in [print a]
+

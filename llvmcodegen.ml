@@ -229,7 +229,7 @@ let rec payload_size (a: Type.t) : int =
             match finddesc a with
               | Link _ -> assert false
               | ZeroW | OneW -> 0
-              | Var(_) -> 1
+              | Var(_) -> 0
               | NatW -> 1
               | ContW(_) -> 2
               | TensorW(a1, a2) -> p_s a1 + (p_s a2)
@@ -491,13 +491,12 @@ let build_term
                                            (y, {payload = syp; attrib = sya }) :: ctx) t args
               | _ -> assert false
           end
-      | TypeAnnot({ desc = InW(id, i, t) }, Some a) 
-          when 1 =  List.length (Type.Data.constructor_names id) ->
+      | TypeAnnot({ desc = InW(id, i, t) }, Some a) when Type.Data.constructor_count id = 1 ->
           let tenc = build_annotatedterm ctx t [] in
             build_truncate_extend tenc a
       | TypeAnnot({ desc = InW(id, i, t) }, Some a) ->
           assert (args = []);
-          let n = List.length (Type.Data.constructor_names id) in
+          let n = Type.Data.constructor_count id in
           let tenc = build_annotatedterm ctx t [] in
           let branch = Llvm.const_int (Llvm.integer_type context (log n)) i in
           let attrib_branch = Bitvector.pair (Bitvector.singleton (log n) branch) tenc.attrib in

@@ -335,8 +335,8 @@ typeW_atom:
 typeW_list:
     | typeW 
       { [$1] }
-    | typeW typeW_list
-      { $1 :: $2 }
+    | typeW TokComma typeW_list
+      { $1 :: $3 }
 
 termU:    
     | TokLambda identifier TokRightArrow termU 

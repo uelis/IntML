@@ -33,6 +33,7 @@ sig
   val boolid : id
 
   val params : id -> int
+  val constructor_count : id -> int 
   val constructor_names : id -> string list 
   val constructor_types : id -> t list -> t list
   val is_recursive : id -> bool
