@@ -85,12 +85,6 @@ let rec embed i (a: Type.t) (b: Type.t) : Term.t =
                            (min b1)
                            (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
         end*)
-    | Type.MuW(beta, b1) ->
-        let mub1 = Type.newty (Type.MuW(beta, b1)) in
-        let unfolded = 
-          Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
-          Term.mkLambdaW(("x", None),
-                         Term.mkFoldW (beta,b1) (Term.mkAppW (embed (i+1) a unfolded) (Term.mkVar "x")))
     | _ -> raise Not_Leq
              in
   embed 0 a b
@@ -106,6 +100,7 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
   if i > 1 then raise Not_Leq;
   if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
   else 
+    (* TODO: delete! *)
     match Type.finddesc b with
       | Type.DataW(id, l) ->
           let cs = Type.Data.constructor_types id l in
@@ -153,7 +148,7 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
                            (("y", "z"), 
                             Term.mkAppW (project i a b2) (Term.mkVar "z")))
         end *)
-    | Type.MuW(beta, b1) ->
+ (*   | Type.MuW(beta, b1) ->
         let mub1 = Type.newty (Type.MuW(beta, b1)) in
         let unfolded = 
           Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
@@ -162,7 +157,7 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
                            (Term.mkAppW (project (i+1) a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x")))
                            ("y", Term.mkLetCompW
                                    (Term.mkDeleteW (beta,b1) (Term.mkVar "x"))
-                                   (unusable_var, Term.mkVar "y")))
+                                   (unusable_var, Term.mkVar "y"))) *)
     | _ -> 
         raise Not_Leq in
   try
@@ -220,18 +215,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
             | InV(id, 1, v2) when id = Type.Data.sumid 2 -> loop v2
             | _ -> failwith "Internal: evaluation of loop" in
           loop v1
-    | FoldW((alpha, a), t) ->
-        let id = newid () in
-        let v = eval t sigma in
-          Hashtbl.replace heap id v; 
-          IntV id
-    | UnfoldW(_, t) ->
-        (match eval t sigma with
-           | IntV id -> 
-               (try Hashtbl.find heap id with 
-                 | Not_found -> failwith "Internal: unfold applied to a deallocated value.")
-           | _ -> assert false)
-    | AssignW((alpha, a), s, t) ->
+    | AssignW(id, s, t) ->
         let vs = eval s sigma in
         let vt = eval t sigma in
         (match vs with

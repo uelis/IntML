@@ -41,9 +41,7 @@ and t_desc =
   | CaseW of Type.Data.id * t * ((var * t) list)        (* s, <x1>t1, <x2>t2, ... *)
   | AppW of t * t                        (* s, t *)
   | LambdaW of (var * Type.t option) * t (* <x>s *)
-  | FoldW of (Type.t * Type.t) * t
-  | UnfoldW of (Type.t * Type.t) * t
-  | AssignW of (Type.t * Type.t) * t * t
+  | AssignW of Type.Data.id * t * t
   | DeleteW of (Type.t * Type.t) * t
   | EmbedW of (Type.t * Type.t) * t
   | ProjectW of (Type.t * Type.t) * t
@@ -79,9 +77,7 @@ val mkAppW : t -> t -> t
 val mkLambdaW : (var * Type.t option) * t -> t
 val mkTrW : t -> t
 val mkLoopW : t -> (var * t) -> t
-val mkFoldW : Type.t * Type.t -> t -> t
-val mkUnfoldW : Type.t * Type.t -> t -> t
-val mkAssignW : Type.t * Type.t -> t -> t -> t
+val mkAssignW : Type.Data.id ->  t -> t -> t
 val mkDeleteW : Type.t * Type.t -> t -> t
 val mkEmbedW : Type.t * Type.t -> t -> t
 val mkProjectW : Type.t * Type.t -> t -> t

@@ -85,10 +85,7 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
     | AppW({desc=ConstW(Cintdiv)}, _)
     | AppW({desc=ConstW(Cintmul)}, _)
     | AppW({desc=ConstW(Cintslt)}, _)
-    | AppW({desc=ConstW(Cinteq)}, _)
-    | FoldW _
-      -> 
-        [], t
+    | AppW({desc=ConstW(Cinteq)}, _) -> [], t
     | ConstW(_) | LoopW(_) | AssignW _ | ContW _ -> 
         let x = fresh_var () in
         let y = fresh_var () in
@@ -100,12 +97,10 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
     | InW(i, j, t) -> 
         let lets, t' = reduce t in
           lets, mkInW i j t'
-    | DeleteW(_, {desc = FoldW(_, t)}) -> reduce t
-    | UnfoldW(_, {desc = FoldW(_, t)}) -> reduce t
     | ProjectW((a,b), {desc = EmbedW((a',b'), t)}) 
         when Type.equals a a' && Type.equals b b' -> reduce t
     | EmbedW _ | ProjectW _ 
-    | UnfoldW(_) | DeleteW _ -> (* TODO: warum wird t nicht reduziert?*)
+    | DeleteW _ -> (* TODO: warum wird t nicht reduziert?*)
         let x = fresh_var () in
         let y = fresh_var () in
           [mkPairW t mkUnitW, (x,y)], 

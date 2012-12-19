@@ -8,29 +8,29 @@ letw and  =
 letw or = fun x  -> fun y  ->
   case x of True -> True | False -> y
 
+type list<'a> = Nil of unit | Cons of 'a * list<'a>
+
 letw fixw = fun x ->
   case x of 
     Inl(lx) -> 
       let (l,x) = lx in
-       ( case x of
-          Inl(bq) ->
-            let (b,q) = bq in
-              Inl(fold<'c.unit+'b*'c> (Inr(b,l)), Inr(q))
-        | Inr(a) ->
-            let r = unfold<'c.unit+'b*'c> l in
-            let u = delete<'c.unit+'b*'c> l in  
-            (case r of
-              Inl(nl) -> 
-                 Inr(a)
-            | Inr(cns) ->
-               let (hd, tl) = cns in
-                 Inl(tl, Inl(hd, a))))
+        (case x of
+           Inl(bq) ->
+             let (b,q) = bq in
+               Inl(Cons(b,l), Inr(q))
+         | Inr(a) ->
+(*            let r = unfold<'c.unit+'b*'c> l in
+            let u = delete<'c.unit+'b*'c> l in *)
+             (case l of (* TODO *)
+                Nil -> Inr(a)
+              | Cons(hdtl) ->
+                 let (hd, tl) = hdtl in
+                   Inl(tl, Inl(hd, a))))
   | Inr(q) -> 
-     Inl(fold<'c.unit+'b*'c> (Inl()), Inr(q))
+     Inl(Nil, Inr(q))
 
 letu fix = hack fixw
- as {'c (* mu 'c. unit + 'b*'c *)}({'b}'a --o 'a) --o 'a
-
+ as {list<'b>}({'b}'a --o 'a) --o 'a
 
 letu val = fun n -> fun k -> k n
 letu write = fun n ->  fun k -> let [c] = [print "s"] in k n

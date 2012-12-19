@@ -12,13 +12,10 @@ and desc =
   | TensorW of t * t
   | DataW of string * t list
   | FunW of t * t
-  | MuW of t * t
   | ContW of t
   | BoxU of t * t
   | TensorU of t * t
   | FunU of t * t * t                          
-
-
                       
 let next_id = ref 0                      
 let newty d = 
@@ -52,9 +49,6 @@ let rec free_vars (b: t) : t list =
     | FunU(a1, b1, b2) -> 
         free_vars a1 @ (free_vars b1) @ (free_vars b2)
     | DataW(_, bs) -> List.concat (List.map free_vars bs)
-    | MuW(alpha, a) -> 
-        let fva = free_vars a in
-          List.filter (fun beta -> not (find beta == find alpha)) fva
     | Link _ -> assert false
 
 let rec subst (f: t -> t) (b: t) : t =
@@ -66,10 +60,6 @@ let rec subst (f: t -> t) (b: t) : t =
     | TensorW(b1, b2) -> newty(TensorW(subst f b1, subst f b2))
     | DataW(id, bs) -> newty(DataW(id, List.map (subst f) bs))
     | FunW(b1, b2) -> newty(FunW(subst f b1, subst f b2))
-    | MuW(alpha, a) -> 
-        let beta = newty Var in
-        let a' = subst (fun x -> if find x == find alpha then beta else x) a in 
-        newty(MuW(beta, subst f a'))
     | ContW(b1) -> newty(ContW(subst f b1))
     | BoxU(a1, a2) -> newty(BoxU(subst f a1, subst f a2))
     | TensorU(b1, b2) -> newty(TensorU(subst f b1, subst f b2))
@@ -89,12 +79,6 @@ let rec equals (u: t) (v: t) : bool =
         | TensorW(u1, u2), TensorW(v1, v2) | TensorU(u1, u2), TensorU(v1, v2) 
         | FunW(u1, u2), FunW(v1, v2) | BoxU(u1, u2), BoxU(v1, v2) ->
             (equals u1 v1) && (equals u2 v2)
-        | MuW(alpha, a), MuW(beta, b) ->
-            (* TODO: inefficient *)
-            let gamma = newty Var in
-            (equals 
-               (subst (fun x -> if equals x alpha then gamma else x) a) 
-               (subst (fun x -> if equals x beta then gamma else x) b) )
         | ContW(u1), ContW(v1) -> 
             equals u1 v1
         | FunU(u1, u2, u3), FunU(v1, v2, v3) ->
@@ -139,7 +123,6 @@ let rec freshen_index_types (a: t) : t =
       | TensorW(b1, b2) -> newty(TensorW(freshen_index_types b1, freshen_index_types b2))
       | DataW(id, bs) -> newty(DataW(id, List.map freshen_index_types bs))
       | FunW(b1, b2) -> newty(FunW(freshen_index_types b1, freshen_index_types b2))
-      | MuW(alpha, a) -> newty(MuW(alpha, freshen_index_types a))
       | ContW(b1) -> newty(ContW(freshen_index_types b1))
       | BoxU(a1, a2) -> newty(BoxU(freshen_index_types a1, freshen_index_types a2))
       | TensorU(b1, b2) -> newty(TensorU(freshen_index_types b1, freshen_index_types b2))
@@ -204,7 +187,6 @@ struct
         | ContW(b1) -> check_rec b1
         | TensorW(b1, b2) | FunW(b1, b2) -> check_rec b1 || (check_rec b2)
         | DataW(id', bs) -> id = id' || List.exists check_rec bs
-        | MuW(alpha, a) -> false
         | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) | Link _ -> assert false in 
     let freshparams = Listutil.init (params id) (fun i -> newty Var) in
     let ct = constructor_types id freshparams in
@@ -230,6 +212,8 @@ struct
         raise Not_found
     with Found (id, i) -> id, i
 
+  (* muss sichergehen, dass aus parametervariablen nicht durch Unifikation
+   * Typen werden *)
   let make name = 
     Hashtbl.add datatypes name { name = name; params = []; constructors = [] }
 

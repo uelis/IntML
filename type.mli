@@ -21,7 +21,6 @@ and desc =
   | TensorW of t * t
   | DataW of string * t list
   | FunW of t * t
-  | MuW of t * t
   | ContW of t
   | BoxU of t * t
   | TensorU of t * t
@@ -41,7 +40,7 @@ sig
 
   val find_constructor: string -> id * int
 
-  val make : string -> unit
+  val make : id -> unit
   val add_param : id -> t -> unit
   val add_constructor : id -> string -> t -> unit
 end

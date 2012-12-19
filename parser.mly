@@ -57,12 +57,9 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokColonEquals
 %token TokSemicolon
 %token TokSharp
-%token TokMu
 %token TokKwType
 %token TokKwUnit
 %token TokDelete
-%token TokFold
-%token TokUnfold
 %token TokKwNat
 %token TokKwBool
 %token TokEquals
@@ -174,16 +171,12 @@ termW:
        { mkTerm (LetBoxW($6, ($3, $8))) }
     | TokKwPrint termW
        { mkTerm (AppW(mkTerm (ConstW(Cintprint)), $2)) }
-    | TokFold TokLAngle typeW TokDot typeW TokRAngle termW
-       { mkTerm (FoldW(($3, $5), $7)) }
-    | TokUnfold TokLAngle typeW TokDot typeW TokRAngle termW
-       { mkTerm (UnfoldW(($3, $5), $7)) }
     | termW_app TokEquals termW_app
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cinteq)), $1)), $3)) }
     | termW_app TokLAngle termW_app
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintslt)), $1)), $3)) }
-    | termW_app TokColonEquals TokLAngle typeW TokDot typeW TokRAngle  termW
-       { mkTerm (AssignW(($4, $6), $1, $8)) }
+    | termW_app TokColonEquals TokLAngle TokIdent TokRAngle  termW
+       { mkTerm (AssignW($4, $1, $6)) }
     | TokDelete TokLAngle typeW TokDot typeW TokRAngle termW
        { mkTerm (DeleteW(($3, $5), $7)) }
     | TokCase termW TokKwOf termW_cases
@@ -300,8 +293,6 @@ typeW:
       { $1 }
     | typeW_summand TokRightArrow typeW
       { Type.newty (Type.FunW($1, $3)) } 
-    | TokMu typeW_atom TokDot typeW
-      { Type.newty (Type.MuW($2, $4)) } 
 
 typeW_summand:
     | typeW_factor

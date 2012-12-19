@@ -239,7 +239,6 @@ let rec payload_size (a: Type.t) : int =
                   else 
                     let cs = Type.Data.constructor_types id ps in
                       List.fold_right (fun c m -> max (p_s c) m) cs 0
-              | MuW _ -> 1
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) -> assert false
         in
           Type.Typetbl.add payload_size_memo a size;
@@ -277,12 +276,11 @@ let attrib_size (a: Type.t) : profile =
                                                                 | None, None -> None) 
                                                      (a_s c) mx)) cs M.empty in
                       let i = log n in
-                        try
-                          let ni = M.find i mx in
-                            M.add i (ni + 1) mx
-                        with Not_found -> M.add i 1 mx
+                        if i > 0 then
+                          (let ni = try M.find i mx with Not_found -> 0 in
+                            M.add i (ni + 1) mx)
+                        else mx
                     end
-              | MuW _ -> M.empty
               | FunW(_, _) | BoxU(_, _) | TensorU(_, _) | FunU(_, _, _) -> assert false
         in
           Type.Typetbl.add attrib_size_memo a size;
@@ -368,9 +366,11 @@ let build_term
       | LoopW(t1, (x, t2)) -> 
           let alpha = Type.newty Type.Var in
             mkLoopW (annotate_term t1) (x, mkTypeAnnot (annotate_term t2) (Some alpha))
-      | FoldW((alpha, a), t1) -> mkFoldW (alpha, a) (annotate_term t1)
-      | UnfoldW((alpha, a), t1) -> mkUnfoldW (alpha, a) (annotate_term t1)
-      | AssignW((alpha, a), t1, t2) -> mkAssignW (alpha, a) (annotate_term t1) (annotate_term t2)
+      | AssignW(id, t1, t2) -> 
+          let alpha = Type.newty Type.Var in
+            mkAssignW id 
+              (mkTypeAnnot (annotate_term t1) (Some alpha)) 
+              (annotate_term t2)
       | DeleteW((alpha, a), t1) -> mkDeleteW (alpha, a) (annotate_term t1)
       | EmbedW((b, a), t1) -> mkEmbedW (b, a) (annotate_term t1)
       | ProjectW((b, a), t1) -> mkProjectW (b, a) (annotate_term t1)
@@ -494,6 +494,10 @@ let build_term
                                            (y, {payload = syp; attrib = sya }) :: ctx) t args
               | _ -> assert false
           end
+      | TypeAnnot({ desc = InW(id, i, t) }, Some a) 
+          when 1 =  List.length (Type.Data.constructor_names id) ->
+          let tenc = build_annotatedterm ctx t [] in
+            build_truncate_extend tenc a
       | TypeAnnot({ desc = InW(id, i, t) }, Some a) ->
           assert (args = []);
           let n = List.length (Type.Data.constructor_names id) in
@@ -523,10 +527,12 @@ let build_term
                 {payload = [pl]; attrib = Bitvector.null}
           else 
               build_truncate_extend denc a 
-      | CaseW(id, { desc = TypeAnnot(u, Some a) }, cases) 
-(*          when id = Type.Data.sumid 2 *)
-        ->           
+      | CaseW(id, { desc = TypeAnnot(u, Some a) }, [(x, t)] ) -> 
+          let uenc =  build_annotatedterm ctx u [] in
+           build_annotatedterm ((x, uenc) :: ctx) t [] 
+      | CaseW(id, { desc = TypeAnnot(u, Some a) }, cases) ->           
           let n = List.length cases in
+          assert (n > 0);
           let cs_types = 
             match Type.finddesc a with
               | Type.DataW(id, ps) -> Type.Data.constructor_types id ps 
@@ -554,27 +560,26 @@ let build_term
           let blocks = Listutil.init n (fun i -> 
                                         Llvm.append_block context 
                                           ("case" ^ (string_of_int i)) func) in 
-          let block_res = Llvm.append_block context "case_res" func in
-          let else_block = Llvm.append_block context "else" func in
+          let res_block = Llvm.append_block context "case_res" func in
+          let default_block = List.hd blocks in 
           let cond' = Bitvector.llvalue_of_singleton cond in
-          let switch = Llvm.build_switch cond' else_block n builder in
+          let switch = Llvm.build_switch cond' default_block (n-1) builder in
           (* build cases *)
           let results = 
             Listutil.mapi 
               (fun i (block, ((x, xenc), s)) -> 
-                 Llvm.add_case switch 
+                 if i > 0 then
+                   Llvm.add_case switch 
                    (Llvm.const_int (Llvm.integer_type context (log n)) i)
                    block;
                  Llvm.position_at_end block builder;
                  let senc = build_annotatedterm ((x, xenc) :: ctx) s args in
-                 let _ = Llvm.build_br block_res builder in
+                 let _ = Llvm.build_br res_block builder in
                  let block' = Llvm.insertion_block builder in
                    senc, block'
               ) (List.combine blocks encs) in
             (* build phi *)
-            Llvm.position_at_end else_block builder;
-            ignore (Llvm.build_unreachable builder);
-            Llvm.position_at_end block_res builder;
+            Llvm.position_at_end res_block builder;
             let z_attrib = Bitvector.build_phi 
                              (List.map (fun (senc, block) -> senc.attrib, block) 
                                 results)
@@ -616,48 +621,24 @@ let build_term
             Bitvector.add_incoming (yenc.attrib, block_curr) z_attrib;
             Llvm.position_at_end block_res builder;
               xenc
-      | FoldW((alpha, a), t) ->
-          let tenc = build_annotatedterm ctx t args in
-          let i64 = Llvm.i64_type context in
-          let malloctype = Llvm.function_type 
-                             (Llvm.pointer_type (Llvm.i8_type context)) 
-                             (Array.of_list [i64]) in
-          let malloc = Llvm.declare_function "malloc" malloctype the_module in
-          let mua = Type.newty (Type.MuW(alpha, a)) in
-          let a_unfolded = Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
-          let a_struct = packing_type a_unfolded in
-          let tenc_packed = pack_encoded_value tenc a_unfolded in
-          let mem_i8ptr = Llvm.build_call malloc (Array.of_list [Llvm.size_of a_struct]) 
-                            "memi8" builder in
-          let mem_a_struct_ptr = Llvm.build_bitcast mem_i8ptr (Llvm.pointer_type a_struct) 
-                                   "memstruct" builder in
-          ignore (Llvm.build_store tenc_packed mem_a_struct_ptr builder);
-          let pl = Llvm.build_ptrtoint mem_a_struct_ptr i64 "memint" builder in
-            {payload = [pl]; attrib = Bitvector.null}
-      | UnfoldW((alpha, a), t) ->
-          let mua = Type.newty (Type.MuW(alpha, a)) in
-          let a_unfolded = Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
-          let a_struct = packing_type a_unfolded in
-            begin
-              match build_annotatedterm ctx t args with
-                | {payload = [tptrint] } ->
-                    let tptr = Llvm.build_inttoptr tptrint (Llvm.pointer_type a_struct) "tptr" builder in
-                    let tstruct = Llvm.build_load tptr "tstruct" builder in
-                    unpack_encoded_value tstruct a_unfolded                      
-                | _ -> assert false
-            end
-      | AssignW((alpha, a), s, t) ->
+      | AssignW(id, {desc= TypeAnnot(s, Some a)}, t) ->
+          assert (Type.Data.is_recursive id);
           let senc = build_annotatedterm ctx s args in
           let tenc = build_annotatedterm ctx t args in
-          let mua = Type.newty (Type.MuW(alpha, a)) in
-          let a_unfolded = Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
+          let cs_types = 
+            match Type.finddesc a with
+              | Type.DataW(id, ps) -> Type.Data.constructor_types id ps 
+              | _ -> assert false in
+          let n = List.length cs_types in
+          let a_unfolded = Type.newty (Type.DataW(Type.Data.sumid n, cs_types)) in
           let a_struct = packing_type a_unfolded in
             begin
-              match senc with
-                | {payload = [sptrint] } ->
-                    let sptr = Llvm.build_inttoptr sptrint (Llvm.pointer_type a_struct) "tptr" builder in
-                    let tenc_packed = pack_encoded_value tenc a_unfolded in
-                      ignore (Llvm.build_store tenc_packed sptr builder);
+              match senc, tenc with
+                | {payload = [sptrint] }, {payload = [tptrint]} ->
+                    let sptr = Llvm.build_inttoptr sptrint (Llvm.pointer_type a_struct) "sptr" builder in
+                    let tptr = Llvm.build_inttoptr tptrint (Llvm.pointer_type a_struct) "sptr" builder in
+                    let tstruct = Llvm.build_load tptr "tstruct" builder in
+                      ignore (Llvm.build_store tstruct sptr builder);
                       {payload = []; attrib = Bitvector.null}
                 | _ -> assert false
             end
@@ -876,6 +857,7 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
            | Branch(src, x, lets, (id, s, cases)) (* (xl, bodyl, dst1), (xr, bodyr, dst2)) *) ->
                begin
                  let n = List.length cases in
+                 assert (n > 1);
                  let params = List.map (fun (x, b, dst) -> dst.message_type) cases in
                  let sumid = Type.Data.sumid n in
                  let sum = Type.newty (Type.DataW(Type.Data.sumid n, params)) in
@@ -885,9 +867,6 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                                              (fun i (x, body, _) -> (x, mkInW sumid i body))
                                              cases
                                           ))) in
-                   let else_block = Llvm.append_block context "else" func in
-                   ignore (Llvm.position_at_end else_block builder);
-                   ignore (Llvm.build_unreachable builder);
                  let src_block = get_block src.name in
                    Llvm.position_at_end src_block builder;
                    let senc = Hashtbl.find phi_nodes src.name in
@@ -900,9 +879,11 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                    let dsts = List.map (fun (x, b, dst) -> dst) cases in
                    let cond' = Bitvector.llvalue_of_singleton cond in
                    let src_block = Llvm.insertion_block builder in
-                   let switch = Llvm.build_switch cond' else_block (List.length dencs) builder in
+                   let default_block = get_block (List.hd dsts).name in
+                   let switch = Llvm.build_switch cond' default_block (List.length dencs - 1) builder in
                      Listutil.iteri (fun i dst -> 
-                                       Llvm.add_case switch 
+                                       if i > 0 then (* first case is default *)
+                                         Llvm.add_case switch 
                                          (Llvm.const_int (Llvm.integer_type context (log n)) i)
                                          (get_block dst.name)) dsts;
                      List.iter (fun (denc, dst) -> 

@@ -102,12 +102,6 @@ let string_of_type (ty: Type.t): string =
       | Type.NatW -> Buffer.add_string buf "int"
       | Type.ZeroW -> Buffer.add_char buf '0'
       | Type.OneW -> Buffer.add_string buf "unit"
-      | Type.MuW(alpha, a) ->
-          Buffer.add_string buf "mu<";
-          s_typeW alpha;
-          Buffer.add_char buf '.';
-          s_typeW a;
-          Buffer.add_char buf '>'
       | Type.ContW(ret) ->
           Buffer.add_string buf "cont<";
           s_typeW ret;
@@ -160,7 +154,7 @@ let string_of_type (ty: Type.t): string =
           s_typeW t2;
           Buffer.add_char buf ']'
       | Type.ZeroW | Type.OneW | Type.FunW _ | Type.NatW
-      | Type.DataW _ | Type.TensorW _ | Type.MuW _ | Type.ContW _ ->
+      | Type.DataW _ | Type.TensorW _ | Type.ContW _ ->
           s_typeW t
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -209,7 +203,7 @@ let abstract_string_of_typeU (ty: Type.t): string =
           Buffer.add_string buf (string_of_type t2);
           Buffer.add_char buf ']'
       | Type.NatW | Type.ZeroW | Type.OneW | Type.FunW _
-      | Type.DataW _ | Type.TensorW _ | Type.MuW _ | Type.ContW _ ->
+      | Type.DataW _ | Type.TensorW _ | Type.ContW _ ->
           Buffer.add_string buf (string_of_type t);
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
@@ -285,20 +279,6 @@ let string_of_termW (term: Term.t): string =
           let cname = List.nth (Type.Data.constructor_names id) k in
           Buffer.add_string buf cname;
           s_termW_atom t1
-      | FoldW((alpha, a), t1) ->
-          Buffer.add_string buf "fold<";
-          Buffer.add_string buf (string_of_type alpha);
-          Buffer.add_string buf ". ";
-          Buffer.add_string buf (string_of_type a);
-          Buffer.add_string buf "> ";
-          s_termW t1
-      | UnfoldW((alpha, a), t1) ->
-          Buffer.add_string buf "unfold<";
-          Buffer.add_string buf (string_of_type alpha);
-          Buffer.add_string buf ". ";
-          Buffer.add_string buf (string_of_type a);
-          Buffer.add_string buf "> ";
-          s_termW t1
       | DeleteW((alpha, a), t1) ->
           Buffer.add_string buf "delete<";
           Buffer.add_string buf (string_of_type alpha);
@@ -320,12 +300,10 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf (string_of_type b);
           Buffer.add_string buf "> ";
           s_termW t1
-      | AssignW((alpha, a), t1, t2) ->
+      | AssignW(id, t1, t2) ->
           s_termW t1;
           Buffer.add_string buf ":=<";
-          Buffer.add_string buf (string_of_type alpha);
-          Buffer.add_string buf ". ";
-          Buffer.add_string buf (string_of_type a);
+          Buffer.add_string buf id;
           Buffer.add_string buf "> ";
           s_termW t2
       | _ ->
@@ -359,7 +337,7 @@ let string_of_termW (term: Term.t): string =
       | TypeAnnot(t, _) ->
           s_termW_atom t
       | LambdaW(_, _) | LetW(_, _) | CaseW(_, _, _) | InW _ 
-      | LoopW(_) | AppW(_, _) | FoldW _ | UnfoldW _ | DeleteW _ | AssignW _ ->
+      | LoopW(_) | AppW(_, _) | DeleteW _ | AssignW _ ->
           Buffer.add_char buf '(';
           s_termW t;
           Buffer.add_char buf ')'

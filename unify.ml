@@ -55,9 +55,6 @@ module Unify(T : sig type t end) = struct
           | DataW(i, ts), DataW(j, ss) when i = j -> 
               List.iter (fun (t, s) -> unify_raw (t, s, tag))
                 (List.combine ts ss)
-          | MuW(alpha, a), MuW(beta, b) -> 
-              unify_raw (alpha, beta, tag);
-              unify_raw (a, b, tag)
           | ContW(t1), ContW(s1) ->
               unify_raw (t1, s1 ,tag)
           | FunU(a1, t1, t2), FunU(b1, s1, s2) -> 
@@ -80,7 +77,6 @@ module Unify(T : sig type t end) = struct
             begin
               match r.desc with 
                 | ContW(t1) -> dfs t1
-                | MuW(alpha, t1) -> dfs t1
                 | TensorW(t1, t2) | FunW(t1, t2)
                 | BoxU(t1, t2) | TensorU(t1, t2) -> dfs t1; dfs t2
                 | FunU(t1, t2, t3) -> dfs t1; dfs t2; dfs t3

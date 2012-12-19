@@ -49,50 +49,44 @@ letw fixw = fun x ->
 letu fix = hack fixw
  as {'c (* mu 'c. 1 + 'b*'c *)}({'b}'a --o 'a) --o 'a
 *)
-(*
+
 type lazylist<'a> = 
-        Susp of cont<cont<'a>>
+        Susp of cont<cont<lazylist<'a>>>
       | Cons of (cont<cont<'a>> + int) * lazylist<'a>
-*)
-letw susp = fun x -> 
-      fold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> Inl(x)
-letw ccons = fun x -> 
-      fold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> Inr(x)
 
 (* Invariante: Wenn man Inl(k) einmal forced, dann kommt nicht wieder
  * eine Liste der Form Inl(...) heraus *)
-letu cons : [int] --> [mu 'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a]
-                  --> [mu 'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a] =  
+letu cons : [int] --> [lazylist<int>]
+                  --> [lazylist<int>] =  
   (fun x -> fun xs ->
     let [xk] = suspend(x) in
     let [xsk] = suspend(xs) in
     let [id] = 
-           [ ccons(Inl(xk), susp(xsk)) ] in
+           [ Cons(Inl(xk), Susp(xsk)) ] in
         [id])
 
 letu ft = 
   fun l -> 
     let [lid] = l in
-    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
-      Inl(thunk) -> 
+    case lid of
+      Susp(thunk) -> 
         let [v] = force thunk in
-        let [u] = [ lid :=<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> 
-                         unfold<'a.cont<cont<'a>> + (cont<cont<int>> + int) * 'a> v ] in
+        let [u] = [ lid :=<lazylist> v] in
           [lid]
-    | Inr(v) -> [lid]
+    | Cons(v) -> [lid]
 
 letu head =
   fun l -> 
     let [lid] = ft l in
-    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
-      Inl(thunk) -> 
+    case lid of
+      Susp(thunk) -> 
         [let x=0 loop Inr(x)]
-    | Inr(ht) ->
+    | Cons(ht) ->
         case let (h,t) = ht in h of
           Inl(k) -> 
             let [v] = force k in
             let [u] = [  let (h,t) = ht in
-                         lid :=<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> Inr(Inr(v), t) ] in
+                         lid :=<lazylist> Cons(Inr(v), t) ] in
               [v]
         | Inr(v) -> 
               [v]
@@ -100,17 +94,17 @@ letu head =
 letu tail =
   fun l -> 
     let [lid] = ft l in
-    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
-      Inl(thunk) -> 
+    case lid of
+      Susp(thunk) -> 
         [let x=0 loop Inr(x)]
-    | Inr(ht) ->
+    | Cons(ht) ->
         [let (h,t) = ht in t]
 
 letu thunk =
   fun l -> 
     (* Invariante erhalten *)
     let [thunk] =  suspend (ft l) in
-      [ susp(thunk) ]
+      [ Susp(thunk) ]
     
 letu zipWith = fun f -> 
   fix (fun zw -> fun l1 -> fun l2 ->

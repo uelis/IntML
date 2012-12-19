@@ -160,37 +160,19 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
           | None -> con1
           | Some a-> eq_expected_constraint (Term.mkVar x) (alpha, a) :: con1
         end
-  | FoldW((alpha, a), t) -> 
-      let mua = newty (MuW(alpha, a)) in
-      let a_unfolded = 
-        Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
-      let a1, con1 = ptW c t in
-        newty (MuW(alpha, a)),
-        eq_expected_constraint t (a_unfolded, a1) ::
-        con1
-  | UnfoldW((alpha, a), t) ->
-      let mua = newty (MuW(alpha, a)) in
-      let a_unfolded = 
-        Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
-      let a1, con1 = ptW c t in
-        a_unfolded,
-        eq_expected_constraint t (newty (MuW(alpha, a)), a1) ::
-        con1
-  | AssignW((alpha, a), t, s) -> 
-      let mua = newty (MuW(alpha, a)) in
-      let a_unfolded = 
-        Type.subst (fun beta -> if Type.equals beta alpha then mua else beta) a in
-      let a1, con1 = ptW c t in
-      let a2, con2 = ptW c s in
-        newty OneW,
-        eq_expected_constraint t (mua, a1) ::
-        eq_expected_constraint s (a_unfolded, a2) ::
-        con1 @ con2
-  | DeleteW((alpha, a), t) ->
-      let a1, con1 = ptW c t in
-        newty OneW,
-        eq_expected_constraint t (newty (MuW(alpha, a)), a1) ::
-        con1
+  | AssignW(id, t1, t2) -> 
+      if not (Type.Data.is_recursive id) then
+        raise (Typing_error (Some t, " Assigment can only be used for recursive types."))
+      else 
+        let n = Data.params id in
+        let params = fresh_tyVars n in
+        let data = newty (DataW(id, params)) in
+        let a1, con1 = ptW c t1 in
+        let a2, con2 = ptW c t2 in
+          newty OneW,
+          eq_expected_constraint t1 (data, a1) ::
+          eq_expected_constraint t2 (data, a2) ::
+          con1 @ con2
   | EmbedW((a, b), t) ->
       let a1, con1 = ptW c t in
         b,
@@ -418,7 +400,7 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
         eq_expected_constraint t (a, ty) :: con
   | LoopW _  |LambdaW (_, _) | AppW (_, _) | CaseW (_, _, _) | InW (_, _, _) 
   | LetW (_, _) | LetBoxW(_,_) | PairW (_, _) | ConstW (_) | UnitW 
-  | FoldW _ | UnfoldW _ | AssignW _ | DeleteW _ | Term.ContW _
+  | AssignW _ | DeleteW _ | Term.ContW _
   | EmbedW _ | ProjectW _ ->
       raise (Typing_error (Some t, "Upper class term expected."))
 
@@ -492,9 +474,17 @@ let solve_constraints (con: type_constraint list) : unit =
           in
             Type.Typetbl.replace m (Type.find alpha) b;
             join_lower_bounds rest in
+  let fresh_ty = Vargen.mkVarGenerator "recty" ~avoid:[] in
   let solve_ineq (a, alpha) =
     assert (Type.finddesc alpha = Var);
-    let fva = Type.free_vars a in
+    let beta = newty Var in
+    let a' = subst (fun x -> if equals x alpha then beta else x) a in
+    let fva' = Type.free_vars a' in
+    let sol = fresh_ty () in
+      Type.Data.make sol;
+      List.iter (fun alpha -> Type.Data.add_param sol alpha) fva';
+      Type.Data.add_constructor sol ("con" ^ sol) a';
+        (*
     let sol =
       if List.exists (fun beta -> find beta == find alpha) fva then
         let beta = newty Var in
@@ -502,8 +492,8 @@ let solve_constraints (con: type_constraint list) : unit =
 (*        Type.newty (Type.MuW(beta, Type.newty (Type.SumW [Type.newty Type.OneW; a']))) *)
           Type.newty (Type.MuW(beta, a')) 
       else 
-        a in
-      U.unify_pairs [(sol, alpha, Some ContextShape)]
+        a in*)
+      U.unify_pairs [(newty (DataW(sol,fva')), alpha, Some ContextShape)]
   in
     join_lower_bounds ineqs;
     (* Add equations for lower bounds. *)    

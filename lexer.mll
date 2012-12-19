@@ -56,12 +56,9 @@ rule main = parse
   | '#'        { TokSharp }
   | '='        { TokEquals }
   | ":="       { TokColonEquals }
-  | "mu"       { TokMu }
   | "type"     { TokKwType }
   | "unit"     { TokKwUnit }
   | "delete"   { TokDelete }
-  | "fold"     { TokFold }
-  | "unfold"   { TokUnfold }
   | "if"       { TokKwIf }
   | "then"     { TokKwThen }
   | "else"     { TokKwElse }
