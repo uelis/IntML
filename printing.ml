@@ -79,9 +79,9 @@ let string_of_type (ty: Type.t): string =
       | Type.DataW(id, t1 :: l) ->
           Buffer.add_string buf id;
           Buffer.add_string buf "<";
-          s_typeW_summand t1;           
-          List.iter (fun t2 -> s_typeW_summand t2; 
-                               Buffer.add_string buf ", ") l;
+          s_typeW_summand t1;
+          List.iter (fun t2 -> Buffer.add_string buf ", ";
+                               s_typeW_summand t2) l;
           Buffer.add_string buf ">";
       | _ -> 
           s_typeW_factor t

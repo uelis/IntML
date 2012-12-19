@@ -365,7 +365,7 @@ let trace (c: circuit) : func =
     else 
       begin
         let block = trace src src.name [(mkVar "z",(sigma,x))] (mkVar sigma, mkVar x) in
-          Printf.printf "%s" (string_of_block block);  
+          (* Printf.printf "%s" (string_of_block block);  *)
           Hashtbl.add entry_points src.name ();
           match block with
             | Unreachable(_) | Return(_) -> [block]

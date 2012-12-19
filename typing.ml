@@ -480,10 +480,17 @@ let solve_constraints (con: type_constraint list) : unit =
     let beta = newty Var in
     let a' = subst (fun x -> if equals x alpha then beta else x) a in
     let fva' = Type.free_vars a' in
-    let sol = fresh_ty () in
-      Type.Data.make sol;
-      List.iter (fun alpha -> Type.Data.add_param sol alpha) fva';
-      Type.Data.add_constructor sol ("con" ^ sol) a';
+    let sol = 
+      if List.exists (fun gamma -> find beta == find gamma) fva' then
+        begin
+          let recty =fresh_ty () in
+            Type.Data.make recty;
+            List.iter (fun alpha -> Type.Data.add_param recty alpha) fva';
+            Type.Data.add_constructor recty ("con" ^ recty) a';
+            newty (DataW(recty, fva'))
+        end
+      else 
+        a in
         (*
     let sol =
       if List.exists (fun beta -> find beta == find alpha) fva then
@@ -493,7 +500,7 @@ let solve_constraints (con: type_constraint list) : unit =
           Type.newty (Type.MuW(beta, a')) 
       else 
         a in*)
-      U.unify_pairs [(newty (DataW(sol,fva')), alpha, Some ContextShape)]
+      U.unify_pairs [sol, alpha, Some ContextShape]
   in
     join_lower_bounds ineqs;
     (* Add equations for lower bounds. *)    
