@@ -255,10 +255,10 @@ dataW:
     | TokKwType datadeclW TokEquals constructorsW
       { let id, params = $2 in
         let cons = $4 in
-          Type.Data.make id; 
-          List.iter (Type.Data.add_param id) params;
+        let n = List.length params in
+          Type.Data.make id n; 
           List.iter (fun (cname, cargty) -> 
-                      Type.Data.add_constructor id cname cargty)
+                      Type.Data.add_constructor id cname params cargty)
           cons;
           id
        }

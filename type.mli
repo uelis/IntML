@@ -40,9 +40,8 @@ sig
 
   val find_constructor: string -> id * int
 
-  val make : id -> unit
-  val add_param : id -> t -> unit
-  val add_constructor : id -> string -> t -> unit
+  val make : id -> int -> unit
+  val add_constructor : id -> string -> t list -> t -> unit
 end
 
 val newty : desc -> t

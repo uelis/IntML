@@ -133,6 +133,7 @@ module Data =
 struct
   type id = string
 
+  (* Type variables in the params list must remain private to this module *)              
   type d = { name : string;
              params : t list;
              constructors : (string * t) list }
@@ -212,20 +213,22 @@ struct
         raise Not_found
     with Found (id, i) -> id, i
 
-  (* muss sichergehen, dass aus parametervariablen nicht durch Unifikation
-   * Typen werden *)
-  let make name = 
-    Hashtbl.add datatypes name { name = name; params = []; constructors = [] }
-
-  let add_param id var = 
-    let d = Hashtbl.find datatypes id in
-    let d' = { d with params = d.params @ [var] } in
-      Hashtbl.replace datatypes id d'
+  let make name nparams = 
+    Hashtbl.add datatypes name 
+      { name = name; 
+         (* (these type variables must remain private) *)
+        params = Listutil.init nparams (fun _ -> newty Var); 
+        constructors = [] }
 
   (* TODO: check for duplicates, parameters *)
-  let add_constructor id name arg =
+  let add_constructor id name paramvars argtype =
     let d = Hashtbl.find datatypes id in
-    let d' = { d with constructors = d.constructors @ [name, arg] } in
+    (* replace given parameters by private parameters *)
+    let param_subst alpha = 
+      let l = List.combine paramvars d.params in
+        try List.assoc alpha l with Not_found -> alpha in
+    let argtype' = subst param_subst argtype in
+    let d' = { d with constructors = d.constructors @ [name, argtype'] } in
       Hashtbl.replace datatypes id d'
 end
 

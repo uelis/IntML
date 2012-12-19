@@ -477,17 +477,15 @@ let solve_constraints (con: type_constraint list) : unit =
   let fresh_ty = Vargen.mkVarGenerator "recty" ~avoid:[] in
   let solve_ineq (a, alpha) =
     assert (Type.finddesc alpha = Var);
-    let beta = newty Var in
-    let a' = subst (fun x -> if equals x alpha then beta else x) a in
-    let fva' = Type.free_vars a' in
+    let fva = Type.free_vars a in
     let sol = 
-      if List.exists (fun gamma -> find beta == find gamma) fva' then
+      if List.exists (fun beta -> find beta == find alpha) fva then
         begin
           let recty =fresh_ty () in
-            Type.Data.make recty;
-            List.iter (fun alpha -> Type.Data.add_param recty alpha) fva';
-            Type.Data.add_constructor recty ("con" ^ recty) a';
-            newty (DataW(recty, fva'))
+          let n = List.length fva in
+            Type.Data.make recty n;
+            Type.Data.add_constructor recty ("con" ^ recty) fva a;
+            newty (DataW(recty, fva))
         end
       else 
         a in
