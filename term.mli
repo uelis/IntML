@@ -42,8 +42,6 @@ and t_desc =
   | AppW of t * t                        (* s, t *)
   | LambdaW of (var * Type.t option) * t (* <x>s *)
   | AssignW of Type.Data.id * t * t
-  | EmbedW of (Type.t * Type.t) * t
-  | ProjectW of (Type.t * Type.t) * t
   | LoopW of t * (var * t) 
   | LetBoxW of t * (var * t)             (* s, <x>t *)
   | ContW of int * int * t
@@ -77,8 +75,6 @@ val mkLambdaW : (var * Type.t option) * t -> t
 val mkTrW : t -> t
 val mkLoopW : t -> (var * t) -> t
 val mkAssignW : Type.Data.id ->  t -> t -> t
-val mkEmbedW : Type.t * Type.t -> t -> t
-val mkProjectW : Type.t * Type.t -> t -> t
 val mkContW : int -> int -> t -> t
 val mkLetCompW : t -> (var * t) -> t
 val mkPairU : t -> t -> t

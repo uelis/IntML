@@ -40,8 +40,6 @@ and t_desc =
   | AppW of t * t                      (* s, t *)
   | LambdaW of (var * (Type.t option)) * t 
   | AssignW of Type.Data.id * t * t
-  | EmbedW of (Type.t * Type.t) * t
-  | ProjectW of (Type.t * Type.t) * t
   | LoopW of t * (var * t)
   | LetBoxW of t * (var * t)           (* s, <x>t *)
   | ContW of int * int * t
@@ -74,8 +72,6 @@ let mkAppW s t = { desc = AppW(s, t); loc = None }
 let mkLambdaW ((x, ty), t) = { desc = LambdaW((x, ty), t); loc = None }
 let mkLoopW s (x ,t) = { desc = LoopW(s, (x,t)); loc = None }
 let mkAssignW id s t = { desc = AssignW(id, s, t); loc = None }
-let mkEmbedW (b, a) s = { desc = EmbedW((b, a), s); loc = None }
-let mkProjectW (b, a) s = { desc = ProjectW((b, a), s); loc = None }
 let mkContW i n t = { desc = ContW(i, n, t); loc = None }
 let mkLetCompW s (x, t) = mkAppW (mkLambdaW ((x, None), t)) s
 let mkPairU s t= { desc = PairU(s, t); loc = None }
@@ -105,7 +101,6 @@ let rec free_vars (term: t) : var list =
     | Var(v) -> [v]
     | ConstW(_) | UnitW -> []
     | InW(_,_,s) | ContW(_, _,  s)
-    | EmbedW(_, s) | ProjectW(_, s)
     | BoxTermU(s) | HackU(_, s) | MemoU(s) | SuspendU(s) | ForceU(s) -> free_vars s
     | PairW(s, t) | PairU (s, t) | AppW (s, t) | AppU(s, t) | AssignW(_, s, t) -> 
         (free_vars s) @ (free_vars t)
@@ -128,8 +123,6 @@ let rename_vars (f: var -> var) (term: t) : t =
     | InW(n, k, s) -> { term with desc = InW(n, k, rn s) }
     | LoopW(s, (x, t)) -> { term with desc = LoopW(rn s, (f x, rn t)) }
     | AssignW(ty, s, t) -> { term with desc = AssignW(ty, rn s, rn t) }
-    | EmbedW(ty, s) -> { term with desc = EmbedW(ty, rn s) }
-    | ProjectW(ty, s) -> { term with desc = ProjectW(ty, rn s) }
     | ContW(i, n, s) -> { term with desc = ContW(i, n, rn s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(rn s) }
     | MemoU(s) -> { term with desc = MemoU(rn s) }
@@ -179,8 +172,6 @@ let map_type_annots (f: Type.t option -> Type.t option) (term: t) : t =
     | InW(n, k, s) -> { term with desc = InW(n, k, mta s) }
     | LoopW(s, (x, t)) -> { term with desc = LoopW(mta s, (x, mta t)) }
     | AssignW(ty, s, t) -> { term with desc = AssignW(ty, mta s, mta t) }
-    | EmbedW(ty, s) -> { term with desc = EmbedW(ty, s) }
-    | ProjectW(ty, s) -> { term with desc = ProjectW(ty, s) }
     | ContW(i, n, s) -> { term with desc = ContW(i, n, s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
     | MemoU(s) -> { term with desc = MemoU(mta s) }
@@ -230,8 +221,6 @@ let head_subst (s: t) (x: var) (t: t) : t option =
       | InW(n, k, s) -> { term with desc = InW(n, k, sub sigma s) }
       | LoopW(s, (x, t)) -> { term with desc = LoopW(sub sigma s, abs sigma (x, t)) }
       | AssignW(ty, s, t) -> { term with desc = AssignW(ty, sub sigma s, sub sigma t) }
-      | EmbedW(ty, s) -> { term with desc = EmbedW(ty, sub sigma s) }
-      | ProjectW(ty, s) -> { term with desc = ProjectW(ty, sub sigma s) }
       | ContW(i, n, s) -> { term with desc = ContW(i, n, sub sigma s) }
       | BoxTermU(s) -> { term with desc = BoxTermU(sub sigma s) }
       | SuspendU(s) -> { term with desc = SuspendU(sub sigma s) }
@@ -314,10 +303,6 @@ let freshen_type_vars t =
     | LoopW(s, (x, t)) -> { term with desc = LoopW(mta s, (x, mta t)) }
     | AssignW(id, s, t) -> 
         { term with desc = AssignW(id, mta s, mta t) }
-    | EmbedW((b, a), s) -> 
-        { term with desc = EmbedW((Type.subst fv b, Type.subst fv a), mta s) }
-    | ProjectW((b, a), s) -> 
-        { term with desc = ProjectW((Type.subst fv b, Type.subst fv a), mta s) }
     | ContW(i, n, s) -> { term with desc = ContW(i, n, mta s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
     | SuspendU(s) -> { term with desc = SuspendU(mta s) }

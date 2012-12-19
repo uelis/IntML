@@ -279,20 +279,6 @@ let string_of_termW (term: Term.t): string =
           let cname = List.nth (Type.Data.constructor_names id) k in
           Buffer.add_string buf cname;
           s_termW_atom t1
-      | EmbedW((a, b), t1) ->
-          Buffer.add_string buf "embed<";
-          Buffer.add_string buf (string_of_type a);
-          Buffer.add_string buf ", ";
-          Buffer.add_string buf (string_of_type b);
-          Buffer.add_string buf "> ";
-          s_termW t1
-      | ProjectW((a, b), t1) ->
-          Buffer.add_string buf "project<";
-          Buffer.add_string buf (string_of_type a);
-          Buffer.add_string buf ", ";
-          Buffer.add_string buf (string_of_type b);
-          Buffer.add_string buf "> ";
-          s_termW t1
       | AssignW(id, t1, t2) ->
           s_termW t1;
           Buffer.add_string buf ":=<";

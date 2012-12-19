@@ -316,8 +316,7 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
             (w, ins)
       | LoopW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _, _, _)| InW (_, _, _)
       | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_)|UnitW
-      | AssignW _ | ContW _ 
-      | EmbedW _ | ProjectW _ ->
+      | AssignW _ | ContW _ ->
           assert false 
   and compile_in_box (c: var) (sigma: var list) (gamma: ctx) (t: Term.t) =
     let (gamma_in_box, i_enter_box) = enter_box gamma in
@@ -696,6 +695,63 @@ let rec out_k (t: Term.t) (n: int) : int * Term.t =
       (k + 1, s)
   | _ -> failwith "out_k"
 
+exception Not_Leq               
+
+(* If alpha <= beta then (embed alpha beta) is a corresponding 
+ * embedding from alpha to beta.
+ * The function raises Not_Leq if it discovers that alpha <= beta
+ * does not hold.
+ * *)
+let embed (a: Type.t) (b: Type.t) : Term.t =
+  if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
+  else 
+    match Type.finddesc b with
+      | Type.DataW(id, l) ->
+          let cs = Type.Data.constructor_types id l in
+          let rec inject l n =
+            match l with 
+              | [] -> raise Not_Leq
+              | b1 :: bs ->
+                  if Type.equals a b1 then
+                    Term.mkLambdaW(("x", None), Term.mkInW id n (Term.mkVar "x"))
+                  else 
+                    inject bs (n + 1) in
+            inject cs 0
+      | _ -> raise Not_Leq
+
+(* If alpha <= beta then (embed alpha beta) is a corresponding 
+ * embedding from beta to alpha. The functions (embed a b) and 
+ * (project a b)form a section-retraction pair.
+ * The function raises Not_Leq if it discovers that alpha <= beta
+ * does not hold.
+ * *)
+let project (a: Type.t) (b: Type.t) : Term.t =            
+  if Type.equals a b then 
+    Term.mkLambdaW(("x", None), Term.mkVar "x")
+  else 
+    match Type.finddesc b with
+      | Type.DataW(id, l) ->
+          let cs = Type.Data.constructor_types id l in
+          let rec out l n =
+            match l with 
+              | [] -> raise Not_Leq
+              | b1 :: bs ->
+                  if Type.equals a b1 then
+                    Term.mkLambdaW(
+                      ("x", None),
+                      Term.mkCaseW id true (Term.mkVar "x") 
+                        (Listutil.init (List.length cs)
+                           (fun j-> 
+                              if j = n then 
+                                ("y", Term.mkVar "y")
+                              else
+                                (unusable_var, mkConstW Cundef))))
+                  else
+                    out bs (n + 1) in
+            out l 0
+    | _ -> 
+        raise Not_Leq 
+
 
 let parse (s: string) : Term.t =
   let lexbuf = Lexing.from_string s in
@@ -902,7 +958,7 @@ let message_passing_term (c: circuit): Term.t =
                          ((c, v), 
                           in_k w2.src (max_wire_src_dst + 1) 
                             (mkPairW (mkVar sigma) 
-                               (mkPairW (mkProjectW (b, a) (mkVar c))(*(mkAppW (project b a) (mkVar c)) *)
+                               (mkPairW (mkAppW (project b a) (mkVar c)) 
                                   (mkVar v)))))
                   )
             | LWeak(w1 (* \Tens A X *), 
@@ -916,7 +972,7 @@ let message_passing_term (c: circuit): Term.t =
                          ((c, v), 
                           in_k w1.src (max_wire_src_dst + 1) 
                             (mkPairW (mkVar sigma) 
-                               (mkPairW (mkEmbedW (b, a) (mkVar c)) (* (mkAppW (embed b a) (mkVar c)) *)
+                               (mkPairW (mkAppW (embed b a) (mkVar c)) 
                                   (mkVar v)))))
                   )
             | Epsilon(w1 (* [A] *), 

@@ -371,8 +371,6 @@ let build_term
             mkAssignW id 
               (mkTypeAnnot (annotate_term t1) (Some alpha)) 
               (annotate_term t2)
-      | EmbedW((b, a), t1) -> mkEmbedW (b, a) (annotate_term t1)
-      | ProjectW((b, a), t1) -> mkProjectW (b, a) (annotate_term t1)
       | ContW(i, n ,t) -> 
           let alpha = Type.newty Type.Var in
             mkContW i n (mkTypeAnnot (annotate_term t) (Some alpha))
@@ -659,12 +657,6 @@ let build_term
                     {payload = []; attrib = Bitvector.null}
                 | _ -> assert false
             end *)
-      | EmbedW((a, b), s) ->
-          let senc = build_annotatedterm ctx (mkTypeAnnot s (Some a)) args in
-            build_truncate_extend senc b
-      | ProjectW((a, b), s) ->
-          let senc = build_annotatedterm ctx (mkTypeAnnot s (Some b)) args in
-            build_truncate_extend senc a
       | ContW(i, _, { desc = TypeAnnot(t, Some a) }) ->
           let i64 = Llvm.i64_type context in
           let block = get_block i in

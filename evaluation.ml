@@ -26,7 +26,6 @@ let rec cv2termW (v: value) : Term.t =
     | IntV(i) -> mkConstW (Cintconst(i))
     | InV(n, i, v1) -> mkInW n i (cv2termW v1)
     | PairV(v1, v2) -> mkPairW (cv2termW v1) (cv2termW v2)
-(*    | FoldV((alpha, a), v) -> mkFoldW (alpha, a) (cv2termW v) *)
     | _ -> assert false
 
 let newid =
@@ -35,62 +34,6 @@ let newid =
 
 let heap = Hashtbl.create 2
 
-exception Not_Leq               
-
-(* If alpha <= beta then (embed alpha beta) is a corresponding 
- * embedding from alpha to beta.
- * The function raises Not_Leq if it discovers that alpha <= beta
- * does not hold.
- * *)
-let embed (a: Type.t) (b: Type.t) : Term.t =
-  if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
-  else 
-    match Type.finddesc b with
-      | Type.DataW(id, l) ->
-          let cs = Type.Data.constructor_types id l in
-          let rec inject l n =
-            match l with 
-              | [] -> raise Not_Leq
-              | b1 :: bs ->
-                  if Type.equals a b1 then
-                    Term.mkLambdaW(("x", None), Term.mkInW id n (Term.mkVar "x"))
-                  else 
-                    inject bs (n + 1) in
-            inject cs 0
-      | _ -> raise Not_Leq
-
-(* If alpha <= beta then (embed alpha beta) is a corresponding 
- * embedding from beta to alpha. The functions (embed a b) and 
- * (project a b)form a section-retraction pair.
- * The function raises Not_Leq if it discovers that alpha <= beta
- * does not hold.
- * *)
-let project (a: Type.t) (b: Type.t) : Term.t =            
-  if Type.equals a b then 
-    Term.mkLambdaW(("x", None), Term.mkVar "x")
-  else 
-    match Type.finddesc b with
-      | Type.DataW(id, l) ->
-          let cs = Type.Data.constructor_types id l in
-          let rec out l n =
-            match l with 
-              | [] -> raise Not_Leq
-              | b1 :: bs ->
-                  if Type.equals a b1 then
-                    Term.mkLambdaW(
-                      ("x", None),
-                      Term.mkCaseW id true (Term.mkVar "x") 
-                        (Listutil.init (List.length cs)
-                           (fun j-> 
-                              if j = n then 
-                                ("y", Term.mkVar "y")
-                              else
-                                (unusable_var, mkConstW Cundef))))
-                  else
-                    out bs (n + 1) in
-            out l 0
-    | _ -> 
-        raise Not_Leq 
 
 let rec eval (t: Term.t) (sigma : env) : value =
 (*  Printf.printf "%s\n\n" (Printing.string_of_termW t);  *)
@@ -147,10 +90,6 @@ let rec eval (t: Term.t) (sigma : env) : value =
            | IntV id -> Hashtbl.replace heap id vt;
                         UnitV
            | _ -> assert false)
-    | EmbedW((a, b), s) ->
-          eval (mkAppW (embed a b) s) sigma
-    | ProjectW((a, b), s) ->
-          eval (mkAppW (project a b) s) sigma
     | ContW(i, n, s) ->
         eval (Compile.in_k i n s) sigma           
     | LetBoxW(t1, (x, t2)) ->
