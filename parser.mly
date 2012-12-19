@@ -162,7 +162,7 @@ termW:
     | TokLet TokLParen identifier TokComma identifier TokRParen TokEquals termW TokIn termW
       { mkTerm (LetW($8, ($3, $5, $10))) }
     | TokKwIf termW TokKwThen termW TokKwElse termW
-      { mkTerm (CaseW(Type.Data.boolid, $2, [(unusable_var, $4); (unusable_var, $6)])) }
+      { mkTerm (CaseW(Type.Data.boolid, false, $2, [(unusable_var, $4); (unusable_var, $6)])) }
     | TokLet identifier TokEquals termW TokLoop termW
        { mkTerm (LoopW ($4, ($2, $6))) }
     | TokLet identifier TokEquals termW TokIn termW
@@ -177,8 +177,18 @@ termW:
        { mkTerm (AppW(mkTerm (AppW(mkTerm (ConstW(Cintslt)), $1)), $3)) }
     | termW_app TokColonEquals TokLAngle TokIdent TokRAngle  termW
        { mkTerm (AssignW($4, $1, $6)) }
-    | TokDelete TokLAngle typeW TokDot typeW TokRAngle termW
-       { mkTerm (DeleteW(($3, $5), $7)) }
+    | TokDelete termW TokKwOf termW_cases
+       { let id, c = $4 in
+         let sorted_c = List.sort (fun (i, x, t) (j, y, s) -> compare i j) c in
+         let indices = List.map (fun (i, x, t) -> i) sorted_c in
+         let cases = List.map (fun (i, x, t) -> (x,t)) sorted_c in
+         let n = List.length (Type.Data.constructor_names id) in
+         (* Check that there is a case for all constructors *)
+         if (indices = Listutil.init n (fun i -> i)) then
+           mkTerm (CaseW(id, true, $2, cases))
+         else
+           error "case must match each constructor exactly once!"
+       }
     | TokCase termW TokKwOf termW_cases
        { let id, c = $4 in
          let sorted_c = List.sort (fun (i, x, t) (j, y, s) -> compare i j) c in
@@ -187,7 +197,7 @@ termW:
          let n = List.length (Type.Data.constructor_names id) in
          (* Check that there is a case for all constructors *)
          if (indices = Listutil.init n (fun i -> i)) then
-           mkTerm (CaseW(id, $2, cases))
+           mkTerm (CaseW(id, false, $2, cases))
          else
            error "case must match each constructor exactly once!"
        }

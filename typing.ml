@@ -126,7 +126,7 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         fresh_data,
         eq_expected_constraint t1 (a1, fresh_argtype) ::
         con1
-  | CaseW(id, s, l) -> 
+  | CaseW(id, _, s, l) -> 
       let a1, con1 = ptW c s in
       let fresh_data, fresh_argtypes =
         let n = Data.params id in
@@ -398,9 +398,9 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
       let a, con = ptU c phi t in
         a,
         eq_expected_constraint t (a, ty) :: con
-  | LoopW _  |LambdaW (_, _) | AppW (_, _) | CaseW (_, _, _) | InW (_, _, _) 
+  | LoopW _  |LambdaW (_, _) | AppW (_, _) | CaseW _ | InW (_, _, _) 
   | LetW (_, _) | LetBoxW(_,_) | PairW (_, _) | ConstW (_) | UnitW 
-  | AssignW _ | DeleteW _ | Term.ContW _
+  | AssignW _ | Term.ContW _
   | EmbedW _ | ProjectW _ ->
       raise (Typing_error (Some t, "Upper class term expected."))
 

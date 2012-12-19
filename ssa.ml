@@ -99,8 +99,7 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
           lets, mkInW i j t'
     | ProjectW((a,b), {desc = EmbedW((a',b'), t)}) 
         when Type.equals a a' && Type.equals b b' -> reduce t
-    | EmbedW _ | ProjectW _ 
-    | DeleteW _ -> (* TODO: warum wird t nicht reduziert?*)
+    | EmbedW _ | ProjectW _ -> (* TODO: warum wird t nicht reduziert?*)
         let x = fresh_var () in
         let y = fresh_var () in
           [mkPairW t mkUnitW, (x,y)], 
@@ -126,7 +125,7 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
                   let lets2, t2' = reduce t2 in
                     lets2 @ ((t1', (x,y)) :: lets1), t2'
           end
-    | CaseW(id, s, cases) ->
+    | CaseW(id, destruct, s, cases) ->
         let letss, rs = reduce s in
           begin
             match rs.Term.desc with
@@ -142,7 +141,7 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
                       cases [] in
                   let x = fresh_var () in
                   let y = fresh_var () in
-                    (mkPairW (mkCaseW id rs reduced_cases) mkUnitW, (x, y)) :: letss, 
+                    (mkPairW (mkCaseW id destruct rs reduced_cases) mkUnitW, (x, y)) :: letss, 
                     mkVar x
           end
     | AppW(t1, t2) ->

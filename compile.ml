@@ -314,9 +314,9 @@ let circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
             U.unify w.type_forward (tyTensor(sigma1, typ));
             U.unify w.type_back (tyTensor(sigma1, tym)); 
             (w, ins)
-      | LoopW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _, _)| InW (_, _, _)
+      | LoopW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _, _, _)| InW (_, _, _)
       | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_)|UnitW
-      | AssignW _ | DeleteW _ | ContW _ 
+      | AssignW _ | ContW _ 
       | EmbedW _ | ProjectW _ ->
           assert false 
   and compile_in_box (c: var) (sigma: var list) (gamma: ctx) (t: Term.t) =
@@ -771,7 +771,7 @@ let message_passing_term (c: circuit): Term.t =
             | Tensor(w1, w2, w3) when w3.src = dst ->
                 (x, mkLetW (mkVar x)
                            ((sigma, x),
-                             mkCaseW (Type.Data.sumid 2) (mkVar x) 
+                             mkCaseW (Type.Data.sumid 2) true (mkVar x) 
                                     [(v, in_k w1.src (max_wire_src_dst + 1) 
                                            (mkPairW (mkVar sigma) (mkVar v))) ;
                                      (v, in_k w2.src (max_wire_src_dst + 1) 
@@ -793,7 +793,7 @@ let message_passing_term (c: circuit): Term.t =
             | Case(id, w1, ws) when w1.src = dst  ->
                 (x, mkLetW (mkVar x) ((sigma, v),
                   mkLetW (mkVar v) ((c, v),
-                    mkCaseW id (mkVar c) 
+                    mkCaseW id false (mkVar c) 
                       (List.map (fun w -> 
                                    (c, in_k w.src (max_wire_src_dst + 1) 
                                          (mkPairW (mkVar sigma) 
@@ -971,9 +971,9 @@ let message_passing_term (c: circuit): Term.t =
     let x = fresh_var () in
     let y = fresh_var () in
     let rec mkitoj i j = if i > j then [] else i :: (mkitoj (i+1) j) in
-    (x, mkCaseW (Type.Data.sumid 2) (mkVar x) 
+    (x, mkCaseW (Type.Data.sumid 2) true (mkVar x) 
           [part 0 all_wires;
-            (y, mkCaseW (Type.Data.sumid (max_wire_src_dst + 1)) (mkVar y) 
+            (y, mkCaseW (Type.Data.sumid (max_wire_src_dst + 1)) true (mkVar y) 
                   (List.map (fun k -> part k all_wires) 
                      (mkitoj 1 max_wire_src_dst)))])
   in 

@@ -356,9 +356,9 @@ let build_term
       | InW(id, i, t1) -> 
           let alpha = Type.newty Type.Var in
             mkTypeAnnot (mkInW id i (annotate_term t1)) (Some alpha)              
-      | CaseW(id, t1, cases)  ->
+      | CaseW(id, destruct, t1, cases)  ->
           let alpha = Type.newty Type.Var in
-              (mkCaseW id
+              (mkCaseW id destruct
                  (mkTypeAnnot (annotate_term t1) (Some alpha)) 
                  (List.map (fun (x, t) -> (x, annotate_term t)) cases))
       | AppW(t1, t2) -> mkAppW (annotate_term t1) (annotate_term t2)
@@ -371,7 +371,6 @@ let build_term
             mkAssignW id 
               (mkTypeAnnot (annotate_term t1) (Some alpha)) 
               (annotate_term t2)
-      | DeleteW((alpha, a), t1) -> mkDeleteW (alpha, a) (annotate_term t1)
       | EmbedW((b, a), t1) -> mkEmbedW (b, a) (annotate_term t1)
       | ProjectW((b, a), t1) -> mkProjectW (b, a) (annotate_term t1)
       | ContW(i, n ,t) -> 
@@ -527,10 +526,10 @@ let build_term
                 {payload = [pl]; attrib = Bitvector.null}
           else 
               build_truncate_extend denc a 
-      | CaseW(id, { desc = TypeAnnot(u, Some a) }, [(x, t)] ) -> 
+      | CaseW(id, destruct, { desc = TypeAnnot(u, Some a) }, [(x, t)] ) -> 
           let uenc =  build_annotatedterm ctx u [] in
            build_annotatedterm ((x, uenc) :: ctx) t [] 
-      | CaseW(id, { desc = TypeAnnot(u, Some a) }, cases) ->           
+      | CaseW(id, destruct, { desc = TypeAnnot(u, Some a) }, cases) ->           
           let n = List.length cases in
           assert (n > 0);
           let cs_types = 
@@ -539,18 +538,25 @@ let build_term
               | _ -> assert false in
           let uenc = 
             if Type.Data.is_recursive id then
-              let a_unfolded = Type.newty (Type.DataW(Type.Data.sumid n, cs_types)) in
-              let a_struct = packing_type a_unfolded in
-                begin
+              begin
+                let a_unfolded = Type.newty (Type.DataW(Type.Data.sumid n, cs_types)) in
+                let a_struct = packing_type a_unfolded in
                   match build_annotatedterm ctx u args with
                     | {payload = [tptrint] } ->
                         let tptr = Llvm.build_inttoptr tptrint (Llvm.pointer_type a_struct) "tptr" builder in
                         let tstruct = Llvm.build_load tptr "tstruct" builder in
+                          if destruct then
+                            begin
+                              let i64 = Llvm.i64_type context in
+                              let freetype = Llvm.function_type (Llvm.void_type context) (Array.of_list [i64]) in
+                              let free = Llvm.declare_function "free" freetype the_module in
+                                ignore (Llvm.build_call free (Array.of_list [tptrint]) "" builder)
+                            end;
                           unpack_encoded_value tstruct a_unfolded
                     | _ -> assert false
-                end
-                else    
-                  build_annotatedterm ctx u [] in
+              end
+            else    
+              build_annotatedterm ctx u [] in
 (*          assert (Bitvector.length uenc.attrib > 0); *)
           let cond, xya = Bitvector.takedrop uenc.attrib (singleton_profile (log n)) in
           let xyenc = {payload = uenc.payload; attrib = xya } in
@@ -642,7 +648,7 @@ let build_term
                       {payload = []; attrib = Bitvector.null}
                 | _ -> assert false
             end
-      | DeleteW((alpha, a), t) ->
+(*      | DeleteW((alpha, a), t) ->
           let i64 = Llvm.i64_type context in
           let freetype = Llvm.function_type (Llvm.void_type context) (Array.of_list [i64]) in
           let free = Llvm.declare_function "free" freetype the_module in
@@ -652,7 +658,7 @@ let build_term
                     ignore (Llvm.build_call free (Array.of_list [tptrint]) "" builder);
                     {payload = []; attrib = Bitvector.null}
                 | _ -> assert false
-            end
+            end *)
       | EmbedW((a, b), s) ->
           let senc = build_annotatedterm ctx (mkTypeAnnot s (Some a)) args in
             build_truncate_extend senc b
@@ -862,7 +868,7 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
                  let sumid = Type.Data.sumid n in
                  let sum = Type.newty (Type.DataW(Type.Data.sumid n, params)) in
                  let lets', t = 
-                   reduce (mkLets lets (mkCaseW id s 
+                   reduce (mkLets lets (mkCaseW id false s 
                                           (Listutil.mapi 
                                              (fun i (x, body, _) -> (x, mkInW sumid i body))
                                              cases

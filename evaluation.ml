@@ -43,8 +43,6 @@ exception Not_Leq
  * does not hold.
  * *)
 let embed (a: Type.t) (b: Type.t) : Term.t =
-let rec embed i (a: Type.t) (b: Type.t) : Term.t =
-  if i > 1 then raise Not_Leq;
   if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
   else 
     match Type.finddesc b with
@@ -54,40 +52,12 @@ let rec embed i (a: Type.t) (b: Type.t) : Term.t =
             match l with 
               | [] -> raise Not_Leq
               | b1 :: bs ->
-                  try
-                    Term.mkLambdaW(("x", None), 
-                                   Term.mkInW id n 
-                                     (Term.mkAppW (embed i a b1) (Term.mkVar "x")))
-                  with Not_Leq -> inject bs (n + 1) in
+                  if Type.equals a b1 then
+                    Term.mkLambdaW(("x", None), Term.mkInW id n (Term.mkVar "x"))
+                  else 
+                    inject bs (n + 1) in
             inject cs 0
-    (* TODO
-     * | Type.SumW[b1; b2] ->
-        begin try 
-          Term.mkLambdaW(("x", None), 
-                         Term.mkInlW 
-                           (Term.mkAppW (embed i a b1) (Term.mkVar "x")))
-        with Not_Leq ->
-          Term.mkLambdaW(("x", None), 
-                         Term.mkInrW 
-                           (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
-        end 
-     *)
-    | Type.TensorW(b1, b2) ->
-        raise Not_Leq
-(*        begin try 
-          Term.mkLambdaW(("x", None), 
-                         Term.mkPairW 
-                           (Term.mkAppW (embed i a b1) (Term.mkVar "x"))
-                           (min b2))
-        with Not_Leq ->
-          Term.mkLambdaW(("x", None), 
-                         Term.mkPairW 
-                           (min b1)
-                           (Term.mkAppW (embed i a b2) (Term.mkVar "x")))
-        end*)
-    | _ -> raise Not_Leq
-             in
-  embed 0 a b
+      | _ -> raise Not_Leq
 
 (* If alpha <= beta then (embed alpha beta) is a corresponding 
  * embedding from beta to alpha. The functions (embed a b) and 
@@ -95,12 +65,10 @@ let rec embed i (a: Type.t) (b: Type.t) : Term.t =
  * The function raises Not_Leq if it discovers that alpha <= beta
  * does not hold.
  * *)
-let project (a0: Type.t) (b0: Type.t) : Term.t =            
-let rec project i (a: Type.t) (b: Type.t) : Term.t =
-  if i > 1 then raise Not_Leq;
-  if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
+let project (a: Type.t) (b: Type.t) : Term.t =            
+  if Type.equals a b then 
+    Term.mkLambdaW(("x", None), Term.mkVar "x")
   else 
-    (* TODO: delete! *)
     match Type.finddesc b with
       | Type.DataW(id, l) ->
           let cs = Type.Data.constructor_types id l in
@@ -108,63 +76,20 @@ let rec project i (a: Type.t) (b: Type.t) : Term.t =
             match l with 
               | [] -> raise Not_Leq
               | b1 :: bs ->
-                  try
+                  if Type.equals a b1 then
                     Term.mkLambdaW(
                       ("x", None),
-                      Term.mkCaseW id (Term.mkVar "x") 
+                      Term.mkCaseW id true (Term.mkVar "x") 
                         (Listutil.init (List.length cs)
                            (fun j-> 
                               if j = n then 
-                                ("y", Term.mkAppW (project i a b1) (Term.mkVar "y"))
+                                ("y", Term.mkVar "y")
                               else
                                 (unusable_var, mkConstW Cundef))))
-                  with Not_Leq -> out bs (n + 1) in
-            out cs 0
-        (* TODO
-    | Type.SumW[b1; b2] ->
-        begin try 
-          Term.mkLambdaW(
-            ("x", None),
-            Term.mkCaseW (Term.mkVar "x") 
-              [("y", Term.mkAppW (project i a b1) (Term.mkVar "y"));
-               (unusable_var, mkConstW Cundef)])
-        with Not_Leq ->
-          Term.mkLambdaW(
-            ("x", None),
-            Term.mkCaseW (Term.mkVar "x") 
-              [(unusable_var,  mkConstW Cundef);
-               ("y", Term.mkAppW (project i a b2) (Term.mkVar "y"))])
-        end 
-         *)
-(*    | Type.TensorW(b1, b2) ->
-        begin try 
-          Term.mkLambdaW(("x", None), 
-                         Term.mkLetW (Term.mkVar "x") 
-                           (("y", "z"), 
-                            Term.mkAppW (project i a b1) (Term.mkVar "y")))
-        with Not_Leq ->
-          Term.mkLambdaW(("x", None), 
-                         Term.mkLetW (Term.mkVar "x") 
-                           (("y", "z"), 
-                            Term.mkAppW (project i a b2) (Term.mkVar "z")))
-        end *)
- (*   | Type.MuW(beta, b1) ->
-        let mub1 = Type.newty (Type.MuW(beta, b1)) in
-        let unfolded = 
-          Type.subst (fun alpha -> if Type.equals alpha beta then mub1 else alpha) b1 in
-          Term.mkLambdaW(("x", None),
-                         Term.mkLetCompW
-                           (Term.mkAppW (project (i+1) a unfolded) (Term.mkUnfoldW (beta,b1) (Term.mkVar "x")))
-                           ("y", Term.mkLetCompW
-                                   (Term.mkDeleteW (beta,b1) (Term.mkVar "x"))
-                                   (unusable_var, Term.mkVar "y"))) *)
+                  else
+                    out bs (n + 1) in
+            out l 0
     | _ -> 
-        raise Not_Leq in
-  try
-  project 0 a0 b0
-  with Not_Leq ->
-        Printf.printf "%s | %s \n" (Printing.string_of_type a0)(Printing.string_of_type b0);
-        flush stdout;
         raise Not_Leq 
 
 let rec eval (t: Term.t) (sigma : env) : value =
@@ -195,7 +120,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
         | _ -> failwith (Printf.sprintf "Internal: Pairs (%s)" (Printing.string_of_termW t))
        )
     | InW(n, i, t1) -> InV(n, i, eval t1 sigma)
-    | CaseW(_, t1, l) ->
+    | CaseW(_, _, t1, l) ->
        (match eval t1 sigma with
           | InV(_, i, v1) -> 
               let (x2, t2) = List.nth l i in
@@ -220,12 +145,6 @@ let rec eval (t: Term.t) (sigma : env) : value =
         let vt = eval t sigma in
         (match vs with
            | IntV id -> Hashtbl.replace heap id vt;
-                        UnitV
-           | _ -> assert false)
-    | DeleteW((alpha, a), s) ->
-        let vs = eval s sigma in
-        (match vs with
-           | IntV id -> Hashtbl.remove heap id;
                         UnitV
            | _ -> assert false)
     | EmbedW((a, b), s) ->

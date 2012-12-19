@@ -19,9 +19,7 @@ letw fixw = fun x ->
              let (b,q) = bq in
                Inl(Cons(b,l), Inr(q))
          | Inr(a) ->
-(*            let r = unfold<'c.unit+'b*'c> l in
-            let u = delete<'c.unit+'b*'c> l in *)
-             (case l of (* TODO *)
+             (delete l of 
                 Nil -> Inr(a)
               | Cons(hdtl) ->
                  let (hd, tl) = hdtl in
@@ -138,6 +136,6 @@ letu stepl = (fun a -> step (fun x -> fun k -> a (fun b -> b x k)))
 letu fixv = fun step ->
               fix (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
 
-letu tt = app (fixv step1) (val [35])
+letu tt = app (fixv step1) (val [20])
 letu testfib = let [v] = tt (fun r -> r) in [print v]
 

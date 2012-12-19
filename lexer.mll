@@ -76,8 +76,8 @@ rule main = parse
   | "letw"     { TokLetW }
   | "letu"     { TokLetU }
   | "memo"     { TokMemo }
-  | "force"    { TokForce }
-  | "suspend"  { TokSuspend }
+  | "callc"    { TokForce }
+  | "grabc"  { TokSuspend }
   | "cont"     { TokCont }
   | "--o"      { TokLolli }
   | "-->"      { TokMulti }

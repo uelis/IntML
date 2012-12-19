@@ -36,11 +36,10 @@ and t_desc =
   | PairW of t * t
   | LetW of t * (var * var * t)        (* s, <x,y>t *)
   | InW of Type.Data.id * int * t               (* in_n(k,t) *)
-  | CaseW of Type.Data.id * t * ((var * t) list)      (* s, <x>t1, <y>t2 *)
+  | CaseW of Type.Data.id * bool * t * ((var * t) list)      (* s, <x>t1, <y>t2 *)
   | AppW of t * t                      (* s, t *)
   | LambdaW of (var * (Type.t option)) * t 
   | AssignW of Type.Data.id * t * t
-  | DeleteW of (Type.t * Type.t) * t
   | EmbedW of (Type.t * Type.t) * t
   | ProjectW of (Type.t * Type.t) * t
   | LoopW of t * (var * t)
@@ -70,12 +69,11 @@ let mkSndW s = mkLetW s (("x", "y"), mkVar "y")
 let mkInW n k t = { desc = InW(n, k, t); loc = None }
 let mkInlW t = { desc = InW(Type.Data.sumid 2, 0, t); loc = None }
 let mkInrW t = { desc = InW(Type.Data.sumid 2, 1, t); loc = None }
-let mkCaseW id s l = { desc = CaseW(id, s, l); loc = None }
+let mkCaseW id destruct s l = { desc = CaseW(id, destruct, s, l); loc = None }
 let mkAppW s t = { desc = AppW(s, t); loc = None }
 let mkLambdaW ((x, ty), t) = { desc = LambdaW((x, ty), t); loc = None }
 let mkLoopW s (x ,t) = { desc = LoopW(s, (x,t)); loc = None }
 let mkAssignW id s t = { desc = AssignW(id, s, t); loc = None }
-let mkDeleteW (alpha, a) s = { desc = DeleteW((alpha, a), s); loc = None }
 let mkEmbedW (b, a) s = { desc = EmbedW((b, a), s); loc = None }
 let mkProjectW (b, a) s = { desc = ProjectW((b, a), s); loc = None }
 let mkContW i n t = { desc = ContW(i, n, t); loc = None }
@@ -106,7 +104,7 @@ let rec free_vars (term: t) : var list =
   match term.desc with
     | Var(v) -> [v]
     | ConstW(_) | UnitW -> []
-    | InW(_,_,s) | DeleteW(_, s) | ContW(_, _,  s)
+    | InW(_,_,s) | ContW(_, _,  s)
     | EmbedW(_, s) | ProjectW(_, s)
     | BoxTermU(s) | HackU(_, s) | MemoU(s) | SuspendU(s) | ForceU(s) -> free_vars s
     | PairW(s, t) | PairU (s, t) | AppW (s, t) | AppU(s, t) | AssignW(_, s, t) -> 
@@ -117,7 +115,7 @@ let rec free_vars (term: t) : var list =
         abs x (free_vars t) 
     | LetBoxW(s, (x, t)) | LetBoxU(s, (x, t)) | LoopW(s, (x, t)) ->
         (free_vars s) @ (abs x (free_vars t))
-    | CaseW(_, s, l) | CaseU(_, s, l) ->
+    | CaseW(_, _, s, l) | CaseU(_, s, l) ->
         (free_vars s) @ (List.fold_right (fun (x, t) fv -> (abs x (free_vars t)) @ fv) l [])
     | TypeAnnot(t, ty) ->
         free_vars t
@@ -130,7 +128,6 @@ let rename_vars (f: var -> var) (term: t) : t =
     | InW(n, k, s) -> { term with desc = InW(n, k, rn s) }
     | LoopW(s, (x, t)) -> { term with desc = LoopW(rn s, (f x, rn t)) }
     | AssignW(ty, s, t) -> { term with desc = AssignW(ty, rn s, rn t) }
-    | DeleteW(ty, s) -> { term with desc = DeleteW(ty, rn s) }
     | EmbedW(ty, s) -> { term with desc = EmbedW(ty, rn s) }
     | ProjectW(ty, s) -> { term with desc = ProjectW(ty, rn s) }
     | ContW(i, n, s) -> { term with desc = ContW(i, n, rn s) }
@@ -150,8 +147,8 @@ let rename_vars (f: var -> var) (term: t) : t =
     | LambdaU((x, ty), t) -> { term with desc = LambdaU((f x, ty), rn t) } 
     | LetBoxW(s, (x, t)) -> { term with desc = LetBoxW(rn s, (f x, rn t)) }
     | LetBoxU(s, (x, t)) -> { term with desc = LetBoxU(rn s, (f x, rn t)) }
-    | CaseW(id, s, l) ->
-        { term with desc = CaseW(id, rn s, List.map (fun (x, t) -> (f x, rn t)) l) } 
+    | CaseW(id, destruct, s, l) ->
+        { term with desc = CaseW(id, destruct, rn s, List.map (fun (x, t) -> (f x, rn t)) l) } 
     | CaseU(id, s, l) -> 
         { term with desc = CaseU(id, rn s, List.map (fun (x, t) -> (f x, rn t)) l) } 
     | TypeAnnot(t, ty) -> { term with desc = TypeAnnot(rn t, ty) }
@@ -182,7 +179,6 @@ let map_type_annots (f: Type.t option -> Type.t option) (term: t) : t =
     | InW(n, k, s) -> { term with desc = InW(n, k, mta s) }
     | LoopW(s, (x, t)) -> { term with desc = LoopW(mta s, (x, mta t)) }
     | AssignW(ty, s, t) -> { term with desc = AssignW(ty, mta s, mta t) }
-    | DeleteW(ty, s) -> { term with desc = DeleteW(ty, s) }
     | EmbedW(ty, s) -> { term with desc = EmbedW(ty, s) }
     | ProjectW(ty, s) -> { term with desc = ProjectW(ty, s) }
     | ContW(i, n, s) -> { term with desc = ContW(i, n, s) }
@@ -202,8 +198,8 @@ let map_type_annots (f: Type.t option -> Type.t option) (term: t) : t =
     | LambdaU((x, ty), t) -> { term with desc = LambdaU((x, f ty), mta t) } 
     | LetBoxW(s, (x, t)) -> { term with desc = LetBoxW(mta s, (x, mta t)) }
     | LetBoxU(s, (x, t)) -> { term with desc = LetBoxU(mta s, (x, mta t)) }
-    | CaseW(id, s, l) -> 
-        { term with desc = CaseW(id, mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
+    | CaseW(id, destruct, s, l) -> 
+        { term with desc = CaseW(id, destruct, mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
     | CaseU(id, s, l) -> 
         { term with desc = CaseU(id, mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
     | TypeAnnot(t, ty) -> { term with desc = TypeAnnot(mta t, f ty) }
@@ -234,7 +230,6 @@ let head_subst (s: t) (x: var) (t: t) : t option =
       | InW(n, k, s) -> { term with desc = InW(n, k, sub sigma s) }
       | LoopW(s, (x, t)) -> { term with desc = LoopW(sub sigma s, abs sigma (x, t)) }
       | AssignW(ty, s, t) -> { term with desc = AssignW(ty, sub sigma s, sub sigma t) }
-      | DeleteW(ty, s) -> { term with desc = DeleteW(ty, sub sigma s) }
       | EmbedW(ty, s) -> { term with desc = EmbedW(ty, sub sigma s) }
       | ProjectW(ty, s) -> { term with desc = ProjectW(ty, sub sigma s) }
       | ContW(i, n, s) -> { term with desc = ContW(i, n, sub sigma s) }
@@ -258,8 +253,8 @@ let head_subst (s: t) (x: var) (t: t) : t option =
           { term with desc = LambdaU((x', ty), t') } 
       | LetBoxW(s, (x, t)) -> { term with desc = LetBoxW(sub sigma s, abs sigma (x, t)) }
       | LetBoxU(s, (x, t)) -> { term with desc = LetBoxU(sub sigma s, abs sigma (x, t)) }
-      | CaseW(id, s, l) -> 
-          { term with desc = CaseW(id, sub sigma s, List.map (fun (x, t) -> abs sigma (x, t)) l) } 
+      | CaseW(id, destruct, s, l) -> 
+          { term with desc = CaseW(id, destruct, sub sigma s, List.map (fun (x, t) -> abs sigma (x, t)) l) } 
       | CaseU(id, s, l) -> 
           { term with desc = CaseU(id, sub sigma s, List.map (fun (x, t) -> abs sigma (x, t)) l) } 
       | TypeAnnot(t, ty) ->
@@ -319,8 +314,6 @@ let freshen_type_vars t =
     | LoopW(s, (x, t)) -> { term with desc = LoopW(mta s, (x, mta t)) }
     | AssignW(id, s, t) -> 
         { term with desc = AssignW(id, mta s, mta t) }
-    | DeleteW((alpha, a), s) -> 
-        { term with desc = DeleteW((fv alpha, Type.subst fv a), mta s) }
     | EmbedW((b, a), s) -> 
         { term with desc = EmbedW((Type.subst fv b, Type.subst fv a), mta s) }
     | ProjectW((b, a), s) -> 
@@ -342,8 +335,8 @@ let freshen_type_vars t =
     | LambdaU((x, ty), t) -> { term with desc = LambdaU((x, f ty), mta t) } 
     | LetBoxW(s, (x, t)) -> { term with desc = LetBoxW(mta s, (x, mta t)) }
     | LetBoxU(s, (x, t)) -> { term with desc = LetBoxU(mta s, (x, mta t)) }
-    | CaseW(id, s, l) -> 
-        { term with desc = CaseW(id, mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
+    | CaseW(id, destruct, s, l) -> 
+        { term with desc = CaseW(id, destruct, mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
     | CaseU(id, s, l) -> 
         { term with desc = CaseU(id, mta s, List.map (fun (x, t) -> (x, mta t)) l) } 
     | TypeAnnot(t, ty) -> { term with desc = TypeAnnot(mta t, f ty) }
@@ -354,7 +347,7 @@ let mkTrW t =
   let y = "y" in
   let t' = variant t in
     mkLambdaW ((x, None), 
-               mkCaseW (Type.Data.sumid 2) (mkAppW t' (mkInlW (mkVar x)))
+               mkCaseW (Type.Data.sumid 2) true (mkAppW t' (mkInlW (mkVar x)))
                  [(y, mkVar y);
                   (y, mkLoopW (mkVar y) (y, mkAppW t' (mkInrW (mkVar y))))])
 

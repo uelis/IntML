@@ -258,7 +258,7 @@ let string_of_termW (term: Term.t): string =
           s_termW t1;
           Buffer.add_string buf " in ";
           s_termW t2
-      | CaseW(id, t1, l) ->
+      | CaseW(id, destruct, t1, l) ->
           Buffer.add_string buf "case ";
           s_termW t1;
           Buffer.add_string buf " of ";
@@ -279,13 +279,6 @@ let string_of_termW (term: Term.t): string =
           let cname = List.nth (Type.Data.constructor_names id) k in
           Buffer.add_string buf cname;
           s_termW_atom t1
-      | DeleteW((alpha, a), t1) ->
-          Buffer.add_string buf "delete<";
-          Buffer.add_string buf (string_of_type alpha);
-          Buffer.add_string buf ". ";
-          Buffer.add_string buf (string_of_type a);
-          Buffer.add_string buf "> ";
-          s_termW t1
       | EmbedW((a, b), t1) ->
           Buffer.add_string buf "embed<";
           Buffer.add_string buf (string_of_type a);
@@ -336,8 +329,8 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_char buf ')'
       | TypeAnnot(t, _) ->
           s_termW_atom t
-      | LambdaW(_, _) | LetW(_, _) | CaseW(_, _, _) | InW _ 
-      | LoopW(_) | AppW(_, _) | DeleteW _ | AssignW _ ->
+      | LambdaW(_, _) | LetW(_, _) | CaseW _ | InW _ 
+      | LoopW(_) | AppW(_, _) | AssignW _ ->
           Buffer.add_char buf '(';
           s_termW t;
           Buffer.add_char buf ')'

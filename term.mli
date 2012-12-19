@@ -38,11 +38,10 @@ and t_desc =
   | PairW of t * t
   | LetW of t * (var * var * t)          (* s, <x,y>t *)
   | InW of Type.Data.id * int * t    (* in_n(k,t) *)
-  | CaseW of Type.Data.id * t * ((var * t) list)        (* s, <x1>t1, <x2>t2, ... *)
+  | CaseW of Type.Data.id * bool * t * ((var * t) list)        (* s, <x1>t1, <x2>t2, ... *)
   | AppW of t * t                        (* s, t *)
   | LambdaW of (var * Type.t option) * t (* <x>s *)
   | AssignW of Type.Data.id * t * t
-  | DeleteW of (Type.t * Type.t) * t
   | EmbedW of (Type.t * Type.t) * t
   | ProjectW of (Type.t * Type.t) * t
   | LoopW of t * (var * t) 
@@ -72,13 +71,12 @@ val mkSndW : t -> t
 val mkInW : Type.Data.id -> int -> t -> t
 val mkInlW : t -> t
 val mkInrW : t -> t
-val mkCaseW : Type.Data.id -> t -> (var * t) list -> t
+val mkCaseW : Type.Data.id -> bool -> t -> (var * t) list -> t
 val mkAppW : t -> t -> t
 val mkLambdaW : (var * Type.t option) * t -> t
 val mkTrW : t -> t
 val mkLoopW : t -> (var * t) -> t
 val mkAssignW : Type.Data.id ->  t -> t -> t
-val mkDeleteW : Type.t * Type.t -> t -> t
 val mkEmbedW : Type.t * Type.t -> t -> t
 val mkProjectW : Type.t * Type.t -> t -> t
 val mkContW : int -> int -> t -> t
