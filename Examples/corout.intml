@@ -20,6 +20,33 @@ letw fixw = fun x ->
 letu fix = hack fixw
  as {list<'b>}({'b}'a --o 'a) --o 'a
 
+type result<'a, 'b> = 
+         Return of 'a
+       | Loop of 'b
+
+letu uloop = hack (fun x ->
+  case x of 
+    Inl(y) ->
+      let (store, stepq) = y in
+        (case stepq of
+          Inl(argq) -> 
+           let (argstore, u) = argq in
+             Inl(store, Inl(argstore, store))
+        | Inr(continueOrStop) -> 
+           case continueOrStop of 
+             Return(result) -> Inr(Inr(result))
+           | Loop(continue) -> Inl(continue, Inr()))
+  | Inr(z) -> 
+    (case z of 
+      Inl(basea) ->
+          let (junk, basea) = basea in
+            Inl(basea, Inr())
+    | Inr(initialq) ->
+        Inr(Inl((), ()))))
+ as {'a}({'c}['a] --o [result<'b, 'a>]) --o ({'d}['a] --o ['b])
+
+letu loop2 = fun init -> fun step -> uloop step init
+
 
 letw coroutw = fun x ->
   case x of 
@@ -66,15 +93,70 @@ letu corout = hack coroutw
 
 letu t1 = corout 
    (fun pass ->
-    let [u] = [print "a: start\n"] in
-    fix (fun f -> fun x -> 
+    loop2 [0] (fun x ->
       let [v] = x in
       let [x1] = if v = (v/2)*2 then pass [v + 1] else [v+1] in
       let [u] = [print "a: "] in
       let [u] = [print x1] in
       let [u] = [print "\n"] in
-        f [x1]) [0])
+        [Loop(x1)]))
    (fun pass -> fun x ->
+    let [u] = [print "b: start\n"] in
+    let [v] = x in
+    loop2 [v] (fun x ->
+      let [v] = x in
+      let [x1] = pass [v + 2 ] in
+      let [u] = [print "b: "] in
+      let [u] = [print x1] in
+      let [u] = [print "\n"] in
+        [Loop x1]))
+
+letu callcc = hack fun x -> 
+  case x of 
+    Inl(y) ->
+      let (ys, yv) = y in
+        (case yv of
+          Inl(z) -> 
+            let (zs, zv) = z in
+              (case zv of
+                Inl(u) -> 
+                  let (us, uv) = u in
+                    Inr(uv)
+              | Inr(v) ->
+                    Inl(ys, Inl(zs, Inl((), ()))))
+        | Inr(a) -> Inr(a))
+  | Inr(q) -> Inl((), Inr())
+  as {'e}({'c}({'f}['a] --o ['d]) --o ['a]) --o ['a]
+(*
+Seems like we can't do the following without grabc/callc, 
+as callcc cannot return continuation. 
+
+(define r1
+  (lambda (cont)
+    (display "I'm in r1!")
+    (newline)
+    (r1 (call/cc cont))))
+
+(define r2
+  (lambda (cont2)
+    (display "I'm in r2!")
+    (newline)
+    (r2 (call/cc cont2))))
+
+letu t21 = 
+   (fix (fun t21 -> fun k ->
+      let [u] = [print "b: "] in
+        t21 (callcc k) 
+        ))
+letu t22 =        
+   (fun k ->
+    loop2 [()] (fun x ->
+      let [v] = x in
+      let [x1] = callcc k in
+        [Loop ()]))
+*)
+(*
+    (fun pass -> fun x ->
     let [u] = [print "b: start\n"] in
     let [v] = x in
     fix (fun f -> fun x -> 
@@ -84,6 +166,7 @@ letu t1 = corout
       let [u] = [print x1] in
       let [u] = [print "\n"] in
         f [x1]) [v])
+*)        
 
 (*        
         (fun pass -> fun v -> 
