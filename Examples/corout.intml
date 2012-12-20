@@ -20,6 +20,36 @@ letw fixw = fun x ->
 letu fix = hack fixw
  as {list<'b>}({'b}'a --o 'a) --o 'a
 
+(* Tail recursion looks much nicer than loops ;) *)
+letw tailrecw = fun x ->
+  case x of 
+    Inr(q) ->
+     (case q of
+        Inr(u) -> Inr(Inl((), ()))
+      | Inl(ua) ->
+         let (u, a) = ua in
+            Inl(a, Inr(Inr())))
+  | Inl(a_s) ->
+    let (a, s) = a_s in
+      (case s of
+         Inr(r) -> 
+          (case r of
+              Inr(b) -> Inr(Inr(b))
+            | Inl(cu) ->
+                let (c, u) = cu in
+                  Inl(a, Inr(Inl(c, a))))
+       | Inl(dp) ->
+          let (d, p) = dp in
+            (case p of
+               Inr(u) -> Inl(a, Inl(d, Inl((), ())))
+             | Inl(ua) ->
+                let (u, a) = ua in
+                  Inl(a, Inr(Inr())))
+      )
+
+letu tailrec = hack tailrecw
+ as {'a}({'d}({unit}['a] --o ['b]) --o ({'c}['a] --o ['b])) --o {unit}['a] --o ['b]
+
 type result<'a, 'b> = 
          Return of 'a
        | Loop of 'b
@@ -91,25 +121,33 @@ letu corout = hack coroutw
  as {unit+'e*'b}({'d}({unit}['a] --o ['b]) --o ['c]) --o 
     {'d*'a}({'e}({unit}['b] --o ['a]) --o {'f}['a] --o ['c]) --o ['c]
 
+letu t0 =
+   tailrec (fun f -> fun x->
+         let [x1] = x in
+         let [u] = [print "a: "] in
+         let [u] = [print x1] in
+         let [u] = [print "\n"] in
+           f [x1+1])
+
 letu t1 = corout 
    (fun pass ->
-    loop2 [0] (fun x ->
+    tailrec (fun f -> fun x->
       let [v] = x in
       let [x1] = if v = (v/2)*2 then pass [v + 1] else [v+1] in
       let [u] = [print "a: "] in
       let [u] = [print x1] in
       let [u] = [print "\n"] in
-        [Loop(x1)]))
+        f [x1]) [0])
    (fun pass -> fun x ->
     let [u] = [print "b: start\n"] in
     let [v] = x in
-    loop2 [v] (fun x ->
+    tailrec (fun f -> fun x ->
       let [v] = x in
       let [x1] = pass [v + 2 ] in
       let [u] = [print "b: "] in
       let [u] = [print x1] in
       let [u] = [print "\n"] in
-        [Loop x1]))
+        f [x1]) [v])
 
 letu callcc = hack fun x -> 
   case x of 
