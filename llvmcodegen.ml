@@ -456,10 +456,17 @@ let build_term
           let strptr = Llvm.build_in_bounds_gep str (Array.make 2 (Llvm.const_null i64)) "strptr" builder in
             (* declare puts *)
           let i8a = Llvm.pointer_type (Llvm.i8_type context) in
+          let formatstr = Llvm.build_global_string "%s" "format" builder in
+          let formatstrptr = Llvm.build_in_bounds_gep formatstr (Array.make 2 (Llvm.const_null i64)) "forrmatptr" builder in
+          let printftype = Llvm.function_type (Llvm.i64_type context) (Array.of_list [i8a; i64]) in
+          let printf = Llvm.declare_function "printf" printftype the_module in
+          let args = Array.of_list [formatstrptr; strptr] in
+            ignore (Llvm.build_call printf args "i" builder);
+(*          let i8a = Llvm.pointer_type (Llvm.i8_type context) in
           let putstype = Llvm.function_type (Llvm.i64_type context) (Array.make 1 i8a) in
           let puts = Llvm.declare_function "puts" putstype the_module in
           let args = Array.make 1 strptr in
-            ignore (Llvm.build_call puts args "i" builder);
+            ignore (Llvm.build_call puts args "i" builder);*)
             {payload = []; attrib = Bitvector.null}
       | UnitW ->
           {payload = []; attrib = Bitvector.null}
