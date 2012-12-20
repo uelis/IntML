@@ -1,0 +1,101 @@
+type list<'a> = Nil of unit | Cons of 'a * list<'a>
+
+letw fixw = fun x ->
+  case x of 
+    Inl(lx) -> 
+      let (l,x) = lx in
+        (case x of
+           Inl(bq) ->
+             let (b,q) = bq in
+               Inl(Cons(b,l), Inr(q))
+         | Inr(a) ->
+             (delete l of (* TODO *)
+                Nil -> Inr(a)
+              | Cons(hdtl) ->
+                 let (hd, tl) = hdtl in
+                   Inl(tl, Inl(hd, a))))
+  | Inr(q) -> 
+     Inl(Nil, Inr(q))
+
+letu fix = hack fixw
+ as {list<'b>}({'b}'a --o 'a) --o 'a
+
+
+letw coroutw = fun x ->
+  case x of 
+    Inl(l) ->
+      let (l1, l2) = l in
+        (case l2 of
+          Inl(l2l) -> 
+           let (l2l1, l2l2) = l2l in
+             (case l2l2 of
+               Inl(l2l2l) ->
+                 let (u, l2l2l) = l2l2l in
+                 (case l1 of 
+                   Inl(l1l) -> Inr(Inl((l2l1, l2l2l), Inr(Inr())))
+                 | Inr(l1r) -> 
+                    let (l1r1, l1r2) = l1r in
+                      Inr(Inl((l2l1, l2l2l), Inl(l1r1, Inr(l2l2l)))))
+             | Inr(l2l2r) -> Inl(l1, Inl(l2l1,Inl((), ()))))
+        | Inr(l2r) -> Inr(Inr(l2r)))
+  | Inr(r) -> 
+      (case r of 
+        Inl(rl) ->
+          let (rl1, rl2) = rl in
+            (case rl2 of
+              Inl(rl2l) -> 
+               let (rl2l1, rl2l2) = rl2l in
+                 (case rl2l2 of
+                   Inl(rl2l2l) -> 
+                     let (u, rl2l2l) = rl2l2l in
+                     let (rl11, rl12) = rl1 in
+                       Inl(Inr(rl2l1, rl2l2l), Inl(rl11, Inr(rl2l2l)))
+                 | Inr(rl2l2r) -> Inr(Inl(rl1, Inl(rl2l1, Inl((), ())))))
+            | Inr(rl2r) -> 
+                case rl2r of
+                  Inl(rl2rl) ->  
+                    let (rl11, rl12) = rl1 in
+                    let (rl2rl1, rl2rl2) = rl2rl in
+                      Inr(Inl(rl1, Inr(Inl(rl2rl1, rl12))))
+                | Inr(rl2rr) -> Inr(Inr(rl2rr)))
+      | Inr(rr) -> Inl(Inl(), Inr()))
+
+letu corout = hack coroutw
+ as {unit+'e*'b}({'d}({unit}['a] --o ['b]) --o ['c]) --o 
+    {'d*'a}({'e}({unit}['b] --o ['a]) --o {'f}['a] --o ['c]) --o ['c]
+
+letu t1 = corout 
+   (fun pass ->
+    let [u] = [print "a: start\n"] in
+    fix (fun f -> fun x -> 
+      let [v] = x in
+      let [x1] = if v = (v/2)*2 then pass [v + 1] else [v+1] in
+      let [u] = [print "a: "] in
+      let [u] = [print x1] in
+      let [u] = [print "\n"] in
+        f [x1]) [0])
+   (fun pass -> fun x ->
+    let [u] = [print "b: start\n"] in
+    let [v] = x in
+    fix (fun f -> fun x -> 
+      let [v] = x in
+      let [x1] = pass [v + 2 ] in
+      let [u] = [print "b: "] in
+      let [u] = [print x1] in
+      let [u] = [print "\n"] in
+        f [x1]) [v])
+
+(*        
+        (fun pass -> fun v -> 
+    copy pass as pass1, pass2 in
+    let [x] = v in
+    let [u] = [print "b: "] in
+    let [u] = [print x] in
+    let [u] = [print "\n"] in
+    let [x1] = pass1 [x + 1] in
+    let [u] = [print "b: "] in
+    let [u] = [print x1] in
+    let [u] = [print "\n"] in
+    let [x1] = pass2 [x1 * 15] in
+    [()]
+    )*)
