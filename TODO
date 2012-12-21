@@ -1,0 +1,14 @@
+- Wohlgeformtheit rekursiver Typen
+- Refaktorisieren 
+   - Compile => Circuits, wc-backend
+   - evaluation => interpreter
+   - Passes; Behalten von Zwischenergebnissen
+- Ausgabe zyklischer Typen
+- Ausgabe von Konstruktoren
+- Ausgabe von Typen in der Ausgabe
+- Aufräumen der LLVM-Kompilierung
+- freshen type variables before type inference!?!
+- Bessere Nachricht statt "Working class term expected.", wenn
+  man einen UC-term eingibt
+- Farben  
+
