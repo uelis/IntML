@@ -1,4 +1,5 @@
 - Wohlgeformtheit rekursiver Typen
+- Switch zum Ausschalten rekursiver Typen
 - Refaktorisieren 
    - Compile => Circuits, wc-backend
    - evaluation => interpreter
@@ -10,5 +11,5 @@
 - freshen type variables before type inference!?!
 - Bessere Nachricht statt "Working class term expected.", wenn
   man einen UC-term eingibt
-- Farben  
-
+- Ausgabe von SSA-Form mit Datentypen
+- Verilog

@@ -121,6 +121,7 @@ letu corout = hack coroutw
  as {unit+'e*'b}({'d}({unit}['a] --o ['b]) --o ['c]) --o 
     {'d*'a}({'e}({unit}['b] --o ['a]) --o {'f}['a] --o ['c]) --o ['c]
 
+(*
 letu t0 =
    tailrec (fun f -> fun x->
          let [x1] = x in
@@ -128,6 +129,7 @@ letu t0 =
          let [u] = [print x1] in
          let [u] = [print "\n"] in
            f [x1+1])
+*)
 
 letu t1 = corout 
    (fun pass ->
