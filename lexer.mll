@@ -56,28 +56,28 @@ rule main = parse
   | '#'        { TokSharp }
   | '='        { TokEquals }
   | ":="       { TokColonEquals }
-  | "type"     { TokKwType }
-  | "unit"     { TokKwUnit }
+  | "type"     { TokType }
+  | "mutable"  { TokMutable }
+  | "unit"     { TokUnit }
   | "delete"   { TokDelete }
-  | "if"       { TokKwIf }
-  | "then"     { TokKwThen }
-  | "else"     { TokKwElse }
-  | "print"    { TokKwPrint }
-  | "int"      { TokKwNat }
-  | "eq"       { TokKwEq }
-  | "hack"     { TokKwHack }
-  | "copy"     { TokKwCopy }
+  | "if"       { TokIf }
+  | "then"     { TokThen }
+  | "else"     { TokElse }
+  | "print"    { TokPrint }
+  | "int"      { TokNat }
+  | "eq"       { TokEq }
+  | "hack"     { TokHack }
+  | "copy"     { TokCopy }
   | "let"      { TokLet }
   | "as"       { TokAs }
-  | "of"       { TokKwOf }
+  | "of"       { TokOf }
   | "in"       { TokIn }
   | "case"     { TokCase }
   | "loop"     { TokLoop }
   | "letw"     { TokLetW }
   | "letu"     { TokLetU }
-  | "memo"     { TokMemo }
   | "callc"    { TokForce }
-  | "grabc"  { TokSuspend }
+  | "grabc"    { TokSuspend }
   | "cont"     { TokCont }
   | "--o"      { TokLolli }
   | "-->"      { TokMulti }

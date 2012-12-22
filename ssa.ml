@@ -31,7 +31,7 @@ let string_of_block b =
         (String.concat "" (List.map (fun (t, (x, y)) -> 
                                        Printf.sprintf "  val (%s, %s) = %s\n" 
                                          x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
-        (Printf.sprintf "  in %s => [%s] end\n" 
+        (Printf.sprintf "  in %s -> [%s] end\n" 
            (Printing.string_of_termW body)
            (String.concat "," (List.map (fun l -> Printf.sprintf "l%i" l.name) goals))
         )
@@ -44,7 +44,7 @@ let string_of_block b =
         (Printf.sprintf "  in case %s of\n     | " (Printing.string_of_termW cond)) ^
         (String.concat "     | "
            (List.map (fun (cname, (l, lb, lg)) ->
-                        Printf.sprintf "%s(%s) => l%i(%s)\n" cname l lg.name (Printing.string_of_termW lb))
+                        Printf.sprintf "%s(%s) -> l%i(%s)\n" cname l lg.name (Printing.string_of_termW lb))
               (List.combine (Type.Data.constructor_names id) cases)
            ))
     | Return(l, x, bndgs, body, retty) ->
@@ -95,9 +95,20 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
     | TypeAnnot(t, a) ->
         let lets, t' = reduce t in
           lets, mkTypeAnnot t' a
-    | InW(i, j, t) -> 
+    | InW(id, j, t) -> 
         let lets, t' = reduce t in
-          lets, mkInW i j t'
+        let t'' = mkInW id j t' in
+          (* Mutable types must not be reduced, as their value might change;
+           * could make an exception for recursive types here. *)
+          if Type.Data.is_mutable id then
+            begin
+              let x = fresh_var () in
+              let y = fresh_var () in
+                (mkPairW t'' mkUnitW, (x, y)) :: lets,
+                mkVar x
+            end 
+          else
+            lets, t''
     | PairW(t1, t2) ->
         let lets1, t1' = reduce t1 in
         let lets2, t2' = reduce t2 in

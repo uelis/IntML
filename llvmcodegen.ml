@@ -234,7 +234,7 @@ let rec payload_size (a: Type.t) : int =
               | ContW(_) -> 2
               | TensorW(a1, a2) -> p_s a1 + (p_s a2)
               | DataW(id, ps) -> 
-                  if Type.Data.is_recursive id then
+                  if Type.Data.is_mutable id || Type.Data.is_recursive id then
                     1
                   else 
                     let cs = Type.Data.constructor_types id ps in
@@ -262,7 +262,7 @@ let attrib_size (a: Type.t) : profile =
                                                   | Some x, None | None, Some x -> Some x
                                                   | None, None -> None) (a_s a1) (a_s a2)
               | DataW(id, ps) -> 
-                  if Type.Data.is_recursive id then
+                  if Type.Data.is_mutable id || Type.Data.is_recursive id then
                     M.empty
                   else
                     begin
@@ -499,7 +499,9 @@ let build_term
                                            (y, {payload = syp; attrib = sya }) :: ctx) t args
               | _ -> assert false
           end
-      | TypeAnnot({ desc = InW(id, i, t) }, Some a) when Type.Data.constructor_count id = 1 ->
+      | TypeAnnot({ desc = InW(id, i, t) }, Some a) 
+          when (Type.Data.constructor_count id = 1) && 
+               (not (Type.Data.is_mutable id || Type.Data.is_recursive id)) ->
           let tenc = build_annotatedterm ctx t [] in
             build_truncate_extend tenc a
       | TypeAnnot({ desc = InW(id, i, t) }, Some a) ->
@@ -509,7 +511,7 @@ let build_term
           let branch = Llvm.const_int (Llvm.integer_type context (log n)) i in
           let attrib_branch = Bitvector.pair (Bitvector.singleton (log n) branch) tenc.attrib in
           let denc = { payload = tenc.payload; attrib = attrib_branch} in
-          if Type.Data.is_recursive id then
+          if Type.Data.is_mutable id || Type.Data.is_recursive id then
             let i64 = Llvm.i64_type context in
             let malloctype = Llvm.function_type 
                                (Llvm.pointer_type (Llvm.i8_type context)) 
@@ -531,9 +533,6 @@ let build_term
                 {payload = [pl]; attrib = Bitvector.null}
           else 
               build_truncate_extend denc a 
-      | CaseW(id, destruct, { desc = TypeAnnot(u, Some a) }, [(x, t)] ) -> 
-          let uenc =  build_annotatedterm ctx u [] in
-           build_annotatedterm ((x, uenc) :: ctx) t [] 
       | CaseW(id, destruct, { desc = TypeAnnot(u, Some a) }, cases) ->           
           let n = List.length cases in
           assert (n > 0);
@@ -542,7 +541,7 @@ let build_term
               | Type.DataW(id, ps) -> Type.Data.constructor_types id ps 
               | _ -> assert false in
           let uenc = 
-            if Type.Data.is_recursive id then
+            if Type.Data.is_mutable id || Type.Data.is_recursive id then
               begin
                 let a_unfolded = Type.newty (Type.DataW(Type.Data.sumid n, cs_types)) in
                 let a_struct = packing_type a_unfolded in
@@ -562,44 +561,52 @@ let build_term
               end
             else    
               build_annotatedterm ctx u [] in
+            begin
+              match cases with
+                | [(x, t)] ->
+                    build_annotatedterm ((x, uenc) :: ctx) t [] 
+              | _ ->
+              begin
 (*          assert (Bitvector.length uenc.attrib > 0); *)
-          let cond, xya = Bitvector.takedrop uenc.attrib (singleton_profile (log n)) in
-          let xyenc = {payload = uenc.payload; attrib = xya } in
-          let encs = List.map (fun ((x, s), c) -> ((x, build_truncate_extend xyenc c), s))
-                       (List.combine cases cs_types) in
-          let func = Llvm.block_parent (Llvm.insertion_block builder) in
-          let blocks = Listutil.init n (fun i -> 
-                                        Llvm.append_block context 
-                                          ("case" ^ (string_of_int i)) func) in 
-          let res_block = Llvm.append_block context "case_res" func in
-          let default_block = List.hd blocks in 
-          let cond' = Bitvector.llvalue_of_singleton cond in
-          let switch = Llvm.build_switch cond' default_block (n-1) builder in
-          (* build cases *)
-          let results = 
-            Listutil.mapi 
-              (fun i (block, ((x, xenc), s)) -> 
-                 if i > 0 then
-                   Llvm.add_case switch 
-                   (Llvm.const_int (Llvm.integer_type context (log n)) i)
-                   block;
-                 Llvm.position_at_end block builder;
-                 let senc = build_annotatedterm ((x, xenc) :: ctx) s args in
-                 let _ = Llvm.build_br res_block builder in
-                 let block' = Llvm.insertion_block builder in
-                   senc, block'
-              ) (List.combine blocks encs) in
-            (* build phi *)
-            Llvm.position_at_end res_block builder;
-            let z_attrib = Bitvector.build_phi 
-                             (List.map (fun (senc, block) -> senc.attrib, block) 
-                                results)
-                             builder in
-            let z_payload = build_vector_phi  
-                             (List.map (fun (senc, block) -> senc.payload, block) 
-                                results)
-                             builder in
-              {payload = z_payload; attrib = z_attrib}
+                let cond, xya = Bitvector.takedrop uenc.attrib (singleton_profile (log n)) in
+                let xyenc = {payload = uenc.payload; attrib = xya } in
+                let encs = List.map (fun ((x, s), c) -> ((x, build_truncate_extend xyenc c), s))
+                             (List.combine cases cs_types) in
+                let func = Llvm.block_parent (Llvm.insertion_block builder) in
+                let blocks = Listutil.init n (fun i -> 
+                                                Llvm.append_block context 
+                                                  ("case" ^ (string_of_int i)) func) in 
+                let res_block = Llvm.append_block context "case_res" func in
+                let default_block = List.hd blocks in 
+                let cond' = Bitvector.llvalue_of_singleton cond in
+                let switch = Llvm.build_switch cond' default_block (n-1) builder in
+                (* build cases *)
+                let results = 
+                  Listutil.mapi 
+                    (fun i (block, ((x, xenc), s)) -> 
+                       if i > 0 then
+                         Llvm.add_case switch 
+                           (Llvm.const_int (Llvm.integer_type context (log n)) i)
+                           block;
+                       Llvm.position_at_end block builder;
+                       let senc = build_annotatedterm ((x, xenc) :: ctx) s args in
+                       let _ = Llvm.build_br res_block builder in
+                       let block' = Llvm.insertion_block builder in
+                         senc, block'
+                    ) (List.combine blocks encs) in
+                  (* build phi *)
+                  Llvm.position_at_end res_block builder;
+                  let z_attrib = Bitvector.build_phi 
+                                   (List.map (fun (senc, block) -> senc.attrib, block) 
+                                      results)
+                                   builder in
+                  let z_payload = build_vector_phi  
+                                    (List.map (fun (senc, block) -> senc.payload, block) 
+                                       results)
+                                    builder in
+                    {payload = z_payload; attrib = z_attrib}
+              end
+            end
       | LoopW(u, (x, { desc = TypeAnnot(t, Some a) })) -> 
           let ax, ay = 
             match Type.finddesc a with
@@ -633,7 +640,7 @@ let build_term
             Llvm.position_at_end block_res builder;
               xenc
       | AssignW(id, {desc= TypeAnnot(s, Some a)}, t) ->
-          assert (Type.Data.is_recursive id);
+          assert (Type.Data.is_mutable id);
           let senc = build_annotatedterm ctx s args in
           let tenc = build_annotatedterm ctx t args in
           let cs_types = 

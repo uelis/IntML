@@ -1,3 +1,11 @@
+mutable type ref<'a> = Ref of 'a 
+
+letu reftest =
+  [ let r = Ref 5 in
+    let u = (r :=<ref> Ref 12) in
+      case r of 
+        Ref(x) -> print x ]
+
 type list<'a> = Nil of unit | Cons of 'a * list<'a>
 
 letw fixw = fun x ->
@@ -20,18 +28,18 @@ letw fixw = fun x ->
 letu fix = hack fixw
  as {list<'b>}({'b}'a --o 'a) --o 'a
 
-type lazylist<'a> = 
-        Susp of cont<cont<lazylist<'a>>>
-      | Cons of (cont<cont<'a>> + int) * lazylist<'a>
+mutable type stream<'a> = 
+        Susp of cont<cont<stream<'a>>>
+      | SCons of (cont<cont<'a>> + int) * stream<'a>
 
 (* Invariante: Wenn man Inl(k) einmal forced, dann kommt nicht wieder
  * eine Liste der Form Inl(...) heraus *)
-letu cons : [int] --> [lazylist<int>] --> [lazylist<int>] =  
+letu cons : [int] --> [stream<int>] --> [stream<int>] =  
   (fun x -> fun xs ->
     let [xk] = grabc(x) in
     let [xsk] = grabc(xs) in
     let [id] = 
-           [ Cons(Inl(xk), Susp(xsk)) ] in
+           [ SCons(Inl(xk), Susp(xsk)) ] in
         [id])
 
 letu ft = 
@@ -40,9 +48,9 @@ letu ft =
     case lid of
       Susp(thunk) -> 
         let [v] = callc thunk in
-        let [u] = [ lid :=<lazylist> v] in
+        let [u] = [ lid :=<stream> v] in
           [lid]
-    | Cons(v) -> [lid]
+    | SCons(v) -> [lid]
 
 letu head =
   fun l -> 
@@ -50,12 +58,12 @@ letu head =
     case lid of
       Susp(thunk) -> 
         [let x=0 loop Inr(x)]
-    | Cons(ht) ->
+    | SCons(ht) ->
         case let (h,t) = ht in h of
           Inl(k) -> 
             let [v] = callc k in
             let [u] = [  let (h,t) = ht in
-                         lid :=<lazylist> Cons(Inr(v), t) ] in
+                         lid :=<stream> SCons(Inr(v), t) ] in
               [v]
         | Inr(v) -> 
               [v]
@@ -66,7 +74,7 @@ letu tail =
     case lid of
       Susp(thunk) -> 
         [let x=0 loop Inr(x)]
-    | Cons(ht) ->
+    | SCons(ht) ->
         [let (h,t) = ht in t]
 
 letu thunk =

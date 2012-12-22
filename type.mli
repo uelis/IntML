@@ -37,11 +37,12 @@ sig
   val constructor_names : id -> string list 
   val constructor_types : id -> t list -> t list
   val is_recursive : id -> bool
-(*  val is_mutable : id -> bool *)
+  val is_mutable : id -> bool 
 
   val find_constructor: string -> id * int
 
   val make : id -> int -> unit
+  val make_mutable : id -> unit
   val add_constructor : id -> string -> t list -> t -> unit
 end
 

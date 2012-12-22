@@ -136,12 +136,15 @@ struct
   (* Type variables in the params list must remain private to this module *)              
   type d = { name : string;
              params : t list;
+             forced_mutable : bool;
              constructors : (string * t) list }
 
   let datatypes = Hashtbl.create 10
   let boolid = 
     Hashtbl.add datatypes "bool"
-      { name = "bool"; params = []; 
+      { name = "bool"; 
+        params = []; 
+        forced_mutable = false;
         constructors = ["True", newty OneW;
                         "False", newty OneW] };
     "bool"
@@ -159,7 +162,7 @@ struct
                                              else if n = 2 && i = 1 then "Inr" 
                                              else Printf.sprintf "In_%i_%i" n i), 
                                              alpha) l in
-              let d = { name = name; params = params; constructors = constructors } in
+              let d = { name = name; params = params; forced_mutable = false; constructors = constructors } in
                 Hashtbl.add datatypes name d;
                 Hashtbl.add sumtypes n name;
                 name
@@ -198,6 +201,9 @@ struct
     let ct = constructor_types id freshparams in
       List.exists check_rec ct
 
+  let is_mutable id =
+    (Hashtbl.find datatypes id).forced_mutable
+
   exception Found of id * int 
 
   let find name =
@@ -219,15 +225,40 @@ struct
     with Found (id, i) -> id, i
 
   let make name nparams = 
-    Hashtbl.add datatypes name 
+    Hashtbl.replace datatypes name 
       { name = name; 
          (* (these type variables must remain private) *)
-        params = Listutil.init nparams (fun _ -> newty Var); 
+        params = Listutil.init nparams (fun _ -> newty Var);
+        forced_mutable = false;
         constructors = [] }
 
-  (* TODO: check for duplicates, parameters *)
-  let add_constructor id name paramvars argtype =
+  let make_mutable id = 
     let d = Hashtbl.find datatypes id in
+    let d' = { d with forced_mutable = true } in
+    Hashtbl.replace datatypes id d'
+
+  (* Preconditions:
+   *  - No constructor called name is already defined.
+   *  - The free type variables in argtype are contained
+   *    in paramvars.
+   *)
+  let add_constructor id name paramvars argtype =
+    (* check if constructor is already defined *)
+    try
+      ignore (find_constructor name);
+      failwith "Duplicate constructor definition"
+    with Not_found -> ();        
+    let d = Hashtbl.find datatypes id in
+    (* check that free variables in argtype are contained in 
+     * paramvars. *)
+    let ftv = free_vars argtype in
+      if List.exists 
+           (fun alpha -> 
+              not (List.exists 
+                     (fun beta -> equals alpha beta) paramvars))
+           ftv then
+        failwith ("The free variables in any constructor must be " ^
+                  "contained in the type parameters.");
     (* replace given parameters by private parameters *)
     let param_subst alpha = 
       let l = List.combine paramvars d.params in

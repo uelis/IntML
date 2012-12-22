@@ -278,6 +278,7 @@ let string_of_termW (term: Term.t): string =
       | InW(id, k, t1) ->
           let cname = List.nth (Type.Data.constructor_names id) k in
           Buffer.add_string buf cname;
+          Buffer.add_string buf " ";
           s_termW_atom t1
       | AssignW(id, t1, t2) ->
           s_termW t1;

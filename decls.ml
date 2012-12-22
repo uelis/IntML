@@ -1,6 +1,8 @@
 (** Declarations used in toplevel.
 *)
 
+exception Non_Wellformed of string * int * int
+
 type decl = 
   | TermDeclW of Term.var * Term.t
   | TermDeclU of Term.var * Term.t

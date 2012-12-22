@@ -13,6 +13,9 @@ let sim_length = ref 10
 let error_msg loc msg = loc ^ "\n" ^ msg
 let print_error loc msg = print_string (error_msg loc msg)
 
+let line_column_loc (line : int) (column : int ) = 
+  Printf.sprintf "line %i, column %i:" line column  
+
 (* For error reporting: compute a string of where the error occurred *)
 let term_loc (s : Term.t option) = 
   match s with

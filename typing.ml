@@ -161,8 +161,8 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
           | Some a-> eq_expected_constraint (Term.mkVar x) (alpha, a) :: con1
         end
   | AssignW(id, t1, t2) -> 
-      if not (Type.Data.is_recursive id) then
-        raise (Typing_error (Some t, " Assigment can only be used for recursive types."))
+      if not (Type.Data.is_mutable id) then
+        raise (Typing_error (Some t, "Assignment can only be used for mutable types."))
       else 
         let n = Data.params id in
         let params = fresh_tyVars n in

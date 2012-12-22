@@ -18,6 +18,8 @@ let parse (s: string) : decls =
     with 
       | Parsing.Parse_error -> 
           failwith (Top.error_msg (parse_error_loc lexbuf) "Parse error")
+      | Decls.Non_Wellformed(msg, l, c) -> 
+          failwith (Top.error_msg (Top.line_column_loc l c) ("Syntax error. " ^ msg))
 
 let parse_query (s: string) : Query.query =
   let lexbuf = Lexing.from_string s in
@@ -26,6 +28,8 @@ let parse_query (s: string) : Query.query =
     with 
       | Parsing.Parse_error -> 
           failwith (Top.error_msg (parse_error_loc lexbuf) "Parse error")
+      | Decls.Non_Wellformed(msg, l, c) -> 
+          failwith (Top.error_msg (Top.line_column_loc l c) ("Syntax error. " ^ msg))
 
 let rec print_graphs (d: typed_decls) : unit = 
   match d with
@@ -131,5 +135,6 @@ try
       if not (!opt_llvm_compile) then
         eval_loop typed_decls
 with 
+  | Failure msg -> Printf.printf "%s\n" msg
   | Typing.Typing_error(t, msg)-> Top.print_error (Top.term_loc t) msg
 
