@@ -1,5 +1,4 @@
 open Term
-open Compile
 
 let context = Llvm.global_context ()
 let builder = Llvm.builder context
@@ -915,12 +914,12 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
       )                         
       ssa_func.blocks
 
-let build_body (the_module : Llvm.llmodule) func (c : circuit) =
+let build_body (the_module : Llvm.llmodule) func (c : Circuit.circuit) =
   let ssa_func = Ssa.trace c in
     build_ssa_blocks the_module func ssa_func
 
 (* Must be applied to circuit of type [A] *)    
-let llvm_circuit (c : Compile.circuit) = 
+let llvm_circuit (c : Circuit.circuit) : Llvm.llmodule = 
   let the_module = Llvm.create_module context "intml" in
   let ssa_func = Ssa.trace c in
   let arg_ty = packing_type ssa_func.Ssa.argument_type in

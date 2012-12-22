@@ -91,9 +91,10 @@ let rec eval (t: Term.t) (sigma : env) : value =
                         UnitV
            | _ -> assert false)
     | ContW(i, n, s) ->
-        eval (Compile.in_k i n s) sigma           
+        eval (Termcodegen.in_k i n s) sigma           
     | LetBoxW(t1, (x, t2)) ->
-        let s1, a1 = Compile.compile_termU t1 in
+        let c = Circuit.circuit_of_termU t1 in
+        let s1, a1 = Termcodegen.termW_of_circuit c in
         let v1 = eval (mkAppW s1 mkUnitW) sigma in
           eval t2 ((x, v1) :: sigma)
     | TypeAnnot(t, _) -> eval t sigma

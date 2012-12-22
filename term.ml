@@ -85,6 +85,24 @@ let mkCopyU s ((x, y), t) = { desc = CopyU(s, (x, y, t)); loc = None }
 let mkHackU ty t = { desc = HackU(ty, t); loc = None }
 let mkTypeAnnot t a = { desc = TypeAnnot(t, a); loc = None }
 
+(* Conveniencene function for n-ary let on WC level *)          
+let let_tupleW (t: var) ((sigma: var list), (f: t)) : t =
+  (* TODO: document *)
+  let rec remove_shadow sigma =
+    match sigma with
+      | [] -> []
+      | x :: rest -> 
+          x :: remove_shadow 
+                 (List.map (fun y -> if x = y then unusable_var else y) 
+                    rest)
+  in 
+  let rec let_tuple x (sigma, f) =
+    match sigma with 
+      | [] -> f
+      | z :: rest ->
+          mkLetW  (mkVar x) ((x, z), let_tuple x (rest, f)) 
+  in let_tuple t (remove_shadow sigma, f)       
+
 let rec mkLambdaWList (xs, t) = 
   match xs with 
     | [] -> t

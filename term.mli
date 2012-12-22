@@ -90,6 +90,8 @@ val mkTypeAnnot : t -> Type.t option -> t
 val mkLambdaWList : var list * t -> t
 val mkAppWList : t -> t list -> t                                  
 
+val let_tupleW : var -> (var list) * t -> t
+
 val free_vars : t -> var list 
 val rename_vars : (var -> var) -> t -> t 
 val variant_var : var -> var

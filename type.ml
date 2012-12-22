@@ -129,6 +129,12 @@ let rec freshen_index_types (a: t) : t =
       | FunU(a1, b1, b2) -> newty(FunU(newty Var, freshen_index_types b1, freshen_index_types b2))
       | Link _ -> assert false
 
+let unTensorW a =
+  match finddesc a with
+    | TensorW(a1, a2) -> a1, a2
+    | _ -> assert false
+
+
 module Data =
 struct
   type id = string

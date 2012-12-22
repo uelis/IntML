@@ -10,6 +10,10 @@ val string_of_constraint: type_constraint -> string
 
 val solve_constraints: type_constraint list -> unit
 
+exception Not_Leq
+val embed : Type.t -> Type.t -> Term.t
+val project : Type.t -> Type.t -> Term.t
+
 (* Principal types. *)
 
 (* raises Typing_error, unifies types as a side effect *)

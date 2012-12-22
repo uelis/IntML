@@ -4,7 +4,6 @@ open Decls
 open Term
 open Term.Location
 open Printing
-open Compile 
 
 let parse_error_loc lexbuf =
   let start_pos = lexbuf.lex_start_p in
@@ -38,9 +37,8 @@ let rec print_graphs (d: typed_decls) : unit =
     | TypedTermDeclU(f, t, _) :: r -> 
         Printf.printf "*** Writing graph for %s to file '%s.dot' ***\n" f f;
         flush stdout;
-        let graph = circuit_of_termU [] [] t in
-        let _ = infer_types graph in
-        let dot_graph = dot_of_circuit graph in
+        let graph = Circuit.circuit_of_termU t in
+        let dot_graph = Circuit.dot_of_circuit graph in
         let oc = open_out (Printf.sprintf "%s.dot" f) in 
           Printf.fprintf oc "%s\n" dot_graph;
           close_out oc;
@@ -67,8 +65,7 @@ let rec llvm_compile (d: typed_decls) : unit =
         (
                     Printf.printf "*** Writing llvm bytecode for '%s' to file '%s.bc' ***\n" f f;
                     flush stdout;
-                    let graph = circuit_of_termU [] [] t in
-                    let _ = infer_types graph in 
+                    let graph = Circuit.circuit_of_termU t in
                     let llvm_module = Llvmcodegen.llvm_circuit graph in
                       ignore (Llvm_bitwriter.write_bitcode_file llvm_module (Printf.sprintf "%s.bc" f))
         );

@@ -21,4 +21,4 @@ type func = {
 }
                                        
 val reduce: Term.t -> let_bindings * Term.t
-val trace: Compile.circuit -> func                                       
+val trace: Circuit.circuit -> func                                       

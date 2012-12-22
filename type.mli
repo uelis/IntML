@@ -61,6 +61,8 @@ val freshen: t -> t
 val freshen_list: t list -> t list
 val freshen_index_types: t -> t
 
+val unTensorW : t -> t * t                                
+
 (* Given upper class type X, returns the pair (X^-, X^+). *)
 val question_answer_pair: t -> t * t
 

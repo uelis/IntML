@@ -1,6 +1,6 @@
 open Term
 open Evaluation
-open Compile
+open Circuit
 open Unify
 
 (** Returns a list of graphs with highlighted edges together with the token that 
@@ -15,11 +15,11 @@ let termW_of_circuit (nsteps: int) (token: Term.t) (c: circuit) =
   let max_wire_src_dst = 
     List.fold_right (fun w m -> max w.src (max w.dst m)) all_wires 0 in
   (* Message passing term *)
-  let mp_term = message_passing_term c' in
+  let mp_term = Termcodegen.message_passing_term c' in
   let rec step (w, token) = 
-    match eval_closed (mkAppW mp_term (in_k w (max_wire_src_dst + 1) token)) with
+    match eval_closed (mkAppW mp_term (Termcodegen.in_k w (max_wire_src_dst + 1) token)) with
       | None -> failwith ""
-      | Some v -> out_k v (max_wire_src_dst + 1)
+      | Some v -> Termcodegen.out_k v (max_wire_src_dst + 1)
     in
   let rec sim i (w, token) =
     if nsteps <= i then [(i, (w, token))] else
@@ -42,9 +42,11 @@ module U = Unify(struct type t = unit end)
 
 let simulate (nsteps: int) (t: Term.t) (token: Term.t) =
   Printf.printf "compiling graph...\n"; flush stdout;
-  let circuit = circuit_of_termU [] [] t in
-  Printf.printf "typing graph...\n"; flush stdout;
-  let a = Compile.infer_types circuit in
+  let circuit = Circuit.circuit_of_termU t in
+  let a = 
+    let right_component ty = snd (Type.unTensorW ty) in
+    Type.newty (Type.FunW(right_component (circuit.output.type_back), 
+                          right_component (circuit.output.type_forward))) in  
   let annotated_token = fresh_vars_for_missing_annots token in
     
   (* unify input type of circuit with type of token *)

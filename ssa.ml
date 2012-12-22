@@ -1,5 +1,5 @@
 open Term
-open Compile
+open Circuit
 
 type label = { 
   name: int; 
@@ -168,7 +168,14 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
         Printf.printf "%s\n" (Printing.string_of_termW t);
         failwith "TODO_ssa"
 
-let trace (c: circuit) : func =
+module IntMap = Map.Make(
+  struct
+    type t = int
+    let compare = compare
+  end
+)
+
+let trace (c: Circuit.circuit) : func =
   (* Supply of fresh variable names. 
    * (The instructions do not contain a free variable starting with "x")
    *)
@@ -302,7 +309,7 @@ let trace (c: circuit) : func =
               let _, b_token = unTensorW w2.type_forward in
               let b, _ = unTensorW b_token in
               let (c, v'), lets' = unpair v lets in
-              let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Compile.project b a) c) v') in
+              let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Typing.project b a) c) v') in
                 trace src w2.dst (rlets @ lets') (sigma, v'')
           | LWeak(w1 (* \Tens A X *), 
                   w2 (* \Tens B X *)) (* B <= A *) when dst = w2.src ->
@@ -311,7 +318,7 @@ let trace (c: circuit) : func =
               let _, b_token = unTensorW w2.type_back in
               let b, _ = unTensorW b_token in
               let (c, v'), lets' = unpair v lets in
-              let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Compile.embed b a) c) v') in
+              let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Typing.embed b a) c) v') in
                 trace src w1.dst (rlets @ lets') (sigma, v'')
           | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w3.src ->
               (*   <sigma, *> @ w3      |-->  <sigma, *> @ w1 *)

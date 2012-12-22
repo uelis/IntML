@@ -513,6 +513,64 @@ let solve_constraints (con: type_constraint list) : unit =
                  (Printing.string_of_type t')) eqs_of_ineqs;
   flush stdout; *)
 
+exception Not_Leq               
+
+(* If alpha <= beta then (embed alpha beta) is a corresponding 
+ * embedding from alpha to beta.
+ * The function raises Not_Leq if it discovers that alpha <= beta
+ * does not hold.
+ * *)
+let embed (a: Type.t) (b: Type.t) : Term.t =
+  if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
+  else 
+    match Type.finddesc b with
+      | Type.DataW(id, l) ->
+          let cs = Type.Data.constructor_types id l in
+          let rec inject l n =
+            match l with 
+              | [] -> raise Not_Leq
+              | b1 :: bs ->
+                  if Type.equals a b1 then
+                    Term.mkLambdaW(("x", None), Term.mkInW id n (Term.mkVar "x"))
+                  else 
+                    inject bs (n + 1) in
+            inject cs 0
+      | _ -> raise Not_Leq
+
+(* If alpha <= beta then (embed alpha beta) is a corresponding 
+ * embedding from beta to alpha. The functions (embed a b) and 
+ * (project a b)form a section-retraction pair.
+ * The function raises Not_Leq if it discovers that alpha <= beta
+ * does not hold.
+ * *)
+let project (a: Type.t) (b: Type.t) : Term.t =            
+  if Type.equals a b then 
+    Term.mkLambdaW(("x", None), Term.mkVar "x")
+  else 
+    match Type.finddesc b with
+      | Type.DataW(id, l) ->
+          let cs = Type.Data.constructor_types id l in
+          let rec out l n =
+            match l with 
+              | [] -> raise Not_Leq
+              | b1 :: bs ->
+                  if Type.equals a b1 then
+                    Term.mkLambdaW(
+                      ("x", None),
+                      Term.mkCaseW id true (Term.mkVar "x") 
+                        (Listutil.init (List.length cs)
+                           (fun j-> 
+                              if j = n then 
+                                ("y", Term.mkVar "y")
+                              else
+                                (unusable_var, mkConstW Cundef))))
+                  else
+                    out bs (n + 1) in
+            out l 0
+    | _ -> 
+        raise Not_Leq 
+
+
 let principal_typeW (c: contextW) (t: Term.t) : Type.t = 
   try 
     let a, con = ptW c t in

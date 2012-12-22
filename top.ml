@@ -6,7 +6,8 @@ open Term.Location
 open Typing
 open Evaluation
 open Query
-open Compile
+
+module U = Unify.Unify(struct type t = unit end)
 
 let sim_length = ref 10
 
@@ -114,21 +115,23 @@ let rec exec_query (ds: typed_decls) (q: query) : typed_decls =
         Printf.printf "For circuit one may use the names of upper class terms,\n";
         Printf.printf "which are compiled to circuits automatically.";
         ds
-    | DirTerm("circuit", circuit) ->
-        let circuit = List.fold_right subst_typed_decl_in_term ds circuit in
-        let _ = Typing.principal_typeU [] [] circuit in
-        let _, circuitW_type = compile_termU circuit in
+    | DirTerm("circuit", circuitU) ->
+        let circuitU = List.fold_right subst_typed_decl_in_term ds circuitU in
+        let _ = Typing.principal_typeU [] [] circuitU in
+        let circuit = Circuit.circuit_of_termU circuitU in
+        let _, circuitW_type = Termcodegen.termW_of_circuit circuit in
           Printf.printf ": %s\n" (string_of_type circuitW_type);
           Printf.printf "\n= functional value\n";
           ds
-    | DirTerm2("circuit", circuit, token) ->
+    | DirTerm2("circuit", circuitU, token) ->
         begin 
-          let circuit = List.fold_right subst_typed_decl_in_term ds circuit in
+          let circuitU = List.fold_right subst_typed_decl_in_term ds circuitU in
           let token = List.fold_right subst_typed_decl_in_term ds token in
           let token = Term.fresh_vars_for_missing_annots token in
           let token_type = Typing.principal_typeW [] token in
-          let _ = Typing.principal_typeU [] [] circuit in
-          let circuitW, circuitW_type = compile_termU circuit in
+          let _ = Typing.principal_typeU [] [] circuitU in
+          let circuit = Circuit.circuit_of_termU circuitU in
+          let circuitW, circuitW_type = Termcodegen.termW_of_circuit circuit in
           let circuit_input_type, circuit_output_type = 
             match Type.finddesc circuitW_type with
               | Type.FunW(b, c) -> b, c
@@ -153,15 +156,15 @@ let rec exec_query (ds: typed_decls) (q: query) : typed_decls =
                     Printf.printf "%s" msg;
                     ds
         end
-    | DirTerm2("sim", circuit, token) ->
+    | DirTerm2("sim", circuitU, token) ->
         begin 
-          let circuit = List.fold_right subst_typed_decl_in_term ds circuit in
-          let _ = Typing.principal_typeU [] [] circuit in
+          let circuitU = List.fold_right subst_typed_decl_in_term ds circuitU in
+          let _ = Typing.principal_typeU [] [] circuitU in
           let token = List.fold_right subst_typed_decl_in_term ds token in
           let token = Term.fresh_vars_for_missing_annots token in
           let _ = Typing.principal_typeW [] token in
             Printf.printf "Simulating message passing...\n"; flush stdout;
-            let graphs = Simulate.simulate !sim_length circuit token in
+            let graphs = Simulate.simulate !sim_length circuitU token in
               Printf.printf "Generating pdf file...\n"; flush stdout;
               let i = ref (0: int) in
               let pdfs = ref "" in 
