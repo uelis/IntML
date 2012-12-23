@@ -172,7 +172,7 @@ letu toDigits =
 
 letu e = (toDigits eContFrac)
 
-letu ttt = printlist e [500]
+letu ttt = printlist e [20]
 letu ttu = printlist eContFrac [2100]
 
 type three<'a> = One of 'a | Two of unit | Three of 'a*'a

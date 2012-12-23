@@ -62,9 +62,24 @@ let rec eval (t: Term.t) (sigma : env) : value =
         | PairV(v1, v2) -> eval t2 ((x1, v1) :: (x2, v2) :: sigma)
         | _ -> failwith (Printf.sprintf "Internal: Pairs (%s)" (Printing.string_of_termW t))
        )
-    | InW(n, i, t1) -> InV(n, i, eval t1 sigma)
-    | CaseW(_, _, t1, l) ->
-       (match eval t1 sigma with
+    | InW(id, i, t1) -> 
+        let v = InV(id, i, eval t1 sigma) in
+        if Type.Data.is_mutable id then
+          begin
+            let r = newid () in
+              Hashtbl.replace heap r v;
+              IntV(r)
+          end
+        else
+          v
+    | CaseW(id, _, t1, l) ->
+        let v0 = eval t1 sigma in
+        let v = 
+          match Type.Data.is_mutable id, v0 with
+            | true, IntV a0 -> Hashtbl.find heap a0 
+            | true, _ -> assert false
+            | false, _ -> v0 in
+       (match v with
           | InV(_, i, v1) -> 
               let (x2, t2) = List.nth l i in
                 eval t2 ((x2, v1) :: sigma)
@@ -84,11 +99,13 @@ let rec eval (t: Term.t) (sigma : env) : value =
             | _ -> failwith "Internal: evaluation of loop" in
           loop v1
     | AssignW(id, s, t) ->
+        assert (Type.Data.is_mutable id);
         let vs = eval s sigma in
         let vt = eval t sigma in
-        (match vs with
-           | IntV id -> Hashtbl.replace heap id vt;
-                        UnitV
+        (match vs, vt with
+           | IntV dst, IntV src -> 
+               Hashtbl.replace heap dst (Hashtbl.find heap src);
+               UnitV
            | _ -> assert false)
     | ContW(i, n, s) ->
         eval (Termcodegen.in_k i n s) sigma           
@@ -152,7 +169,7 @@ and appV (v1: value) (v2: value) : value =
            | _ -> assert false)
     | IntprintV ->
         (match v2 with
-           | IntV(v2') -> Printf.printf "%i" v2'; UnitV
+           | IntV(v2') -> Printf.printf "%i" v2'; flush stdout; UnitV
            | _ -> assert false)
     | _ -> failwith "Internal: Cannot apply non-functional value."
 
