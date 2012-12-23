@@ -6,6 +6,8 @@
    - Passes; Behalten von Zwischenergebnissen
 - Ausgabe zyklischer Typen
 
+- Separate Compilierung
+- Concurrency
 - Shift-reduce conflict
 - Switch zum Ausschalten rekursiver Typen
 - Refaktorisieren 

@@ -131,7 +131,7 @@ module IntMap = Map.Make(
   end
 )
 
-let trace (c: Circuit.circuit) : func =
+let trace (name: string) (c: Circuit.circuit) : func =
   (* Supply of fresh variable names. 
    * (The instructions do not contain a free variable starting with "x")
    *)
@@ -344,7 +344,7 @@ let trace (c: Circuit.circuit) : func =
                 block :: (List.concat (List.map (fun (_, _, dst) -> trace_all dst) cases))
       end in
   let blocks = trace_all {name = c.output.src; message_type = c.output.type_back} in
-    { func_name = "f";
+    { func_name = name;
       argument_type = c.output.type_back;
       entry_block = c.output.src;
       blocks = blocks;
@@ -353,50 +353,56 @@ let trace (c: Circuit.circuit) : func =
 (* TODO: proper printing *)
 
 let string_of_block b =
+  let string_of_letbndgs bndgs =
+    String.concat "" 
+      (List.map (fun (t, (x, y)) -> 
+                   Printf.sprintf "   let (%s, %s) = %s\n" 
+                     x y (Printing.string_of_termW t)) (List.rev bndgs)) in
   match b with
     | Unreachable(l) -> 
-        Printf.sprintf "and l%i(x) = L%i(x)\n" l.name l.name (* (Printing.string_of_type l.message_type)*)
+        Printf.sprintf " l%i(x : %s) = unreachable" 
+          l.name 
+          (Printing.string_of_type l.message_type)
     | Direct(l, x, bndgs, body, goal) ->
-        (Printf.sprintf "and l%i(%s) = \n  let" 
-          l.name x (* (Printing.string_of_type l.message_type)) *)) ^
-        (String.concat "" (List.map (fun (t, (x, y)) -> 
-                                       Printf.sprintf "  val (%s, %s) = %s\n" 
-                                         x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
-        (Printf.sprintf "  in l%i(%s) end\n" goal.name (Printing.string_of_termW body))
+        (Printf.sprintf " l%i(%s : %s) =\n" 
+          l.name x (Printing.string_of_type l.message_type)) ^
+        (string_of_letbndgs bndgs) ^
+        (Printf.sprintf "   in l%i(%s) end\n" goal.name (Printing.string_of_termW body))
     | InDirect(l, x, bndgs, body, goals) ->
-        (Printf.sprintf "and l%i(%s) = \n  let" 
-          l.name x (* (Printing.string_of_type l.message_type)) *)) ^
-        (String.concat "" (List.map (fun (t, (x, y)) -> 
-                                       Printf.sprintf "  val (%s, %s) = %s\n" 
-                                         x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
-        (Printf.sprintf "  in %s -> [%s] end\n" 
+        (Printf.sprintf " l%i(%s : %s) =\n" 
+          l.name x (Printing.string_of_type l.message_type)) ^
+        (string_of_letbndgs bndgs) ^
+        (Printf.sprintf "   in %s -> [%s] end\n" 
            (Printing.string_of_termW body)
            (String.concat "," (List.map (fun l -> Printf.sprintf "l%i" l.name) goals))
         )
     | Branch(la, x, bndgs, (id, cond, cases)) ->
-        (Printf.sprintf "and l%i(%s)=\n  let" 
-          la.name x (* (Printing.string_of_type la.message_type)*)) ^
-        (String.concat "" (List.map (fun (t, (x, y)) -> 
-                                       Printf.sprintf "  val (%s, %s) = %s\n" 
-                                         x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
-        (Printf.sprintf "  in case %s of\n     | " (Printing.string_of_termW cond)) ^
-        (String.concat "     | "
+        (Printf.sprintf " l%i(%s : %s) =\n" 
+          la.name x (Printing.string_of_type la.message_type)) ^
+        (string_of_letbndgs bndgs) ^
+        (String.concat "      | "
            (List.map (fun (cname, (l, lb, lg)) ->
                         Printf.sprintf "%s(%s) -> l%i(%s)\n" cname l lg.name (Printing.string_of_termW lb))
               (List.combine (Type.Data.constructor_names id) cases)
            ))
     | Return(l, x, bndgs, body, retty) ->
-        (Printf.sprintf "and l%i(%s)=\n  let" 
+        (Printf.sprintf " l%i(%s) =\n  let" 
           l.name x (*(Printing.string_of_type l.message_type)*)) ^
-        (String.concat "" (List.map (fun (t, (x, y)) -> 
-                                       Printf.sprintf "  val (%s, %s) = %s\n" 
-                                         x y (Printing.string_of_termW t)) (List.rev bndgs))) ^
-        (Printf.sprintf "  in %s\n end\n" 
+        (string_of_letbndgs bndgs) ^
+        (Printf.sprintf "   in %s\n end\n" 
            (Printing.string_of_termW body)
  (*           (Printing.string_of_type retty)*))
 
 let string_of_func func =
   let buf = Buffer.create 80 in
-  List.iter (fun block -> Buffer.add_string buf (string_of_block block))
-    func.blocks;
+    Buffer.add_string buf 
+      (Printf.sprintf "%s(x : %s) : %s = l%i(x)\n\n"
+         func.func_name
+         (Printing.string_of_type func.argument_type)
+         (Printing.string_of_type func.return_type)
+         func.entry_block);
+  List.iter (fun block -> 
+               Buffer.add_string buf (string_of_block block);
+               Buffer.add_string buf "\n"
+  ) func.blocks;
   Buffer.contents buf

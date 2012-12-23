@@ -914,9 +914,6 @@ let build_ssa_blocks (the_module : Llvm.llmodule) (func : Llvm.llvalue)
       )                         
       ssa_func.blocks
 
-let build_body (the_module : Llvm.llmodule) func (c : Circuit.circuit) =
-  let ssa_func = Ssa.trace c in
-    build_ssa_blocks the_module func ssa_func
 
 (* Must be applied to circuit of type [A] *)    
 let llvm_compile (ssa_func : Ssa.func) : Llvm.llmodule = 

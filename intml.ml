@@ -67,7 +67,7 @@ let rec compile_passes (d: typed_decls) : unit =
             end;
           if !opt_keep_ssa || !opt_llvm_compile then
             begin
-              let ssa_func = Ssa.trace circuit in
+              let ssa_func = Ssa.trace f circuit in
               if !opt_keep_ssa then
                 begin
                   let target = Printf.sprintf "%s.ssa" f in
@@ -135,7 +135,8 @@ try
           typed_decls
       end 
     in 
-      if not (!opt_llvm_compile) then
+      if not (!opt_llvm_compile || !opt_compile_to_terms || 
+              !opt_keep_circuits || !opt_keep_ssa) then
         eval_loop typed_decls
 with 
   | Failure msg -> Printf.printf "%s\n" msg

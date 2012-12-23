@@ -289,7 +289,8 @@ let string_of_termW (term: Term.t): string =
           let k = ref 0 in 
           List.iter (fun (x, t) -> 
                        let conname = List.nth (Type.Data.constructor_names id) !k in
-                       Buffer.add_string buf (Printf.sprintf "| %s(%s) -> " conname x);
+                       if !k > 0 then Buffer.add_string buf " | "; 
+                       Buffer.add_string buf (Printf.sprintf "%s(%s) -> " conname x);
                        k := !k + 1;
                        s_termW t) l
       | LoopW(t1, (x, t2)) ->
@@ -335,7 +336,7 @@ let string_of_termW (term: Term.t): string =
           s_termW t2;
           Buffer.add_char buf ')'
       | ContW(n, k, t1) ->
-          Buffer.add_string buf (Printf.sprintf "cont(%i, %i," n k);
+          Buffer.add_string buf (Printf.sprintf "cont(%i, %i, " n k);
           s_termW t1;
           Buffer.add_char buf ')'
       | TypeAnnot(t, _) ->
