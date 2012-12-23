@@ -109,6 +109,8 @@ let rec eval (t: Term.t) (sigma : env) : value =
            | _ -> assert false)
     | ContW(i, n, s) ->
         eval (Termcodegen.in_k i n s) sigma           
+    | CallW _ ->
+        failwith "External calls are not supported in the interpreter."
     | LetBoxW(t1, (x, t2)) ->
         let c = Circuit.circuit_of_termU t1 in
         let s1, a1 = Termcodegen.termW_of_circuit c in
@@ -117,7 +119,7 @@ let rec eval (t: Term.t) (sigma : env) : value =
     | TypeAnnot(t, _) -> eval t sigma
     | HackU (_, _)|CopyU (_, _)|CaseU (_, _, _)|LetBoxU (_, _)|BoxTermU _
     | LambdaU (_, _)|AppU (_, _)|LetU (_, _)|PairU (_, _) | MemoU(_)
-    | ForceU _ | SuspendU _
+    | ForceU _ | SuspendU _ | ExternalU _
       -> assert false
 
 and appV (v1: value) (v2: value) : value = 

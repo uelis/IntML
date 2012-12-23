@@ -43,7 +43,7 @@ let rec reduce (t : Term.t) : let_bindings * Term.t =
     | AppW({desc=ConstW(Cintmul)}, _)
     | AppW({desc=ConstW(Cintslt)}, _)
     | AppW({desc=ConstW(Cinteq)}, _) -> [], t
-    | ConstW(_) | LoopW(_) | AssignW _ | ContW _ -> 
+    | ConstW(_) | LoopW(_) | AssignW _ | ContW _ | CallW _ -> 
         let x = fresh_var () in
         let y = fresh_var () in
           [(mkPairW t mkUnitW, (x, y))],
@@ -317,13 +317,72 @@ let trace (name: string) (c: Circuit.circuit) : func =
                    (sigma, mkContW wt.dst (max_wire_src_dst + 1) sigma)
            | Grab(_, w1, wt) when wt.src = dst ->
                 InDirect(src, "z", lets, v, possible_indirect_goals)
-(*                ("x", mkLetW (mkVar "x") (("sigma", "v"), 
-                                            (parse ("let (contk, m) = v in contk m")))) *)
+           | External(fn, ty, w1) when w1.src = dst ->
+                let ty' = Type.freshen ty in 
+                let q, a = Type.question_answer_pair ty' in
+                let s = Type.newty Type.Var in
+                let sigmaq = Type.newty (Type.TensorW(s, q)) in
+                let sigmaa = Type.newty (Type.TensorW(s, a)) in
+                let rec pack a x =
+                  match Type.finddesc a with
+                    | Type.Var -> 
+                        let refid, refcon = Type.Data.find_constructor "Ref" in
+                          mkInW refid refcon x
+                    | Type.NatW | Type.ZeroW | Type.OneW | Type.ContW _ -> 
+                        mkTypeAnnot x (Some a)
+                    | Type.TensorW(a1, a2) ->
+                        let x1 = fresh_var () in
+                        let x2 = fresh_var () in
+                        mkLetW x ((x1, x2),
+                                  mkPairW (pack a1 (mkVar x1)) (pack a2 (mkVar x2)))
+                    | Type.DataW(id, ps) ->
+                        if Type.Data.is_recursive id || Type.Data.is_mutable id then
+                          x
+                        else
+                          begin
+                            let cons = Type.Data.constructor_types id ps in
+                            let y = fresh_var () in
+                            mkCaseW id false x 
+                              (Listutil.mapi (fun i t -> (y, mkInW id i (pack t (mkVar y)))) cons)
+                          end
+                    | Type.FunW _ | Type.FunU _ | Type.TensorU _ | Type.BoxU _ | Type.Link _ -> 
+                        assert false in
+                let rec unpack a x =
+                  match Type.finddesc a with
+                    | Type.Var -> 
+                        let refid, refcon = Type.Data.find_constructor "Ref" in
+                        let y = fresh_var () in
+                          mkCaseW refid false x [(y, mkVar y)]
+                    | Type.NatW | Type.ZeroW | Type.OneW | Type.ContW _ -> x
+                    | Type.TensorW(a1, a2) ->
+                        let x1 = fresh_var () in
+                        let x2 = fresh_var () in
+                        mkLetW x ((x1, x2),
+                                  mkPairW (unpack a1 (mkVar x1)) (unpack a2 (mkVar x2)))
+                    | Type.DataW(id, ps) ->
+                        if Type.Data.is_recursive id || Type.Data.is_mutable id then
+                          x
+                        else
+                          begin
+                            let cons = Type.Data.constructor_types id ps in
+                            let y = fresh_var () in
+                            mkCaseW id false x 
+                              (Listutil.mapi (fun i t -> (y, mkInW id i (unpack t (mkVar y)))) cons)
+                          end
+                    | Type.FunW _ | Type.FunU _ | Type.TensorU _ | Type.BoxU _ | Type.Link _ -> 
+                        assert false in
+                  (*
+                  Printf.printf "\n\n%s\n\n" (Printing.string_of_termW 
+                                          (unpack sigmaa (mkCallW fn (pack sigmaq (mkPairW sigma v)))));
+                   *)
+                let rlets, v' = reduce (unpack sigmaa (mkCallW fn (pack sigmaq (mkPairW sigma v)))) in
+                let v1, v2 = fresh_var (), fresh_var () in
+                  trace src w1.dst ((v', (v1, v2)) :: rlets @ lets) (mkVar v1, mkVar v2)
            | Force(w1, k) when w1.src = dst ->
                let newlets, sigma', k' = make_bindings sigma k in
                 InDirect(src, "z", newlets @ lets, 
                          mkPairW k' (mkPairW (mkContW w1.dst (max_wire_src_dst + 1) sigma') v), possible_indirect_goals)
-          | _ -> assert false
+           | _ -> assert false
   in
   let sigma, x = "sigma", "x" in
   let entry_points = Hashtbl.create 10 in
@@ -380,6 +439,7 @@ let string_of_block b =
         (Printf.sprintf " l%i(%s : %s) =\n" 
           la.name x (Printing.string_of_type la.message_type)) ^
         (string_of_letbndgs bndgs) ^
+        (Printf.sprintf "    case %s of\n      | " (Printing.string_of_termW cond)) ^
         (String.concat "      | "
            (List.map (fun (cname, (l, lb, lg)) ->
                         Printf.sprintf "%s(%s) -> l%i(%s)\n" cname l lg.name (Printing.string_of_termW lb))

@@ -119,7 +119,7 @@ let clear_type_vars () = Hashtbl.clear type_vars
 %token TokForce
 %token TokSuspend
 %token TokCont
-%token TokBang
+%token TokExternal
 %token TokVertbar
 %token <int> TokNum
 %token <string> TokIdent 
@@ -426,6 +426,8 @@ termU_atom:
  //      { mkTerm (MemoU($2)) }
     | TokForce termU_atom
        { mkTerm (ForceU($2)) }
+    | TokExternal TokString typeU
+       { mkTerm (ExternalU($2, $3)) }
     | TokSuspend termU_atom
        { mkTerm (SuspendU($2)) }
 

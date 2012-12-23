@@ -216,8 +216,6 @@ type encoded_value = {
  * Attrib: x.a
  *)
 
-(* TODO: Account for recursive types *)                       
-
 let rec payload_size (a: Type.t) : int = 
   let payload_size_memo = Type.Typetbl.create 5 in
   let rec p_s a = 
@@ -228,7 +226,7 @@ let rec payload_size (a: Type.t) : int =
             match finddesc a with
               | Link _ -> assert false
               | ZeroW | OneW -> 0
-              | Var(_) -> 0
+              | Var(_) -> 1
               | NatW -> 1
               | ContW(_) -> 2
               | TensorW(a1, a2) -> p_s a1 + (p_s a2)
@@ -373,10 +371,16 @@ let build_term
       | ContW(i, n ,t) -> 
           let alpha = Type.newty Type.Var in
             mkContW i n (mkTypeAnnot (annotate_term t) (Some alpha))
+      | CallW(fn, t) ->
+          let alpha = Type.newty Type.Var in
+          let beta = Type.newty Type.Var in
+            mkTypeAnnot 
+              (mkCallW fn (mkTypeAnnot (annotate_term t) (Some alpha)))
+              (Some beta)
       | LetBoxW(_, _) -> assert false 
       | HackU (_, _)|CopyU (_, _)|CaseU (_, _, _)|LetBoxU (_, _)
       | BoxTermU _| LambdaU (_, _)|AppU (_, _)|LetU (_, _)|PairU (_, _) 
-      | ForceU _ | SuspendU _ | MemoU _-> assert false
+      | ForceU _ | SuspendU _ | MemoU _ | ExternalU _ -> assert false
   in
   (* Compile annotated term *)
   let rec build_annotatedterm 
@@ -385,7 +389,7 @@ let build_term
         (args: encoded_value list)
         : encoded_value =
 (*    print_string (Printing.string_of_termW t);
-    print_string "\n";*)
+    print_string "\n"; *)
     match t.Term.desc with
       | Var(x) -> 
           List.assoc x ctx
@@ -659,17 +663,6 @@ let build_term
                       {payload = []; attrib = Bitvector.null}
                 | _ -> assert false
             end
-(*      | DeleteW((alpha, a), t) ->
-          let i64 = Llvm.i64_type context in
-          let freetype = Llvm.function_type (Llvm.void_type context) (Array.of_list [i64]) in
-          let free = Llvm.declare_function "free" freetype the_module in
-            begin
-              match build_annotatedterm ctx t args with
-                | {payload = [tptrint] } ->
-                    ignore (Llvm.build_call free (Array.of_list [tptrint]) "" builder);
-                    {payload = []; attrib = Bitvector.null}
-                | _ -> assert false
-            end *)
       | ContW(i, _, { desc = TypeAnnot(t, Some a) }) ->
           let i64 = Llvm.i64_type context in
           let block = get_block i in
@@ -691,6 +684,16 @@ let build_term
           ignore (Llvm.build_store tenc_packed mem_a_struct_ptr builder);
           let pl = Llvm.build_ptrtoint mem_a_struct_ptr i64 "memint" builder in
             {payload = [dst_address; pl]; attrib = Bitvector.null}
+      | TypeAnnot({ desc = CallW(fn, { desc = TypeAnnot(t, Some argty) }) }, Some resty) ->
+          let arg_struct = packing_type argty in
+          let res_struct = packing_type resty in
+          let ftype = Llvm.function_type res_struct  (Array.of_list [arg_struct]) in
+          let f = Llvm.declare_function ("IntML" ^ fn) ftype the_module in
+          let tenc = build_annotatedterm ctx t args in
+          let tenc_packed = pack_encoded_value tenc argty in
+          let res_packed = Llvm.build_call f (Array.of_list [tenc_packed]) 
+                             "res" builder in
+            unpack_encoded_value res_packed resty
       | TypeAnnot(t, _) ->
           build_annotatedterm ctx t args
       | AppW(t1, t2) ->
@@ -706,7 +709,6 @@ let build_term
           failwith "TODO_llvm"
   in
   let t_annotated = mkTypeAnnot (freshen_type_vars (annotate_term t)) (Some a) in
- (*   Printf.printf "%s\n" (Printing.string_of_termW t_annotated); *)
   let _ = Typing.principal_typeW type_ctx t_annotated in    
     build_annotatedterm ctx t_annotated []
 
@@ -922,16 +924,19 @@ let llvm_compile (ssa_func : Ssa.func) : Llvm.llmodule =
   let arg_ty = packing_type ssa_func.Ssa.argument_type in
   let ret_ty = packing_type ssa_func.Ssa.return_type in
   let ft = Llvm.function_type ret_ty (Array.make 1 arg_ty) in
-  let func = Llvm.declare_function ssa_func.Ssa.func_name ft the_module in
+  let func = Llvm.declare_function ("IntML" ^ ssa_func.Ssa.func_name) ft the_module in
     build_ssa_blocks the_module func ssa_func;
     (* make main function *)
-    let void_ty = Llvm.void_type context in
-    let main_ty = Llvm.function_type void_ty (Array.make 0 void_ty) in
-    let main = Llvm.declare_function "main" main_ty the_module in
-    let start_block = Llvm.append_block context "start" main in 
-    let args = Array.of_list [Llvm.undef arg_ty] in
-      Llvm.position_at_end start_block builder;
-      ignore (Llvm.build_call func args "ret" builder);
-      ignore (Llvm.build_ret_void builder);           
+    if ssa_func.Ssa.func_name = "main" then
+      begin
+        let void_ty = Llvm.void_type context in
+        let main_ty = Llvm.function_type void_ty (Array.make 0 void_ty) in
+        let main = Llvm.declare_function "main" main_ty the_module in
+        let start_block = Llvm.append_block context "start" main in 
+        let args = Array.of_list [Llvm.undef arg_ty] in
+          Llvm.position_at_end start_block builder;
+          ignore (Llvm.build_call func args "ret" builder);
+          ignore (Llvm.build_ret_void builder)
+      end;
 (*    Llvm.dump_module the_module; *)
     the_module

@@ -194,7 +194,13 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
       let alpha = newty Var in
         newty (ContW(alpha)),
         con
-          (* TODO *)
+          (* TODO: this is underspecified!?! *)
+  | Term.CallW(fn, t) ->
+      let _, con = ptW c t in
+      let alpha = newty Var in
+        alpha,
+        con
+          (* TODO : unsafe *)
   | TypeAnnot(t, None) -> 
       ptW c t
   | TypeAnnot(t, Some ty) ->
@@ -203,7 +209,7 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
         eq_expected_constraint t (a, ty) :: con
   | PairU(_, _) | LetU(_, _) | AppU(_, _) | LambdaU(_, _) | BoxTermU(_)
   | LetBoxU(_, _) | CaseU(_, _, _) | CopyU(_, _) | HackU(_, _) | MemoU(_)
-  | SuspendU _ | ForceU _ ->
+  | SuspendU _ | ForceU _ | ExternalU _->
       raise (Typing_error (Some t, "Working class term expected."))
 and ptU (c: contextW) (phi: contextU) (t: Term.t) 
         : Type.t * type_constraint list =
@@ -362,6 +368,8 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
          con1)
   | MemoU(t1) ->
       ptU [] [] t1
+  | ExternalU(fn, ty) ->
+      Type.freshen ty, []
   | SuspendU(t) ->
       let gamma = fresh_index_types phi in
       let tyBox, conBox = ptU c gamma t in
@@ -390,7 +398,7 @@ and ptU (c: contextW) (phi: contextU) (t: Term.t)
         eq_expected_constraint t (a, ty) :: con
   | LoopW _  |LambdaW (_, _) | AppW (_, _) | CaseW _ | InW (_, _, _) 
   | LetW (_, _) | LetBoxW(_,_) | PairW (_, _) | ConstW (_) | UnitW 
-  | AssignW _ | Term.ContW _ ->
+  | AssignW _ | Term.ContW _ | CallW _ ->
       raise (Typing_error (Some t, "Upper class term expected."))
 
 let raise_error (failed_eqn: U.failure_reason) =

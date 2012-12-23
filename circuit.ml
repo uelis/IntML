@@ -38,6 +38,7 @@ type instruction =
    | LWeak of wire (* \Tens A X *) * wire (* \Tens B X *) (* where B <= A *)
    | Epsilon of wire (* [A] *) * wire (* \Tens A [B] *) * wire (* [B] *)
    | Memo of wire (* X *) * wire (* X *)
+   | External of string * Type.t * wire
    | Grab of var list * wire (* X *) * wire
    | Force of wire (* X *) * (Term.var list * Term.t)
 
@@ -60,6 +61,7 @@ let rec wires (i: instruction list): wire list =
     | Epsilon(w1, w2, w3) :: is -> w1 :: w2 :: w3 :: (wires is)
     | Grab(_, w1, w2) :: is -> w1 :: w2 :: (wires is)
     | Force(w1, _ ) :: is -> w1 :: (wires is)
+    | External(_, _, w1) :: is -> w1 :: (wires is)
 
 let map_wires_instruction (f: wire -> wire): instruction -> instruction =
   fun i -> 
@@ -75,6 +77,7 @@ let map_wires_instruction (f: wire -> wire): instruction -> instruction =
     | ADoor(w1, w2) -> ADoor(f w1, f w2)
     | LWeak(w1, w2) -> LWeak(f w1, f w2)
     | Epsilon(w1, w2, w3) -> Epsilon(f w1, f w2, f w3)
+    | External(fn, ty, w1) -> External(fn, ty, w1)
 
 (* renaming of wires *)                               
 let map_wire (f: int -> int): wire -> wire =
@@ -160,6 +163,9 @@ let raw_circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
       | HackU(_, t1) ->
           let w = fresh_wire () in
             (w, [(Axiom(w, (sigma, fresh_vars_for_missing_annots t1)))])
+      | ExternalU(fn, ty) ->
+          let w = fresh_wire () in
+            (w, [External(fn, ty, w)])
       | PairU(s, t) ->
           let fv_s = free_vars s in
           let fv_t = free_vars t in
@@ -293,7 +299,7 @@ let raw_circuit_of_termU  (sigma: var list) (gamma: ctx) (t: Term.t): circuit =
             (w, ins)
       | LoopW _|LambdaW (_, _)|AppW (_, _)|CaseW (_, _, _, _)| InW (_, _, _)
       | LetBoxW(_,_) | LetW (_, _)|PairW (_, _)|ConstW (_)|UnitW
-      | AssignW _ | ContW _ ->
+      | AssignW _ | ContW _ | CallW _ ->
           assert false 
   and compile_in_box (c: var) (sigma: var list) (gamma: ctx) (t: Term.t) =
     let (gamma_in_box, i_enter_box) = enter_box gamma in
@@ -385,6 +391,15 @@ let infer_types (c : circuit) : unit =
               w1.type_back (tensor sigma (Type.newty Type.OneW)) ::
             Typing.eq_constraint 
               w1.type_forward (tensor sigma alpha) ::
+            (constraints rest)
+      | External(fn, ty, w1) :: rest ->
+          let ty' = Type.freshen ty in
+          let q, a = Type.question_answer_pair ty' in
+          let sigma = Type.newty Type.Var in
+            Typing.eq_constraint 
+              w1.type_back (tensor sigma q) ::
+            Typing.eq_constraint 
+              w1.type_forward (tensor sigma a) ::
             (constraints rest)
       | Tensor(w1, w2, w3)::rest ->
           let sigma1 = Type.newty Type.Var in
@@ -654,6 +669,8 @@ let rec dot_of_circuit
               Printf.sprintf "\"Grab({%i,%i},{%i,%i})\"" w1.src w1.dst w2.src w2.dst
           | Force(w1, _) -> 
               Printf.sprintf "\"Force({%i,%i})\"" w1.src w1.dst
+          | External(fn, ty, w1) -> 
+              Printf.sprintf "\"External({%i,%i})\"" w1.src w1.dst
           | ADoor(w1, w2) -> 
               Printf.sprintf "\"ADoor({%i,%i},{%i,%i})\"" 
                 w1.src w1.dst w2.src w2.dst
@@ -676,6 +693,7 @@ let rec dot_of_circuit
           | Case(_, _, _) -> "case"
           | Memo(_, _) -> "memo"
           | Grab(_) -> "grab"
+          | External _ -> "external"
           | Force(_, _) -> "force"
           | Door(_, w) -> 
               if w.src = -1 then "\", shape=\"plaintext" else "&uarr;"

@@ -339,6 +339,10 @@ let string_of_termW (term: Term.t): string =
           Buffer.add_string buf (Printf.sprintf "cont(%i, %i, " n k);
           s_termW t1;
           Buffer.add_char buf ')'
+      | CallW(fn, t1) ->
+          Buffer.add_string buf (Printf.sprintf "call(%s, " fn);
+          s_termW t1;
+          Buffer.add_char buf ')'
       | TypeAnnot(t, _) ->
           s_termW_atom t
       | LambdaW(_, _) | LetW(_, _) | CaseW _ | InW _ 

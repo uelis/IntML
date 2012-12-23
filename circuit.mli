@@ -15,6 +15,7 @@ type instruction =
   | LWeak of wire (* \Tens A X *) * wire (* \Tens B X *) (* where B <= A *)
   | Epsilon of wire (* [A] *) * wire (* \Tens A [B] *) * wire (* [B] *)
   | Memo of wire (* X *) * wire (* X *)
+  | External of string * Type.t * wire
   | Grab of Term.var list * wire (* X *) * wire
   | Force of wire (* X *) * (Term.var list * Term.t)
 

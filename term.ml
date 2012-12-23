@@ -43,6 +43,7 @@ and t_desc =
   | LoopW of t * (var * t)
   | LetBoxW of t * (var * t)           (* s, <x>t *)
   | ContW of int * int * t
+  | CallW of string * t
   | MemoU of t                    
   | SuspendU of t                    
   | ForceU of t                    
@@ -55,6 +56,7 @@ and t_desc =
   | CaseU of Type.Data.id * t * ((var * t) list) 
   | CopyU of t * (var * var * t)       (* s, <x,y>t *)
   | HackU of (Type.t option) * t       (* s, t *)
+  | ExternalU of string * Type.t
   | TypeAnnot of t * (Type.t option)
                    
 let mkVar x = { desc = Var(x); loc = None }
@@ -73,6 +75,7 @@ let mkLambdaW ((x, ty), t) = { desc = LambdaW((x, ty), t); loc = None }
 let mkLoopW s (x ,t) = { desc = LoopW(s, (x,t)); loc = None }
 let mkAssignW id s t = { desc = AssignW(id, s, t); loc = None }
 let mkContW i n t = { desc = ContW(i, n, t); loc = None }
+let mkCallW fn t = { desc = CallW(fn, t); loc = None }
 let mkLetCompW s (x, t) = mkAppW (mkLambdaW ((x, None), t)) s
 let mkPairU s t= { desc = PairU(s, t); loc = None }
 let mkLetU s ((x, y), t) = { desc = LetU(s, (x, y, t)); loc = None }
@@ -83,6 +86,7 @@ let mkLetBoxU s (x, t) = { desc = LetBoxU(s, (x, t)); loc = None }
 let mkCaseU id s l = { desc = CaseU(id, s, l); loc = None }
 let mkCopyU s ((x, y), t) = { desc = CopyU(s, (x, y, t)); loc = None }
 let mkHackU ty t = { desc = HackU(ty, t); loc = None }
+let mkExternalU fn ty = { desc = ExternalU(fn, ty); loc = None }
 let mkTypeAnnot t a = { desc = TypeAnnot(t, a); loc = None }
 
 (* Conveniencene function for n-ary let on WC level *)          
@@ -117,9 +121,10 @@ let rec free_vars (term: t) : var list =
   let abs x l = List.filter (fun z -> z <> x) l in
   match term.desc with
     | Var(v) -> [v]
-    | ConstW(_) | UnitW -> []
-    | InW(_,_,s) | ContW(_, _,  s)
-    | BoxTermU(s) | HackU(_, s) | MemoU(s) | SuspendU(s) | ForceU(s) -> free_vars s
+    | ConstW(_) | UnitW | ExternalU _ -> []
+    | InW(_,_,s) | ContW(_, _,  s) | CallW(_, s)
+    | BoxTermU(s) | HackU(_, s) | MemoU(s) | SuspendU(s) | ForceU(s)
+      -> free_vars s
     | PairW(s, t) | PairU (s, t) | AppW (s, t) | AppU(s, t) | AssignW(_, s, t) -> 
         (free_vars s) @ (free_vars t)
     | LetW(s, (x, y, t)) | LetU(s, (x, y, t)) | CopyU(s, (x, y, t)) ->
@@ -142,11 +147,13 @@ let rename_vars (f: var -> var) (term: t) : t =
     | LoopW(s, (x, t)) -> { term with desc = LoopW(rn s, (f x, rn t)) }
     | AssignW(ty, s, t) -> { term with desc = AssignW(ty, rn s, rn t) }
     | ContW(i, n, s) -> { term with desc = ContW(i, n, rn s) }
+    | CallW(fn, s) -> { term with desc = CallW(fn, rn s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(rn s) }
     | MemoU(s) -> { term with desc = MemoU(rn s) }
     | SuspendU(s) -> { term with desc = SuspendU(rn s) }
     | ForceU(s) -> { term with desc = ForceU(rn s) }
     | HackU(ty, s) -> { term with desc = HackU(ty, rn s) }
+    | ExternalU(fn, ty) -> { term with desc = ExternalU(fn, ty) }
     | PairW(s, t) -> { term with desc = PairW(rn s, rn t) }
     | PairU(s, t) -> { term with desc = PairU(rn s, rn t) }
     | AppW(s, t) -> { term with desc = AppW(rn s, rn t) }
@@ -191,11 +198,13 @@ let map_type_annots (f: Type.t option -> Type.t option) (term: t) : t =
     | LoopW(s, (x, t)) -> { term with desc = LoopW(mta s, (x, mta t)) }
     | AssignW(ty, s, t) -> { term with desc = AssignW(ty, mta s, mta t) }
     | ContW(i, n, s) -> { term with desc = ContW(i, n, s) }
+    | CallW(fn, s) -> { term with desc = CallW(fn, s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
     | MemoU(s) -> { term with desc = MemoU(mta s) }
     | SuspendU(s) -> { term with desc = SuspendU(mta s) }
     | ForceU(s) -> { term with desc = ForceU(mta s) }
     | HackU(ty, s) -> { term with desc = HackU(f ty, mta s) }
+    | ExternalU(fn, ty) -> { term with desc = ExternalU(fn, ty) }
     | PairW(s, t) -> { term with desc = PairW(mta s, mta t) }
     | PairU (s, t) -> { term with desc = PairU(mta s, mta t) }
     | AppW (s, t) -> { term with desc = AppW(mta s, mta t) }
@@ -240,11 +249,13 @@ let head_subst (s: t) (x: var) (t: t) : t option =
       | LoopW(s, (x, t)) -> { term with desc = LoopW(sub sigma s, abs sigma (x, t)) }
       | AssignW(ty, s, t) -> { term with desc = AssignW(ty, sub sigma s, sub sigma t) }
       | ContW(i, n, s) -> { term with desc = ContW(i, n, sub sigma s) }
+      | CallW(fn, s) -> { term with desc = CallW(fn, sub sigma s) }
       | BoxTermU(s) -> { term with desc = BoxTermU(sub sigma s) }
       | SuspendU(s) -> { term with desc = SuspendU(sub sigma s) }
       | ForceU(s) -> { term with desc = ForceU(sub sigma s) }
       | MemoU(s) -> { term with desc = MemoU(sub sigma s) }
       | HackU(ty, s) -> { term with desc = HackU(ty, sub sigma s) }
+      | ExternalU(fn, ty) -> { term with desc = ExternalU(fn, ty) }
       | PairW(s, t) -> { term with desc = PairW(sub sigma s, sub sigma t) }
       | PairU (s, t) -> { term with desc = PairU(sub sigma s, sub sigma t) }
       | AppW (s, t) -> { term with desc = AppW(sub sigma s, sub sigma t) }
@@ -322,11 +333,13 @@ let freshen_type_vars t =
     | AssignW(id, s, t) -> 
         { term with desc = AssignW(id, mta s, mta t) }
     | ContW(i, n, s) -> { term with desc = ContW(i, n, mta s) }
+    | CallW(fn, s) -> { term with desc = CallW(fn, mta s) }
     | BoxTermU(s) -> { term with desc = BoxTermU(mta s) }
     | SuspendU(s) -> { term with desc = SuspendU(mta s) }
     | ForceU(s) -> { term with desc = ForceU(mta s) }
     | MemoU(s) -> { term with desc = MemoU(mta s) }
     | HackU(ty, s) -> { term with desc = HackU(f ty, mta s) }
+    | ExternalU(fn, ty) -> { term with desc = ExternalU(fn, Type.subst fv ty) }
     | PairW(s, t) -> { term with desc = PairW(mta s, mta t) }
     | PairU (s, t) -> { term with desc = PairU(mta s, mta t) }
     | AppW (s, t) -> { term with desc = AppW(mta s, mta t) }

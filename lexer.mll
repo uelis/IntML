@@ -79,6 +79,7 @@ rule main = parse
   | "callc"    { TokForce }
   | "grabc"    { TokSuspend }
   | "cont"     { TokCont }
+  | "external" { TokExternal }
   | "--o"      { TokLolli }
   | "-->"      { TokMulti }
   | "|"        { TokVertbar }

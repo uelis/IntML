@@ -45,6 +45,7 @@ and t_desc =
   | LoopW of t * (var * t) 
   | LetBoxW of t * (var * t)             (* s, <x>t *)
   | ContW of int * int * t
+  | CallW of string * t
   | MemoU of t                    
   | SuspendU of t                    
   | ForceU of t                    
@@ -57,6 +58,7 @@ and t_desc =
   | CaseU of Type.Data.id * t * ((var * t) list)     
   | CopyU of t * (var * var * t)         (* s, <x,y>t *)
   | HackU of Type.t option * t                (* s, t *)
+  | ExternalU of string * Type.t 
   | TypeAnnot of t * (Type.t option)
                    
 val mkVar : var -> t
@@ -76,6 +78,7 @@ val mkTrW : t -> t
 val mkLoopW : t -> (var * t) -> t
 val mkAssignW : Type.Data.id ->  t -> t -> t
 val mkContW : int -> int -> t -> t
+val mkCallW : string -> t -> t
 val mkLetCompW : t -> (var * t) -> t
 val mkPairU : t -> t -> t
 val mkLetU : t -> (var * var) * t -> t
@@ -86,6 +89,7 @@ val mkLetBoxU : t -> var * t -> t
 val mkCaseU : Type.Data.id -> t -> (var * t) list -> t
 val mkCopyU : t -> (var * var) * t -> t
 val mkHackU : Type.t option -> t -> t
+val mkExternalU : string -> Type.t -> t
 val mkTypeAnnot : t -> Type.t option -> t
 val mkLambdaWList : var list * t -> t
 val mkAppWList : t -> t list -> t                                  
