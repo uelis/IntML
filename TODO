@@ -1,11 +1,12 @@
 - Wohlgeformtheit rekursiver Typen
 - Ausgabe von Konstruktoren
 - Datentypen in Decls aufnehmen?
+- Refaktorisieren 
+   - Compile => Circuits, wc-backend
 
 - Shift-reduce conflict
 - Switch zum Ausschalten rekursiver Typen
 - Refaktorisieren 
-   - Compile => Circuits, wc-backend
    - evaluation => interpreter
    - Passes; Behalten von Zwischenergebnissen
 - Ausgabe zyklischer Typen

@@ -36,40 +36,62 @@ let name_of_typevar t =
 let string_of_type (ty: Type.t): string =  
   let buf = Buffer.create 80 in
     (* recognize loops and avoid printing infinite types *)
-  let module Tbl = 
-    Hashtbl.Make(
-         struct
-           type t = int * Type.t
-           let equal (i, s) (j, t) = i=j && s == t
-           let hash (i, s) = i + 7 * s.Type.id
-         end) in
-  let table = Tbl.create 10 in
-  let check_rec (i,j) = 
-    try
-      let k = Tbl.find table (i,j) in
-        Tbl.replace table (i,j) (k+1);
-        if k > 2 then
-          (Buffer.add_string buf "..."; false)
-        else true
-    with
-       Not_found -> 
-         Tbl.add table (i,j) 0;
-         true
-  in
-  let rec s_typeW (t: Type.t) =
-    if check_rec (0, t) then
+    (* TODO: this is awkward *)
+  let cycles = Hashtbl.create 10  in
+  let check_cycle (t : Type.t) : unit =
+    let mark_open = Type.next_mark () in
+    let mark_done = Type.next_mark () in
+    let rec dfs (t: Type.t) =
+      let r = Type.find t in
+        if r.Type.mark = mark_open then 
+          Hashtbl.add cycles r.Type.id None
+        else if (r.Type.mark = mark_done) then ()
+        else 
+          begin
+            r.Type.mark <- mark_open;
+            begin
+              match r.Type.desc with 
+                | Type.ContW(t1) -> dfs t1
+                | Type.TensorW(t1, t2) | Type.FunW(t1, t2)
+                | Type.BoxU(t1, t2) | Type.TensorU(t1, t2) -> dfs t1; dfs t2
+                | Type.FunU(t1, t2, t3) -> dfs t1; dfs t2; dfs t3
+                | Type.DataW(_, l) -> List.iter dfs l
+                | _ -> ()
+            end;
+            r.Type.mark <- mark_done
+          end
+    in 
+      dfs t in
+    check_cycle ty;
+  let rec check_rec t = 
+    let r = Type.find t in
+      try
+        match Hashtbl.find cycles r.Type.id with
+          | None -> 
+              let x = name_of_typevar (Type.newty Type.Var) in
+                Hashtbl.replace cycles r.Type.id (Some x);
+                Buffer.add_string buf ("(rec '" ^ x ^ ". ");
+                s_typeW ~subcase:true r;
+                Buffer.add_string buf ")";
+                false
+          | Some x ->
+              Buffer.add_string buf ("'" ^ x); 
+              false
+      with Not_found -> true 
+  and s_typeW ?subcase:(subcase=false) (t: Type.t) =
+    if subcase || (check_rec t) then 
     match (Type.finddesc t) with
       | Type.FunW(t1, t2) ->
           s_typeW_summand t1;
           Buffer.add_string buf " -> ";
-          s_typeW t2 
+            s_typeW t2 
       | _ -> 
-          s_typeW_summand t
-  and s_typeW_summand (t: Type.t) =
-    if check_rec (1, t) then
+          s_typeW_summand ~subcase:true t
+  and s_typeW_summand ?subcase:(subcase=false) (t: Type.t) =
+    if subcase || (check_rec t) then 
     match (Type.finddesc t) with
       | Type.DataW(id, [t1; t2]) when id = Type.Data.sumid 2 ->
-          s_typeW_summand t1; 
+            s_typeW_summand t1; 
           Buffer.add_string buf " + ";
           s_typeW_factor t2
       | Type.DataW(id, []) when id = Type.Data.sumid 0 ->
@@ -79,22 +101,23 @@ let string_of_type (ty: Type.t): string =
       | Type.DataW(id, t1 :: l) ->
           Buffer.add_string buf id;
           Buffer.add_string buf "<";
-          s_typeW_summand t1;
+            s_typeW_summand t1;
           List.iter (fun t2 -> Buffer.add_string buf ", ";
                                s_typeW_summand t2) l;
           Buffer.add_string buf ">";
       | _ -> 
-          s_typeW_factor t
-  and s_typeW_factor (t: Type.t) =
-    if check_rec (2, t) then
+          s_typeW_factor ~subcase:true t
+  and s_typeW_factor ?subcase:(subcase=false) (t: Type.t) =
+    if subcase || (check_rec t) then 
     match (Type.finddesc t) with
       | Type.TensorW(t1, t2) ->
-          s_typeW_factor t1;
+            s_typeW_factor t1;
           Buffer.add_string buf " * ";
           s_typeW_atom t2
       | _ -> 
-          s_typeW_atom t
-  and s_typeW_atom (t: Type.t) =
+          s_typeW_atom ~subcase:true t
+  and s_typeW_atom ?subcase:(subcase=false) (t: Type.t) =
+    if subcase || (check_rec t) then 
     match (Type.finddesc t) with
       | Type.Var ->  
           Buffer.add_char buf '\'';
@@ -104,61 +127,62 @@ let string_of_type (ty: Type.t): string =
       | Type.OneW -> Buffer.add_string buf "unit"
       | Type.ContW(ret) ->
           Buffer.add_string buf "cont<";
-          s_typeW ret;
+            s_typeW ret;
           Buffer.add_char buf '>'
       | Type.FunW _ | Type.DataW _ | Type.TensorW _ ->
           Buffer.add_char buf '(';
-          s_typeW t;
+            s_typeW t;
           Buffer.add_char buf ')';
       | Type.FunU _ | Type.TensorU _ | Type.BoxU _ ->
-          s_typeU t
+          s_typeU ~subcase:true t
       | Type.Link _ -> assert false
-  and s_typeU (t: Type.t) =
-    if check_rec (3, t) then
+  and s_typeU ?subcase:(subcase=false) (t: Type.t) =
+    if subcase || (check_rec t) then 
     match (Type.finddesc t) with
       | Type.FunU(o, t1, t2) when (Type.finddesc o = Type.OneW) ->
           s_typeU_factor t1;
           Buffer.add_string buf " --o ";
-          s_typeU t2
+            s_typeU t2
       | Type.FunU(a1, t1, t2) ->
           Buffer.add_char buf '{';
           s_typeW a1;
           Buffer.add_char buf '}';
           s_typeU_atom t1;
           Buffer.add_string buf " --o ";
-          s_typeU t2
+            s_typeU t2
       | _ -> 
-          s_typeU_factor t
-  and s_typeU_factor (t: Type.t) =
-    if check_rec (4, t) then
+          s_typeU_factor ~subcase:true t
+  and s_typeU_factor ?subcase:(subcase=false) (t: Type.t) =
+    if subcase || (check_rec t) then 
     match (Type.finddesc t) with
       | Type.TensorU(t1, t2) ->
-          s_typeU_factor t1;
+            s_typeU_factor t1;
           Buffer.add_string buf " * ";
           s_typeU_atom t2
       | _ -> 
-          s_typeU_atom t
-  and s_typeU_atom (t: Type.t) =
+          s_typeU_atom ~subcase:true t
+  and s_typeU_atom ?subcase:(subcase=false) (t: Type.t) =
+    if subcase || (check_rec t) then 
     match (Type.finddesc t) with
       | Type.Var -> 
           Buffer.add_char buf '\'';
           Buffer.add_string buf (name_of_typevar t)
       | Type.BoxU(o, t2) when (Type.finddesc o = Type.OneW) ->
           Buffer.add_char buf '[';
-          s_typeW t2;
+            s_typeW t2;
           Buffer.add_char buf ']'
       | Type.BoxU(t1, t2) ->
           Buffer.add_char buf '[';
-          s_typeW t1;
+            s_typeW t1;
           Buffer.add_string buf ", ";
-          s_typeW t2;
+            s_typeW t2;
           Buffer.add_char buf ']'
       | Type.ZeroW | Type.OneW | Type.FunW _ | Type.NatW
       | Type.DataW _ | Type.TensorW _ | Type.ContW _ ->
           s_typeW t
       | Type.FunU _ | Type.TensorU _  ->
           Buffer.add_char buf '(';
-          s_typeU t;
+            s_typeU t;
           Buffer.add_char buf ')'
       | Type.Link _ -> assert false
   in s_typeU ty;
