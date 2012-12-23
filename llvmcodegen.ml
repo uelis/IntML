@@ -919,9 +919,9 @@ let build_body (the_module : Llvm.llmodule) func (c : Circuit.circuit) =
     build_ssa_blocks the_module func ssa_func
 
 (* Must be applied to circuit of type [A] *)    
-let llvm_circuit (c : Circuit.circuit) : Llvm.llmodule = 
+let llvm_compile (ssa_func : Ssa.func) : Llvm.llmodule = 
   let the_module = Llvm.create_module context "intml" in
-  let ssa_func = Ssa.trace c in
+(*  let ssa_func = Ssa.trace c in *)
   let arg_ty = packing_type ssa_func.Ssa.argument_type in
   let ret_ty = packing_type ssa_func.Ssa.return_type in
   let ft = Llvm.function_type ret_ty (Array.make 1 arg_ty) in

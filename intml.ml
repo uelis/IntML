@@ -5,6 +5,20 @@ open Term
 open Term.Location
 open Printing
 
+(* Xavier Leroy posted this on the OCaml mailing list *)
+let read_file filename =
+   let ic = open_in_bin filename in
+   let len = in_channel_length ic in
+   let s = String.create len in
+   really_input ic s 0 len;
+   close_in ic;
+   s
+
+let write_file filename s = 
+  let oc = open_out filename in 
+    Printf.fprintf oc "%s" s;
+    close_out oc
+
 let parse_error_loc lexbuf =
   let start_pos = lexbuf.lex_start_p in
     Printf.sprintf "line %i, character %i:"
@@ -30,46 +44,46 @@ let parse_query (s: string) : Query.query =
       | Decls.Non_Wellformed(msg, l, c) -> 
           failwith (Top.error_msg (Top.line_column_loc l c) ("Syntax error. " ^ msg))
 
-let rec print_graphs (d: typed_decls) : unit = 
+let rec compile_passes (d: typed_decls) : unit = 
   match d with
     | [] -> ()
-    | TypedTermDeclW(_, _, _) :: r -> print_graphs r
+    | TypedTermDeclW(_, _, _) :: r -> compile_passes r
     | TypedTermDeclU(f, t, _) :: r -> 
-        Printf.printf "*** Writing graph for %s to file '%s.dot' ***\n" f f;
-        flush stdout;
-        let graph = Circuit.circuit_of_termU t in
-        let dot_graph = Circuit.dot_of_circuit graph in
-        let oc = open_out (Printf.sprintf "%s.dot" f) in 
-          Printf.fprintf oc "%s\n" dot_graph;
-          close_out oc;
-          print_graphs r
-
-let rec print_compiled_terms (d: typed_decls) : unit = 
-  match d with
-    | [] -> ()
-    | TypedTermDeclW(_, _, _) :: r -> print_compiled_terms r
-    | TypedTermDeclU(f, t, _) :: r -> 
-        Printf.printf "*** Writing compiled term for '%s' to file '%s.wc' ***\n" f f;
-          flush stdout;
-          let oc = open_out (Printf.sprintf "%s.wc" f) in 
-(*            Printf.fprintf oc "%s\n" (fst (compile_termU t)); *)
-            close_out oc;
-            print_compiled_terms r
-
-let rec llvm_compile (d: typed_decls) : unit = 
-  match d with
-    | [] -> ()
-    | TypedTermDeclW(_, _, _) :: r -> llvm_compile r
-    | TypedTermDeclU(f, t, ty) :: r -> 
-        (* compile only terms of box type *)
-        (
-                    Printf.printf "*** Writing llvm bytecode for '%s' to file '%s.bc' ***\n" f f;
-                    flush stdout;
-                    let graph = Circuit.circuit_of_termU t in
-                    let llvm_module = Llvmcodegen.llvm_circuit graph in
-                      ignore (Llvm_bitwriter.write_bitcode_file llvm_module (Printf.sprintf "%s.bc" f))
-        );
-        llvm_compile r
+        let circuit = Circuit.circuit_of_termU t in
+          if !opt_keep_circuits then
+            begin
+              let target = Printf.sprintf "%s.dot" f in
+              Printf.printf "*** Writing circuit for %s to file '%s'\n" f target;
+              write_file target
+                (Circuit.dot_of_circuit circuit)
+            end;
+          if !opt_compile_to_terms then
+            begin
+              let target = Printf.sprintf "%s.wc" f in
+              Printf.printf "*** Writing circuit for %s to file '%s'\n" f target;
+              let term, _ = Termcodegen.termW_of_circuit circuit in
+              write_file target
+                (Printing.string_of_termW term)
+            end;
+          if !opt_keep_ssa || !opt_llvm_compile then
+            begin
+              let ssa_func = Ssa.trace circuit in
+              if !opt_keep_ssa then
+                begin
+                  let target = Printf.sprintf "%s.ssa" f in
+                    Printf.printf "*** Writing ssa-form program for %s to file '%s'\n" f target;
+                    write_file target
+                      (Ssa.string_of_func ssa_func)
+                end;
+              if !opt_llvm_compile then
+                begin
+                  let target = Printf.sprintf "%s.bc" f in
+                    Printf.printf "*** Writing llvm bitcode for %s to file '%s'\n" f target;
+                    let llvm_module = Llvmcodegen.llvm_compile ssa_func in
+                      ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)
+                end
+            end;
+          compile_passes r
 
 let rec eval_loop (ds: typed_decls) : unit =
   Printf.printf "\n# ";
@@ -84,28 +98,22 @@ let rec eval_loop (ds: typed_decls) : unit =
   in
     eval_loop ds
 
-(* Xavier Leroy posted this on the OCaml mailing list *)
-let read_input filename =
-   let ic = open_in_bin filename in
-   let len = in_channel_length ic in
-   let s = String.create len in
-   really_input ic s 0 len;
-   close_in ic;
-   s
-
 let arg_spec =     
   [("--type-details", 
     Arg.Unit (fun _ -> opt_print_type_details := true), 
     "Print the upper class types in full detail, rather than showing just an abbreviated type.");
    ("--circuits", 
-    Arg.Unit (fun _ -> opt_print_graphs := true), 
+    Arg.Unit (fun _ -> opt_keep_circuits := true), 
     "Write the circuit for each upper class declaration into a file in dot format.");
+   ("--ssa", 
+    Arg.Unit (fun _ -> opt_keep_ssa := true), 
+    "Write the ssa-form program for each upper class declaration into a file in dot format.");
    ("--compiled-terms", 
-    Arg.Unit (fun _ -> opt_print_compiled_terms := true), 
-    "Write the compiled term for each upper class declaration into a file.");
+    Arg.Unit (fun _ -> opt_compile_to_terms := true), 
+    "Write a term implementing the message passing circuit for each upper class declaration into a file.");
    ("--llvm", 
     Arg.Unit (fun _ -> opt_llvm_compile := true), 
-    "Compile upper class programs of type [A] to LLVM bitcode.");
+    "Compile upper class programs to LLVM bitcode.");
    ]
 
 let usage_msg = "First argument must be the name of a file containing definitions."  
@@ -119,13 +127,11 @@ try
       if !file_name = "" then []
       else begin
         Printf.printf "\nReading file '%s'.\n\n" !file_name;
-        let input = read_input !file_name in
+        let input = read_file !file_name in
         let decls = parse input in
         let substituted_decls = subst_decls decls in
         let typed_decls = List.fold_left Top.new_decl [] substituted_decls in
-          if !opt_print_compiled_terms then print_compiled_terms typed_decls;
-          if !opt_llvm_compile then llvm_compile typed_decls;
-          if !opt_print_graphs then print_graphs typed_decls;
+          compile_passes typed_decls;
           typed_decls
       end 
     in 

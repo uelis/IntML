@@ -104,7 +104,7 @@ letw coroutw = fun x ->
                let (rl2l1, rl2l2) = rl2l in
                  (case rl2l2 of
                    Inl(rl2l2l) -> 
-                     let (u, rl2l2) = rl2l2l in
+                     let (u, rl2l2l) = rl2l2l in
                      let (rl11, rl12) = rl1 in
                        Inl(Inr(rl2l1, rl2l2l), Inl(rl11, Inr(rl2l2l)))
                  | Inr(rl2l2r) -> Inr(Inl(rl1, Inl(rl2l1, Inl((), ())))))

@@ -22,3 +22,4 @@ type func = {
                                        
 val reduce: Term.t -> let_bindings * Term.t
 val trace: Circuit.circuit -> func                                       
+val string_of_func : func -> string

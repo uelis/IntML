@@ -3,17 +3,16 @@
 - Datentypen in Decls aufnehmen?
 - Refaktorisieren 
    - Compile => Circuits, wc-backend
+   - Passes; Behalten von Zwischenergebnissen
+- Ausgabe zyklischer Typen
 
 - Shift-reduce conflict
 - Switch zum Ausschalten rekursiver Typen
 - Refaktorisieren 
    - evaluation => interpreter
-   - Passes; Behalten von Zwischenergebnissen
-- Ausgabe zyklischer Typen
-- Ausgabe von Typen in der Ausgabe
 - Aufräumen der LLVM-Kompilierung
 - freshen type variables before type inference!?!
 - Bessere Nachricht statt "Working class term expected.", wenn
   man einen UC-term eingibt
-- Ausgabe von SSA-Form mit Datentypen
+- Ordentliche Ausgabe von SSA-Form, mit Datentypen etc
 - Verilog
