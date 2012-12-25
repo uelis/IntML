@@ -318,7 +318,7 @@ let trace (name: string) (c: Circuit.circuit) : func =
            | Grab(_, w1, wt) when wt.src = dst ->
                 InDirect(src, "z", lets, v, possible_indirect_goals)
            | External(fn, ty, w1) when w1.src = dst ->
-                let ty' = Type.freshen ty in 
+                let ty' = Type.freshen ty in
                 let q, a = Type.question_answer_pair ty' in
                 let s = Type.newty Type.Var in
                 let sigmaq = Type.newty (Type.TensorW(s, q)) in

@@ -137,5 +137,5 @@ letu fixv = fun step ->
               fix (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
 
 letu tt = app (fixv step1) (val [38])
-letu testfib = let [v] = tt (fun r -> r) in [print v]
+letu main = let [v] = tt (fun r -> r) in [print v]
 
