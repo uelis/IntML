@@ -1,0 +1,46 @@
+mutable type ref<'a> = Ref of 'a
+
+letw true  = Inl()
+letw false  = Inr()
+letw not  =
+  fun x -> if x then false else true
+letw and  = 
+  fun x -> fun y ->
+    if x then (if y then true else false) else false
+letw or = fun x  -> fun y  ->
+  case x of True -> True | False -> y
+
+type list<'a> = Nil of unit | Cons of 'a * list<'a>
+
+letw fixw = fun x ->
+  case x of 
+    Inl(lx) -> 
+      let (l,x) = lx in
+        (case x of
+           Inl(bq) ->
+             let (b,q) = bq in
+               Inl(Cons(b,l), Inr(q))
+         | Inr(a) ->
+             (delete l of 
+                Nil -> Inr(a)
+              | Cons(hdtl) ->
+                 let (hd, tl) = hdtl in
+                   Inl(tl, Inl(hd, a))))
+  | Inr(q) -> 
+     Inl(Nil, Inr(q))
+
+letu fix = hack fixw
+ as {list<'b>}({'b}'a --o 'a) --o 'a
+
+letu val = fun n -> fun k -> k n
+letu app = fun e1 -> fun e2 -> fun k -> e1 (fun x1 -> e2 (fun x2 -> x1 x2 k))
+
+letu step_import = external "step_export" 
+{ref<'z1>}({'h}[int] --o {'c}({ref<'z2>}[int] --o [int]) --o [int]) --o {ref<'z3>}({'b}({unit * unit}[int] --o {int * unit}({'i}[int] --o ['j]) --o ['j]) --o 'k) --o 'k
+
+letu fixv = fun step ->
+              fix (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
+
+letu tt = app (fixv step_import) (val [28])
+letu main = let [v] = tt (fun r -> r) in [print v]
+

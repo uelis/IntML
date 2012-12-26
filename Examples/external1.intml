@@ -1,0 +1,133 @@
+mutable type ref<'a> = Ref of 'a
+
+type list<'a> = Nil of unit | Cons of 'a * list<'a>
+
+letw fixw = fun x ->
+  case x of 
+    Inl(lx) -> 
+      let (l,x) = lx in
+        (case x of
+           Inl(bq) ->
+             let (b,q) = bq in
+               Inl(Cons(b,l), Inr(q))
+         | Inr(a) ->
+             (delete l of 
+                Nil -> Inr(a)
+              | Cons(hdtl) ->
+                 let (hd, tl) = hdtl in
+                   Inl(tl, Inl(hd, a))))
+  | Inr(q) -> 
+     Inl(Nil, Inr(q))
+
+letu fix = hack fixw
+ as {list<'b>}({'b}'a --o 'a) --o 'a
+
+letu val = fun n -> fun k -> k n
+letu write = fun n ->  fun k -> let [c] = [print "s"] in k n
+letu write1 = fun n ->  fun k -> let [c] = [print "1"] in k n
+letu write2 = fun n ->  fun k -> let [c] = [print "2"] in k n
+letu write3 = fun n ->  fun k -> let [c] = [print "3"] in k n
+letu add = fun k -> k (fun n -> fun k1 -> 
+                          k1 (fun m -> fun k2 -> 
+                              let [s] = let [nv] = n in let [mv] = m in [nv + mv] in
+                                k2 [s]))
+letu if0 = fun x1 -> fun x2 -> fun k -> k (fun n -> fun k ->
+                        let [nv] = n in
+                        case nv = 0 of
+                          True -> x1 k
+                        | False -> x2 k)
+letu add1 = fun k -> k (fun n -> fun k1 -> 
+                        let [nv] = n in 
+                          k1 (fun m -> fun k2 -> 
+                            let [mv] = m in
+                            let [s] = [nv + mv] in
+                              k2 [s]))
+letu app = fun e1 -> fun e2 -> fun k -> e1 (fun x1 -> e2 (fun x2 -> x1 x2 k))
+letu mem = fun f -> fun k -> let [n] = f (fun r -> r) in k [n]
+
+letu test1 = fun k -> 
+               (fun k -> add (fun x1 -> val [let x = print "3" in 3] (fun x2 -> x1 x2 k)))
+               (fun x1 -> val [5] (fun x2 -> x1 x2 k))
+letu test2 =
+      fun k -> 
+         val (fun x ->
+              copy x as xa, xb in
+                  fun k -> 
+                     (fun k -> add (fun x1 -> val xa (fun x2 -> x1 x2 k)))
+                     (fun x1 -> val xb (fun x2 -> x1 x2 k)))
+         (fun x1 -> write [5] (fun x2 -> x1 x2 k))
+
+letu test21 =
+      app
+         (val (fun x ->
+                  copy x as xa, xb in
+                    app (app add (val xa)) (val xb)))
+              (write [5])
+
+letu test22 = test21 (fun r -> let [v]=r in [print v])
+
+letu test3 =
+      app
+         (val (fun x ->
+                  copy x as xa, xb in
+                    app (app add (app (val xa) (val [3]))) (app (val xb) (val [4]))))
+              (write (fun x -> app (app add (val x)) (val [5])))
+     
+letu test31 = test3 (fun r -> let [v]=r in [print v])
+
+letu test4_0 =
+      app (app add test3) (app (app add (val [6])) (val [5]))
+
+letu test4_1 =
+      app (val (fun x -> val [3])) (app (app add1 (val [6])) (val [5]))
+
+letu test4 =
+      app (app add (mem test3)) (val [5])
+     
+letu test41 = test4 (fun r -> let [v]=r in [print v])
+
+letu c = fun p -> 
+           let (nnx, y) = p in 
+           fun k -> nnx (fun x -> k (x, y))
+
+letu k = fun p ->           
+           let (k, c) = p in 
+           fun p1 ->
+             let (k1, x) = p1 in
+               k (fun b -> k1 (b, c) , x)
+
+letu eval = fun kk -> fun k -> let [v] = kk (fun n -> n) in k [v]
+
+letu step1 =
+   fun f ->
+   copy f as f1, f2 in
+     val (fun x -> mem (fun k ->
+          let [xv] = x in
+          case xv < 2 of
+            True -> val [1] k
+          | False -> 
+              app (app add (f1 [xv - 1])) (f2 [xv - 2]) k 
+         ))
+
+letw refifyw = fun z ->
+  case z of
+     Inr(z) -> (
+       case z of 
+          Inr(q) -> Inl((), Inr(q))
+        | Inl(ra) ->
+           let (r, a) = ra in
+           delete r of 
+             Ref(r') -> Inl((), Inl(r', a))
+     )
+   | Inl(z) -> (
+       let (u, z) = z in
+       case z of 
+          Inr(b) -> Inr(Inr(b))
+        | Inl(ya) ->
+            let (y, a) = ya in
+              Inr(Inl(Ref y, a))
+     )
+
+letu refify = hack refifyw as {'z}({'y}'a --o 'b) --o ({ref<'y>}'a --o 'b)
+
+letu step_export = refify (fun f -> refify (fun g -> step1 (refify (fun x -> refify (fun y -> (refify (f x)) (refify y)))) g))

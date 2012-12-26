@@ -454,13 +454,11 @@ let solve_constraints (con: type_constraint list) : unit =
    * given inequations. The result maps each variable to a lower bound. *)
   let m = Type.Typetbl.create 10 in
   let rec join_lower_bounds (ineqs: (Type.t * Type.t) list) : unit = 
-    (*
-    Printf.printf "---\n";
+(*    Printf.printf "---\n";
     List.iter (fun (a,b) -> Printf.printf "%s <= %s\n" 
                               (Printing.string_of_type a)
                               (Printing.string_of_type b)) ineqs;
-    Printf.printf "===\n";
-     *)
+    Printf.printf "===\n";*)
     match ineqs with
       | [] -> ()
       | (a, alpha) :: rest ->
@@ -473,29 +471,29 @@ let solve_constraints (con: type_constraint list) : unit =
             join_lower_bounds rest in
   let fresh_ty = Vargen.mkVarGenerator "recty" ~avoid:[] in
   let solve_ineq (a, alpha) =
-    assert (Type.finddesc alpha = Var);
-    let fva = Type.free_vars a in
-    let sol = 
-      if List.exists (fun beta -> find beta == find alpha) fva then
-        begin
-          let recty =fresh_ty () in
-          let n = List.length fva in
-            Type.Data.make recty n;
-            Type.Data.add_constructor recty ("con" ^ recty) fva a;
-            newty (DataW(recty, fva))
-        end
-      else 
-        a in
-        (*
-    let sol =
-      if List.exists (fun beta -> find beta == find alpha) fva then
-        let beta = newty Var in
-        let a' = subst (fun x -> if equals x alpha then beta else x) a in
-(*        Type.newty (Type.MuW(beta, Type.newty (Type.SumW [Type.newty Type.OneW; a']))) *)
-          Type.newty (Type.MuW(beta, a')) 
-      else 
-        a in*)
-      U.unify_pairs [sol, alpha, Some ContextShape]
+    match Type.finddesc alpha with
+      | Var ->
+          let fva = Type.free_vars a in
+          let sol = 
+            if List.exists (fun beta -> find beta == find alpha) fva then
+              begin
+                let recty =fresh_ty () in
+                let n = List.length fva in
+                  Type.Data.make recty n;
+                  Type.Data.add_constructor recty ("con" ^ recty) fva a;
+                  newty (DataW(recty, fva))
+              end
+            else 
+              a in
+            U.unify_pairs [sol, alpha, Some ContextShape]
+      | DataW("ref", [beta]) ->
+(*          Printf.printf "%s = %s\n" 
+                              (Printing.string_of_type a)
+                              (Printing.string_of_type beta);*)
+            U.unify_pairs [a, beta, Some ContextShape]
+      | _ -> 
+          Printf.printf "%s\n" (Printing.string_of_type alpha);
+          assert false
   in
     join_lower_bounds ineqs;
     (* Add equations for lower bounds. *)    
@@ -531,7 +529,13 @@ exception Not_Leq
 let embed (a: Type.t) (b: Type.t) : Term.t =
   if Type.equals a b then Term.mkLambdaW(("x", None), Term.mkVar "x")
   else 
+    (* TODO *)
     match Type.finddesc b with
+      | Type.DataW("ref", [b]) ->
+          if Type.equals a b then
+            Term.mkLambdaW(("x", None), Term.mkInW "ref" 0 (Term.mkVar "x"))
+          else 
+            raise Not_Leq
       | Type.DataW(id, l) ->
           let cs = Type.Data.constructor_types id l in
           let rec inject l n =
@@ -556,6 +560,14 @@ let project (a: Type.t) (b: Type.t) : Term.t =
     Term.mkLambdaW(("x", None), Term.mkVar "x")
   else 
     match Type.finddesc b with
+      | Type.DataW("ref", [b]) ->
+          if Type.equals a b then
+            Term.mkLambdaW(("x", None), 
+                           Term.mkCaseW "ref" true (Term.mkVar "x") 
+                             [("y", Term.mkVar "y")]
+            )
+          else 
+            raise Not_Leq
       | Type.DataW(id, l) ->
           let cs = Type.Data.constructor_types id l in
           let rec out l n =
