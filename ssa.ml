@@ -352,7 +352,7 @@ let trace (name: string) (c: Circuit.circuit) : func =
                     | Type.Var -> 
                         let refid, refcon = Type.Data.find_constructor "Ref" in
                         let y = fresh_var () in
-                          mkCaseW refid false x [(y, mkVar y)]
+                          mkCaseW refid true x [(y, mkVar y)]
                     | Type.NatW | Type.ZeroW | Type.OneW | Type.ContW _ -> x
                     | Type.TensorW(a1, a2) ->
                         let x1 = fresh_var () in

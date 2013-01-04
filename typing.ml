@@ -204,9 +204,30 @@ let rec ptW (c: contextW) (t: Term.t) : Type.t * type_constraint list =
   | TypeAnnot(t, None) -> 
       ptW c t
   | TypeAnnot(t, Some ty) ->
-      let a, con = ptW c t in
-        a,
-        eq_expected_constraint t (a, ty) :: con
+      let rec check_wf (b: t) : unit =
+        match (find b).desc with
+          | Var | NatW | ZeroW | OneW -> ()
+          | TensorW(b1, b2) | FunW(b1, b2) | TensorU(b1, b2) | BoxU(b1, b2) -> 
+              check_wf b1; check_wf b2
+          | ContW(b1) -> 
+              check_wf b1
+          | DataW(id, bs) -> 
+              begin
+                try 
+                  let n = Type.Data.params id in
+                    if List.length bs <> n then 
+                      raise (Typing_error(Some t, Printf.sprintf "Data type %s takes %i argument(s)." id n))
+                    else 
+                      List.iter check_wf bs
+                with Not_found -> raise (Typing_error(Some t, Printf.sprintf "The data type %s is undefined." id))
+              end
+          | FunU(a1, b1, b2) -> 
+              check_wf a1; check_wf b1; check_wf b2
+          | Link _ -> assert false in
+        check_wf ty;
+        let a, con = ptW c t in
+          a,
+          eq_expected_constraint t (a, ty) :: con
   | PairU(_, _) | LetU(_, _) | AppU(_, _) | LambdaU(_, _) | BoxTermU(_)
   | LetBoxU(_, _) | CaseU(_, _, _) | CopyU(_, _) | HackU(_, _) | MemoU(_)
   | SuspendU _ | ForceU _ | ExternalU _->
@@ -454,11 +475,13 @@ let solve_constraints (con: type_constraint list) : unit =
    * given inequations. The result maps each variable to a lower bound. *)
   let m = Type.Typetbl.create 10 in
   let rec join_lower_bounds (ineqs: (Type.t * Type.t) list) : unit = 
-(*    Printf.printf "---\n";
+    (*
+    Printf.printf "---\n";
     List.iter (fun (a,b) -> Printf.printf "%s <= %s\n" 
                               (Printing.string_of_type a)
                               (Printing.string_of_type b)) ineqs;
-    Printf.printf "===\n";*)
+    Printf.printf "===\n";
+    *)
     match ineqs with
       | [] -> ()
       | (a, alpha) :: rest ->
@@ -477,10 +500,11 @@ let solve_constraints (con: type_constraint list) : unit =
           let sol = 
             if List.exists (fun beta -> find beta == find alpha) fva then
               begin
-                let recty =fresh_ty () in
+                let recty = fresh_ty () in
                 let n = List.length fva in
                   Type.Data.make recty n;
                   Type.Data.add_constructor recty ("con" ^ recty) fva a;
+                  Printf.printf "Declaring type: %s\n" (Printing.string_of_data recty);
                   newty (DataW(recty, fva))
               end
             else 
@@ -504,13 +528,11 @@ let solve_constraints (con: type_constraint list) : unit =
                              | _ -> (newty (DataW(Data.sumid (List.length a), a)), alpha) :: l)
         m [] 
     in
-    (*
-    Printf.printf "---\n";
+    (*Printf.printf "---\n";
     List.iter (fun (a,b) -> Printf.printf "%s <= %s\n" 
                               (Printing.string_of_type a)
                               (Printing.string_of_type b)) ineqs;
-    Printf.printf "===\n";
-     *)
+    Printf.printf "===\n";*)
       List.iter solve_ineq ineqs
       (*
   List.iter (fun (t, t', _) ->

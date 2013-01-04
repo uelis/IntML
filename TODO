@@ -1,3 +1,5 @@
+- Check that all types in a type annotation do indeed exist
+  (Example: a' is accepted as the name of a data type)
 - Separate Compilierung
 - Concurrency
 - Shift-reduce conflict

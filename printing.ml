@@ -97,14 +97,16 @@ let string_of_type (ty: Type.t): string =
       | Type.DataW(id, []) when id = Type.Data.sumid 0 ->
           Buffer.add_string buf "0"
       | Type.DataW(id, [])  ->
-          Buffer.add_string buf id
+          Buffer.add_string buf id;
+          Buffer.add_string buf "<";
+          Buffer.add_string buf ">"
       | Type.DataW(id, t1 :: l) ->
           Buffer.add_string buf id;
           Buffer.add_string buf "<";
             s_typeW_summand t1;
           List.iter (fun t2 -> Buffer.add_string buf ", ";
                                s_typeW_summand t2) l;
-          Buffer.add_string buf ">";
+          Buffer.add_string buf ">"
       | _ -> 
           s_typeW_factor ~subcase:true t
   and s_typeW_factor ?subcase:(subcase=false) (t: Type.t) =

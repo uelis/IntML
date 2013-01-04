@@ -48,7 +48,8 @@ let rec compile_passes (d: typed_decls) : unit =
   match d with
     | [] -> ()
     | TypedTermDeclW(_, _, _) :: r -> compile_passes r
-    | TypedTermDeclU(f, t, _) :: r -> 
+    | TypedTermDeclU(f, t, _) :: r ->
+        let t = Term.freshen_type_vars t in
         let circuit = Circuit.circuit_of_termU t in
           if !opt_keep_circuits then
             begin
