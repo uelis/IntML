@@ -2,8 +2,8 @@
 #include <stdbool.h>
 #include <malloc.h>
 
-#define BLOCKSIZE 50
-#define NBLOCKS 100
+#define BLOCKSIZE 100
+#define NBLOCKS 1000
 
 void *mem;
 void* freestack[NBLOCKS];

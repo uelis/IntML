@@ -41,6 +41,6 @@ letu step_import = external "step_export"
 letu fixv = fun step ->
               fix (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
 
-letu tt = app (fixv step_import) (val [38])
+letu tt = app (fixv step_import) (val [32])
 letu main = let [v] = tt (fun r -> r) in [print v]
 
