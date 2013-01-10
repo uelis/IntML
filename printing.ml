@@ -97,9 +97,7 @@ let string_of_type (ty: Type.t): string =
       | Type.DataW(id, []) when id = Type.Data.sumid 0 ->
           Buffer.add_string buf "0"
       | Type.DataW(id, [])  ->
-          Buffer.add_string buf id;
-          Buffer.add_string buf "<";
-          Buffer.add_string buf ">"
+          Buffer.add_string buf id
       | Type.DataW(id, t1 :: l) ->
           Buffer.add_string buf id;
           Buffer.add_string buf "<";
@@ -146,9 +144,12 @@ let string_of_type (ty: Type.t): string =
           Buffer.add_string buf " --o ";
             s_typeU t2
       | Type.FunU(a1, t1, t2) ->
+          (* TODO: put colours away *)
+          Buffer.add_string buf "\027[36m";
           Buffer.add_char buf '{';
           s_typeW a1;
           Buffer.add_char buf '}';
+          Buffer.add_string buf "\027[30m";
           s_typeU_atom t1;
           Buffer.add_string buf " --o ";
             s_typeU t2

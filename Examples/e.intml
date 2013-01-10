@@ -97,34 +97,6 @@ letu fib =
                                       let [yv] = y in [xv+yv])
                                [v] (tail [v])) ))))
 
-(* loop im Compiler!
-letu cycle =
-  (fix (fun cycle -> fun n -> cons [1] (cycle n)))
-*)
-
-letu cycle =
-  (fix (fun cycle -> cons [1] cycle))
-
-letu printlist =
-  fix (fun printlist -> 
-         fun l -> fun i -> 
-           let [iv] = i in
-           if iv = 0 then [()] 
-             else
-                let [lid] = l in 
-                let [u] = let [xv] = head [lid] in [print xv] in
-          (*      let [u] = [if iv + 1 < jv then print ", " else ()] in *)
-                  printlist (tail [lid]) [iv - 1]) 
-
-letu aux =
-  fix (fun aux -> fun n ->
-           let [nv] = n in
-             cons [1] (cons [nv] (cons [1] (aux [nv + 2]))))
-
-letu eContFrac =  (cons [2] (aux [2]))
-
-letw signum = fun x -> if 0 < x then 1 else if x = 0 then 0 else 0-1
-letw abs = fun x -> if 0 < x then x else 0-x
 
 letw not : bool -> bool =
   fun x -> case x of True -> False | False -> True
@@ -144,8 +116,38 @@ letu orelse : [bool] --> [bool] --> [bool] =
     let [b] = x in
       if b then [True] else y
 
+
+(* loop im Compiler!
+letu cycle =
+  (fix (fun cycle -> fun n -> cons [1] (cycle n)))
+*)
+
+letu cycle =
+  (fix (fun cycle -> cons [1] cycle))
+
+letu printlist =
+  fix (fun printlist -> 
+         fun l -> fun i -> 
+           let [iv] = i in
+           if iv = 0 then [()] 
+             else
+                let [lid] = l in 
+                let [u] = let [xv] = head [lid] in [print xv] in
+                let [u] = [if 1 < iv then print " " else ()] in 
+                  printlist (tail [lid]) [iv - 1]) 
+
+letw signum = fun x -> if 0 < x then 1 else if x = 0 then 0 else 0-1
+letw abs = fun x -> if 0 < x then x else 0-x
+
+letu aux =
+  fix (fun aux -> fun n ->
+           let [nv] = n in
+             cons [1] (cons [nv] (cons [1] (aux [nv + 2]))))
+
+letu eContFrac = cons [2] (aux [2])
+
 letu ratTrans =
-   (fix ((fun ratTrans ->
+   (fix (fun ratTrans ->
           fun a -> fun b -> fun c -> fun d -> fun xs ->
              let [av] = a in
              let [bv] = b in
@@ -162,27 +164,15 @@ letu ratTrans =
              else 
                 let [xv] = head [xsv] in
                  ratTrans [bv] [av+xv*bv] [dv] [cv+xv*dv] (tail [xsv])
-   )))
+   ))
 
 letu toDigits = 
-   fix ((fun toDigits ->
+   fix (fun toDigits ->
           fun l ->
             let [lid] = l in
-            cons (head [lid]) (toDigits (ratTrans [10] [0] [0] [1] (tail [lid])))))
+            cons (head [lid]) (toDigits (ratTrans [10] [0] [0] [1] (tail [lid]))))
 
 letu e = (toDigits eContFrac)
 
-letu main = printlist e [20]
-letu ttu = printlist eContFrac [2100]
-
-type three<'a> = One of 'a | Two of unit | Three of 'a*'a
-
-letu xxx = fun x ->
-   let [v] = x in
-   case v of
-     One(a) -> [a]
-   | Two -> [1]
-   | Three(p) -> [let (x,y)=p in x]
-
-letu yyy = let [a] = xxx [Three(3,4)] in [print a]
+letu main = printlist e [500]
 

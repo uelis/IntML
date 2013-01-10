@@ -55,6 +55,7 @@ let rec compile_passes (d: typed_decls) : unit =
             begin
               let target = Printf.sprintf "%s.dot" f in
               Printf.printf "*** Writing circuit for %s to file '%s'\n" f target;
+                    flush stdout;
               write_file target
                 (Circuit.dot_of_circuit circuit)
             end;
@@ -62,6 +63,7 @@ let rec compile_passes (d: typed_decls) : unit =
             begin
               let target = Printf.sprintf "%s.wc" f in
               Printf.printf "*** Writing circuit for %s to file '%s'\n" f target;
+                    flush stdout;
               let term, _ = Termcodegen.termW_of_circuit circuit in
               write_file target
                 (Printing.string_of_termW term)
@@ -73,6 +75,7 @@ let rec compile_passes (d: typed_decls) : unit =
                 begin
                   let target = Printf.sprintf "%s.ssa" f in
                     Printf.printf "*** Writing ssa-form program for %s to file '%s'\n" f target;
+                    flush stdout;
                     write_file target
                       (Ssa.string_of_func ssa_func)
                 end;
@@ -80,6 +83,7 @@ let rec compile_passes (d: typed_decls) : unit =
                 begin
                   let target = Printf.sprintf "%s.bc" f in
                     Printf.printf "*** Writing llvm bitcode for %s to file '%s'\n" f target;
+                    flush stdout;
                     let llvm_module = Llvmcodegen.llvm_compile ssa_func in
                       ignore (Llvm_bitwriter.write_bitcode_file llvm_module target)
                 end

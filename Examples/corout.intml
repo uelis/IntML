@@ -50,34 +50,6 @@ letw tailrecw = fun x ->
 letu tailrec = hack tailrecw
  as {'a}({'d}({unit}['a] --o ['b]) --o ({'c}['a] --o ['b])) --o {unit}['a] --o ['b]
 
-type result<'a, 'b> = 
-         Return of 'a
-       | Loop of 'b
-
-letu uloop = hack (fun x ->
-  case x of 
-    Inl(y) ->
-      let (store, stepq) = y in
-        (case stepq of
-          Inl(argq) -> 
-           let (argstore, u) = argq in
-             Inl(store, Inl(argstore, store))
-        | Inr(continueOrStop) -> 
-           case continueOrStop of 
-             Return(result) -> Inr(Inr(result))
-           | Loop(continue) -> Inl(continue, Inr()))
-  | Inr(z) -> 
-    (case z of 
-      Inl(basea) ->
-          let (junk, basea) = basea in
-            Inl(basea, Inr())
-    | Inr(initialq) ->
-        Inr(Inl((), ()))))
- as {'a}({'c}['a] --o [result<'b, 'a>]) --o ({'d}['a] --o ['b])
-
-letu loop2 = fun init -> fun step -> uloop step init
-
-
 letw coroutw = fun x ->
   case x of 
     Inl(l) ->
@@ -131,25 +103,26 @@ letu t0 =
            f [x1+1])
 *)
 
-letu t1 = corout 
-   (fun pass ->
-    tailrec (fun f -> fun x->
+letu main = corout 
+   (fun defer ->
+    tailrec (fun (f : [int] --> [int]) -> 
+     fun x ->
       let [v] = x in
-      let [x1] = if v = (v/2)*2 then pass [v + 1] else [v+1] in
+      let [x1] = if v = (v/2)*2 then defer [v + 1] else [v+1] in
       let [u] = [print "a: "] in
       let [u] = [print x1] in
       let [u] = [print "\n"] in
-        f [x1]) [0])
-   (fun pass -> fun x ->
+        f [x1]) 
+      [0])
+   (fun defer -> fun x ->
     let [u] = [print "b: start\n"] in
-    let [v] = x in
     tailrec (fun f -> fun x ->
       let [v] = x in
-      let [x1] = pass [v + 2 ] in
+      let [x1] = defer [v + 2] in
       let [u] = [print "b: "] in
       let [u] = [print x1] in
       let [u] = [print "\n"] in
-        f [x1]) [v])
+        f [x1]) x)
 
 letu callcc = hack fun x -> 
   case x of 

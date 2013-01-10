@@ -1,0 +1,106 @@
+letw true = inl(<>)
+letw false = inr(<>)
+
+letu nil : ([int] --> [2]) * ([int] --> [int]) = <fun i -> [false], fun i -> [0]>
+
+letu cons : [int] --> (([int] --> [2]) * ([int] --> [int]) ) --> ([int] --> [2]) * ([int] --> [int]) =  
+  fun x -> fun xs ->
+  let <xsi, xsv> = xs in
+    < fun i -> 
+        let [iv] = i in
+        case iv = 0 of
+           inl(tt) -> [true]
+         | inr(ff) -> xsi [iv - 1],
+      fun i -> 
+        let [iv] = i in
+        case iv = 0 of
+           inl(tt) -> x
+         | inr(ff) -> xsv [iv - 1]>
+
+letu head =
+  fun l -> 
+     let <li, lv> = l in
+       lv [0]
+
+letu tail = 
+  fun l -> 
+     let <li, lv> = l in
+     <fun i -> let [iv] = i in li [iv+1], fun i-> let [iv] = i in lv [iv+1]>
+
+letu match =
+  fun l -> fun f -> fun g ->
+     copy l as l1,l2 in
+     let <li, lv> = l1 in
+     let [nonempty] = li [0] in
+     case nonempty of
+        inl(tt) -> g (lv [0]) (tail l2)
+      | inr(ff) -> f
+
+letw fixw = fun x ->
+  case x of 
+    inl(lx) -> 
+      let <l,x> = lx in
+        case x of
+          inl(bq) ->
+            let <b,q> = bq in
+              inl(<fold<'c.1+'b*'c> inr(<b,l>), inr(q)>)
+        | inr(a) ->
+            case unfold<'c.1+'b*'c> l of
+              inl(nl) -> 
+                 inr(a)
+            | inr(cns) ->
+               let <hd, tl> = cns in
+                 inl(<tl, inl(<hd, a>)>)
+  | inr(q) -> 
+     inl(<fold<'c.1+'b*'c> inl(<>), inr(q)>)
+
+letu fix = hack fixw
+ as {mu 'c. 1 + 'b*'c}({'b}'a --o 'a) --o 'a
+
+letu printlist =
+  fix (fun p -> 
+         fun l ->
+           match l 
+             [print "[]"] 
+             (fun x -> fun xs -> 
+                let [xv] = x in 
+                let [u] = [print xv] in
+                let [u] = [print "::"] in
+                  p xs))
+
+letu test = printlist (cons [4] (cons [5] nil))
+
+(*        
+in
+  let nil = fn n => true   # This is flawed; hd nil and tl nil both return true!
+  in
+    let hd = fn f => f 0
+    in
+      let tl = fn f => f 1
+      in
+	let null = fn f => f 2
+	in
+	  let equal = rec e =>	# This tests whether two integers are equal.
+		fn a => fn b => if iszero a then
+				  iszero b
+				else if iszero b then
+				  false
+				else
+				  e (pred a) (pred b)
+	  in
+	    let member = rec m =>
+		  fn n => fn ns => if null ns then
+				     false
+				   else if equal n (hd ns) then
+				     true
+				   else
+				     m n (tl ns)
+	    in
+	      member 4 (cons 1 (cons 2 (cons 3 (cons 4 (cons 5 nil)))))
+	    end
+	  end
+	end
+      end
+    end
+  end
+end*)

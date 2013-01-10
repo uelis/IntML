@@ -1,0 +1,85 @@
+letw return = fun x -> inl(x)
+letw continue = fun x -> inr(x)
+
+letw fixw = fun x ->
+  case x of 
+    inl(lx) -> 
+      let (l,x) = lx in
+        case x of
+          inl(bq) ->
+            let (b,q) = bq in
+              inl(fold<'c.1+'b*'c> inr(b,l), inr(q))
+        | inr(a) ->
+            let r = unfold<'c.1+'b*'c> l in
+(*            let u = delete<'c.1+'b*'c> l in *)
+            case r of
+              inl(nl) -> 
+                 inr(a)
+            | inr(cns) ->
+               let (hd, tl) = cns in
+                 inl(tl, inl(hd, a))
+  | inr(q) -> 
+     inl(fold<'c.1+'b*'c> inl(), inr(q))
+
+letu fix = hack fixw
+ as {mu 'c. 1 + 'b*'c}({'b}'a --o 'a) --o 'a
+
+letw Susp = fun x -> 
+      fold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inl(x)
+letw Cons = fun x -> 
+      fold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inr(x)
+
+(* Invariante: Wenn man inl(k) einmal forced, dann kommt nicht wieder
+ * eine Liste der Form inl(...) heraus *)
+letu cons : [int] --> [mu 'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a]
+                  --> [mu 'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a] =  
+  (fun x -> fun xs ->
+    let [xk] = suspend(x) in
+    let [xsk] = suspend(xs) in
+    let [id] = [ Cons(inl(xk), Susp(xsk)) ] in
+        [id])
+
+letu ft = 
+  fun l -> 
+    let [lid] = l in
+    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
+      inl(thunk) -> 
+        let [v] = force thunk in
+        let [u] = [ lid :=<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> 
+                         unfold<'a.cont<cont<'a>> + (cont<cont<int>> + int) * 'a> v ] in
+          [lid]
+    | inr(v) -> [lid]
+
+letu head =
+  fun l -> 
+    let [lid] = ft l in
+    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
+      inl(thunk) -> 
+        [let x=0 loop inr(x)]
+    | inr(ht) ->
+        let [h] = [let (h,t) = ht in h] in
+        let [t] = [let (h,t) = ht in t] in
+        case h of
+          inl(k) -> 
+            let [v] = force k in
+            let [u] = [ lid :=<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inr(inr(v), t) ] in
+              [v]
+        | inr(v) -> 
+              [v]
+
+letu tail =
+  fun l -> 
+    let [lid] = ft l in
+    case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lid of
+      inl(thunk) -> 
+        [let x=0 loop inr(x)]
+    | inr(ht) ->
+        [let (h,t) = ht in t]
+
+
+letu aux =
+  fix (fun aux ->
+         fun n ->
+           cons n (aux [1]))
+
+letu ttu = let [x] = head (aux [1]) in [print x]

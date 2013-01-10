@@ -1,0 +1,45 @@
+type result<'a, 'b> = 
+         Return of 'a
+       | Loop of 'b
+
+letu uloop = hack (fun x ->
+  case x of 
+    Inl(y) ->
+      let (store, stepq) = y in
+        (case stepq of
+          Inl(argq) -> 
+           let (argstore, u) = argq in
+             Inl(store, Inl(argstore, store))
+        | Inr(continueOrStop) -> 
+           case continueOrStop of 
+             Return(result) -> Inr(Inr(result))
+           | Loop(continue) -> Inl(continue, Inr()))
+  | Inr(z) -> 
+    (case z of 
+      Inl(basea) ->
+          let (junk, basea) = basea in
+            Inl(basea, Inr())
+    | Inr(initialq) ->
+        Inr(Inl((), ()))))
+ as {'a}({'c}['a] --o [result<'b, 'a>]) --o ({'d}['a] --o ['b])
+
+letu loop2 = fun init -> fun step -> uloop step init
+
+letu fib : [int] --> [int] =
+ fun i -> 
+ let [iv] = i in
+  loop2 
+     [(1, (1, iv))]
+     (fun x ->
+           let [xv] = x in
+           let [f1] = [let (f1, r) = xv in f1] in
+           let [f2] = [let (f1, r) = xv in let (f2, i) = r in f2] in
+           let [i] = [let (f1, r) = xv in let (f2, i) = r in i] in
+           case i = 0 of
+                True -> [Return f1]
+              | False -> [Loop(f2, (f1 + f2, i - 1))])
+      
+
+letu test6loop = 
+   let [x] = fib [38] in [print x]
+

@@ -1,13 +1,3 @@
-letw true  = Inl()
-letw false  = Inr()
-letw not  =
-  fun x -> if x then false else true
-letw and  = 
-  fun x -> fun y ->
-    if x then (if y then true else false) else false
-letw or = fun x  -> fun y  ->
-  case x of True -> True | False -> y
-
 type list<'a> = Nil of unit | Cons of 'a * list<'a>
 
 letw fixw = fun x ->
@@ -117,22 +107,6 @@ letu step1 =
               app (app add (f1 [xv - 1])) (f2 [xv - 2]) k 
          ))
 
-letu step = 
-   fun f -> 
-   copy f as f1, f2 in
-      fun k1 -> 
-         k1 (fun n -> eval (fun k2 ->
-                        let [nv] = n in 
-                        case or (nv = 0) (nv = 1) of
-                          True -> k2 [1]
-                        | False -> 
-                             f1 [nv - 1] 
-                             (fun m -> let [mv] = m in
-                             f2 [nv - 2] 
-                             (fun r -> let [rv] = r in
-                               k2 [mv + rv]))))
-
-letu stepl = (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
 letu fixv = fun step ->
               fix (fun a -> step (fun x -> fun k -> a (fun b -> b x k))) 
 

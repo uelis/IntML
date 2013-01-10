@@ -134,8 +134,8 @@ letw fixw = fun x ->
 letu fix = hack fixw
  as {list<'b>}({'b}'a --o 'a) --o 'a
 
-letu fib =
-  fix27 (fun fib ->
+letu fib : [int] --> [int] =
+  fix (fun fib ->
         copy fib as fib1, fib2 in
         fun x ->
           let [v] = x in

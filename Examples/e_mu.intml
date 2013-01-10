@@ -1,0 +1,147 @@
+letw return = fun x -> inl(x)
+letw continue = fun x -> inr(x)
+
+letw fixw = fun x ->
+  case x of 
+    inl(lx) -> 
+      let (l,x) = lx in
+        case x of
+          inl(bq) ->
+            let (b,q) = bq in
+              inl(fold<'c.1+'b*'c> inr(b,l), inr(q))
+        | inr(a) ->
+            case unfold<'c.1+'b*'c> l of
+              inl(nl) -> 
+                 inr(a)
+            | inr(cns) ->
+               let (hd, tl) = cns in
+                 inl(tl, inl(hd, a))
+  | inr(q) -> 
+     inl(fold<'c.1+'b*'c> inl(), inr(q))
+
+letu fix = hack fixw
+ as {mu 'c. 1 + 'b*'c}({'b}'a --o 'a) --o 'a
+
+letu nil : [int] =
+    [0]
+
+letu cons : [int] --> [mu 'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a] --> [mu 'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a] =  
+  (fun x -> fun xs ->
+    let [xk] = suspend(x) in
+    let [xsk] = suspend(xs) in
+        [fold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inr(inl(xk), fold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> inl(xsk))])
+
+letu head = 
+  fix (fun ft -> fun l ->
+     let [lv] = l in
+     case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lv of
+       inl(k) -> ft (force(k))
+     | inr(cell) -> 
+          let [h] = [let (h,t) = cell in h] in
+          case h of
+            inl(k) -> force(k) 
+          | inr(v) -> [v]
+  )
+
+letu tail = 
+  fix (fun ft -> fun l ->
+     let [lv] = l in
+     case unfold<'a. cont<cont<'a>> + (cont<cont<int>> + int) * 'a> lv of
+       inl(k) -> ft (force(k))
+     | inr(cell) -> 
+          [let (h,t) = cell in t]
+  )
+(*
+letu thunk =
+  fun l ->
+    let [thunk] =  suspend 
+                   (let [lid] = l in
+                   let [cell] = ft [lid] in [cell]) in
+    let [id] = [ let id = hashnew () in
+                 let u = hashput 0 id (inr(thunk)) in id] in
+        [id]
+    *)
+letu zipWith = fun f -> 
+  fix (fun zw -> fun l1 -> fun l2 ->
+     let [v1] = l1 in
+     let [v2] = l2 in
+       cons (f (head [v1]) (head [v2])) (zw (tail [v1]) (tail [v2])))
+
+letu fib =
+  (fix (memo (fun f ->
+       let [v] = f in
+       cons [0] (cons [1] (zipWith (fun x -> fun y -> 
+                                      let [xv] = x in
+                                      let [yv] = y in [xv+yv])
+                               [v] (tail [v])) ))))
+
+letu cycle =
+  (fix (fun cycle -> cons [1] cycle))
+
+letu printlist =
+  fun l ->
+  fun j ->
+  let [jv] = j in
+  fix (fun p -> 
+         fun i ->
+         fun l -> 
+           let [iv] = i in
+           if iv = jv then [()] 
+             else
+                let [lid] = l in 
+                let [xv] = head [lid] in
+                let [u] = [print xv] in
+                let [u] = [if iv + 1 < jv then print ", " else ()] in
+                  p [iv + 1] (tail [lid])) 
+    [0] l
+
+letu aux =
+  fix (fun aux ->
+         fun n ->
+           copy n as n1, n2 in
+             cons [1] (cons n1 (cons [1] (aux (let [nv] = n2 in [nv + 2])))))
+
+letu eContFrac =  (cons [2] (aux [2]))
+
+letw signum = fun x -> if 0 < x then 1 else if x = 0 then 0 else 0-1
+letw abs = fun x -> if 0 < x then x else 0-x
+letw true : 2 = inl()
+letw false : 2 = inr()
+letw not : 2 -> 2 =
+  fun x -> if x then false else true
+letw and : 2 -> 2 -> 2 = 
+  fun x -> fun y ->
+    if x then y else false
+letw or = fun (x : 2) -> fun (y : 2) ->
+  if x then true else y
+
+letu ratTrans =
+   (fix ((fun ratTrans ->
+          fun a -> fun b -> fun c -> fun d -> fun xs ->
+             let [av] = a in
+             let [bv] = b in
+             let [cv] = c in
+             let [dv] = d in
+             let [qv] = [if dv = 0 then 1 else bv/dv] in
+             let [c] = [
+              and (or (signum cv = signum dv) (abs cv < abs dv)) 
+                      (and ((cv+dv)*qv < av+bv+1) 
+                           (av+bv < (cv+dv)*qv + (cv+dv)))] in
+             if c then
+                   cons [qv] (ratTrans [cv] [dv] [av-qv*cv] [bv-qv*dv] xs)
+             else 
+                   copy xs as xs1, xs2 in
+                   let [xv] = head xs1 in
+                    ratTrans [bv] [av+xv*bv] [dv] [cv+xv*dv] (tail xs2)
+   )))
+
+letu toDigits = 
+   fix ((fun toDigits ->
+          fun l ->
+            let [lid] = l in
+            cons (head [lid]) (toDigits (ratTrans [10] [0] [0] [1] (tail [lid])))))
+
+letu e = memo (toDigits eContFrac)
+
+letu ttt = printlist e [11]
+letu ttu = printlist eContFrac [2100]
