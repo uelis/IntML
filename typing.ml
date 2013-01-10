@@ -456,6 +456,10 @@ let raise_error (failed_eqn: U.failure_reason) =
         let msg = "Cannot unify." in
           raise (Typing_error(None, msg))
 
+
+(* TODO *)
+let fresh_ty = Vargen.mkVarGenerator "recty" ~avoid:[] 
+
 let solve_constraints (con: type_constraint list) : unit =
   (* separate context in inequalities and equalities *)
   let rec separate con ineqs eqs = 
@@ -492,29 +496,49 @@ let solve_constraints (con: type_constraint list) : unit =
           in
             Type.Typetbl.replace m (Type.find alpha) b;
             join_lower_bounds rest in
-  let fresh_ty = Vargen.mkVarGenerator "recty" ~avoid:[] in
-  let solve_ineq (a, alpha) =
+  let solve_ineq (xs, alpha) =
     match Type.finddesc alpha with
       | Var ->
-          let fva = Type.free_vars a in
-          let sol = 
-            if List.exists (fun beta -> find beta == find alpha) fva then
+          let fv = List.concat (List.map Type.free_vars xs) in
+          let fvu = List.fold_right (fun alpha -> fun fv -> 
+                                        alpha :: List.filter (fun beta -> not (find beta == find alpha)) fv)
+                      fv [] in
+          let sol =             
+            if List.length xs > 1 ||
+               List.exists (fun beta -> find beta == find alpha) fvu then
               begin
                 let recty = fresh_ty () in
-                let n = List.length fva in
+                let params = List.filter (fun beta -> not (find beta == find alpha)) fvu in
+                let n = List.length params in
                   Type.Data.make recty n;
-                  Type.Data.add_constructor recty ("con" ^ recty) fva a;
+                  let sol = newty (DataW(recty, params)) in
+                  let xs' = List.map (fun x -> Type.subst (fun beta -> if find beta == find alpha then sol else beta) x) xs in
+                    Listutil.iteri (fun i -> fun x ->
+                                 Type.Data.add_constructor recty ("con" ^ recty ^ "_" ^ (string_of_int i)) params x) xs';
                   Printf.printf "Declaring type: %s\n" (Printing.string_of_data recty);
-                  newty (DataW(recty, fva))
+                  (* TODO *)
+                  sol (*
+                  let alpha' = newty Var in
+                  let fva' = List.map (fun beta -> if find beta == find alpha then alpha' else beta) fva in
+                    newty (DataW(recty, fva'))*)
               end
             else 
-              a in
+              (assert (xs <> []);
+              List.hd xs) in
+(*          Printf.printf "%s = %s\n" 
+                              (Printing.string_of_type sol)
+                              (Printing.string_of_type alpha);*)
             U.unify_pairs [sol, alpha, Some ContextShape]
       | DataW("ref", [beta]) ->
 (*          Printf.printf "%s = %s\n" 
                               (Printing.string_of_type a)
                               (Printing.string_of_type beta);*)
-            U.unify_pairs [a, beta, Some ContextShape]
+        (  match xs with
+              [x1] -> U.unify_pairs [x1 , beta, Some ContextShape]
+            | _ -> failwith "todo"
+(*            U.unify_pairs [ newty (DataW(Data.sumid (List.length xs), xs)),
+ *            beta, Some ContextShape]*)
+        )
       | _ -> 
           Printf.printf "%s\n" (Printing.string_of_type alpha);
           assert false
@@ -522,10 +546,10 @@ let solve_constraints (con: type_constraint list) : unit =
     join_lower_bounds ineqs;
     (* Add equations for lower bounds. *)    
     let ineqs = 
-      Type.Typetbl.fold (fun alpha a l -> 
-                           match a with
-                             | [a0] -> (a0, alpha) :: l
-                             | _ -> (newty (DataW(Data.sumid (List.length a), a)), alpha) :: l)
+      Type.Typetbl.fold (fun alpha xs l -> 
+                           match xs with
+                             | [x0] -> ([x0], alpha) :: l
+                             | _ -> ((* newty (DataW(Data.sumid (List.length a), a)) *) xs, alpha) :: l)
         m [] 
     in
     (*Printf.printf "---\n";
@@ -589,12 +613,14 @@ let project (a: Type.t) (b: Type.t) : Term.t =
                              [("y", Term.mkVar "y")]
             )
           else 
-            raise Not_Leq
+             (     Printf.printf "%s | %s" (Printing.string_of_type a) (Printing.string_of_type b);
+            raise Not_Leq)
       | Type.DataW(id, l) ->
           let cs = Type.Data.constructor_types id l in
           let rec out l n =
             match l with 
-              | [] -> raise Not_Leq
+              | [] -> 
+                  raise Not_Leq
               | b1 :: bs ->
                   if Type.equals a b1 then
                     Term.mkLambdaW(
@@ -608,7 +634,7 @@ let project (a: Type.t) (b: Type.t) : Term.t =
                                 (unusable_var, mkConstW Cundef))))
                   else
                     out bs (n + 1) in
-            out l 0
+            out cs 0
     | _ -> 
         raise Not_Leq 
 
