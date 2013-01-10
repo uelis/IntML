@@ -73,6 +73,11 @@ letu test3 =
      
 letu test31 = test3 (fun r -> let [v]=r in [print v])
 
+letu test32 =
+         (val (fun x ->
+                  copy x as xa, xb in
+                    app (app add (app (val xa) (val [3]))) (app (val xb) (val [4]))))
+
 letu test4_0 =
       app (app add test3) (app (app add (val [6])) (val [5]))
 
