@@ -515,7 +515,8 @@ let solve_constraints (con: type_constraint list) : unit =
                   let xs' = List.map (fun x -> Type.subst (fun beta -> if find beta == find alpha then sol else beta) x) xs in
                     Listutil.iteri (fun i -> fun x ->
                                  Type.Data.add_constructor recty ("con" ^ recty ^ "_" ^ (string_of_int i)) params x) xs';
-                  Printf.printf "Declaring type: %s\n" (Printing.string_of_data recty);
+                  (* Printf.printf "Declaring type: %s\n" (Printing.string_of_data recty);
+                   *)
                   (* TODO *)
                   sol (*
                   let alpha' = newty Var in

@@ -76,7 +76,7 @@ rule main = parse
   | "loop"     { TokLoop }
   | "letw"     { TokLetW }
   | "letu"     { TokLetU }
-  | "callc"    { TokForce }
+  | "invokec"    { TokForce }
   | "grabc"    { TokSuspend }
   | "cont"     { TokCont }
   | "external" { TokExternal }

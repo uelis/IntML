@@ -1,0 +1,103 @@
+letw tailrecw = fun x ->
+  case x of 
+    Inr(q) ->
+     (case q of
+        Inr(u) -> Inr(Inl((), ()))
+      | Inl(ua) ->
+         let (u, a) = ua in
+            Inl(a, Inr(Inr())))
+  | Inl(a_s) ->
+    let (a, s) = a_s in
+      (case s of
+         Inr(r) -> 
+          (case r of
+              Inr(b) -> Inr(Inr(b))
+            | Inl(cu) ->
+                let (c, u) = cu in
+                  Inl(a, Inr(Inl(c, a))))
+       | Inl(dp) ->
+          let (d, p) = dp in
+            (case p of
+               Inr(u) -> Inl(a, Inl(d, Inl((), ())))
+             | Inl(ua) ->
+                let (u, a) = ua in
+                  Inl(a, Inr(Inr())))
+      )
+
+letu tailrec = hack tailrecw
+ as {'a}({'d}({unit}['a] --o ['b]) --o ({'c}['a] --o ['b])) --o {unit}['a] --o ['b]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+letu fib : [int] --> [int] =
+ fun i -> 
+  tailrec (fun fib' ->
+             fun x ->
+               let [xv] = x in
+               let [f1] = [let (f1, r) = xv in f1] in
+               let [f2] = [let (f1, r) = xv in let (f2, i) = r in f2] in
+               let [i] = [let (f1, r) = xv in let (f2, i) = r in i] in
+                 if i = 0 then [f1] else fib' [(f2, (f1 + f2, i - 1))]
+  ) (let [iv] = i in [(1, (1, iv))])
+      
+letu main = 
+   let [x] = fib [38] in [print x]
+

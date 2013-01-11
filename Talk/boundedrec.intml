@@ -1,0 +1,148 @@
+type list27<'a> = 
+      Nil27 of unit 
+    | Cons1 of 'a
+    | Cons2 of 'a * 'a
+    | Cons3 of 'a * ('a * 'a)
+    | Cons4 of 'a * ('a * ('a * 'a))
+    | Cons5 of 'a * ('a * ('a * ('a * 'a)))
+    | Cons6 of 'a * ('a * ('a * ('a * ('a * 'a))))
+    | Cons7 of 'a * ('a * ('a * ('a * ('a * ('a * 'a)))))
+    | Cons8 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * 'a))))))
+    | Cons9 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a)))))))
+    | Cons10 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a))))))))
+    | Cons11 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a)))))))))
+    | Cons12 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a))))))))))
+    | Cons13 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a)))))))))))
+    | Cons14 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a))))))))))))
+    | Cons15 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a)))))))))))))
+    | Cons16 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a))))))))))))))
+    | Cons17 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a)))))))))))))))
+    | Cons18 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a))))))))))))))))
+    | Cons19 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a)))))))))))))))))
+    | Cons20 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a))))))))))))))))))
+    | Cons21 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a)))))))))))))))))))
+    | Cons22 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a))))))))))))))))))))
+    | Cons23 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a)))))))))))))))))))))
+    | Cons24 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a))))))))))))))))))))))
+    | Cons25 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a)))))))))))))))))))))))
+    | Cons26 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a))))))))))))))))))))))))
+    | Cons27 of 'a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * ('a * 'a)))))))))))))))))))))))))
+
+letw cons : 'a -> list27<'a> -> list27<'a> =
+  fun x -> fun xs ->
+    case xs of 
+      Nil27 -> Cons1(x)
+    | Cons1(ht) -> Cons2(x, ht) 
+    | Cons2(ht) -> Cons3(x, ht) 
+    | Cons3(ht) -> Cons4(x, ht) 
+    | Cons4(ht) -> Cons5(x, ht) 
+    | Cons5(ht) -> Cons6(x, ht) 
+    | Cons6(ht) -> Cons7(x, ht) 
+    | Cons7(ht) -> Cons8(x, ht) 
+    | Cons8(ht) -> Cons9(x, ht) 
+    | Cons9(ht) -> Cons10(x, ht) 
+    | Cons10(ht) -> Cons11(x, ht) 
+    | Cons11(ht) -> Cons12(x, ht) 
+    | Cons12(ht) -> Cons13(x, ht) 
+    | Cons13(ht) -> Cons14(x, ht) 
+    | Cons14(ht) -> Cons15(x, ht) 
+    | Cons15(ht) -> Cons16(x, ht) 
+    | Cons16(ht) -> Cons17(x, ht) 
+    | Cons17(ht) -> Cons18(x, ht) 
+    | Cons18(ht) -> Cons19(x, ht) 
+    | Cons19(ht) -> Cons20(x, ht) 
+    | Cons20(ht) -> Cons21(x, ht) 
+    | Cons21(ht) -> Cons22(x, ht) 
+    | Cons22(ht) -> Cons23(x, ht) 
+    | Cons23(ht) -> Cons24(x, ht) 
+    | Cons24(ht) -> Cons25(x, ht) 
+    | Cons25(ht) -> Cons26(x, ht) 
+    | Cons26(ht) -> Cons27(x, ht) 
+    | Cons27(ht) -> xs
+
+letw headtail : list27<'a> -> unit + ('a * list27<'a>) =
+   fun xs ->
+    case xs of 
+      Nil27 -> Inl()
+    | Cons1(h) -> Inr(h, Nil27)
+    | Cons2(ht) -> let (h, t) = ht in Inr(h, Cons1(t)) 
+    | Cons3(ht) -> let (h, t) = ht in Inr(h, Cons2(t)) 
+    | Cons4(ht) -> let (h, t) = ht in Inr(h, Cons3(t)) 
+    | Cons5(ht) -> let (h, t) = ht in Inr(h, Cons4(t)) 
+    | Cons6(ht) -> let (h, t) = ht in Inr(h, Cons5(t)) 
+    | Cons7(ht) -> let (h, t) = ht in Inr(h, Cons6(t)) 
+    | Cons8(ht) -> let (h, t) = ht in Inr(h, Cons7(t)) 
+    | Cons9(ht) -> let (h, t) = ht in Inr(h, Cons8(t)) 
+    | Cons10(ht) -> let (h, t) = ht in Inr(h, Cons9(t)) 
+    | Cons11(ht) -> let (h, t) = ht in Inr(h, Cons10(t)) 
+    | Cons12(ht) -> let (h, t) = ht in Inr(h, Cons11(t)) 
+    | Cons13(ht) -> let (h, t) = ht in Inr(h, Cons12(t)) 
+    | Cons14(ht) -> let (h, t) = ht in Inr(h, Cons13(t)) 
+    | Cons15(ht) -> let (h, t) = ht in Inr(h, Cons14(t)) 
+    | Cons16(ht) -> let (h, t) = ht in Inr(h, Cons15(t)) 
+    | Cons17(ht) -> let (h, t) = ht in Inr(h, Cons16(t)) 
+    | Cons18(ht) -> let (h, t) = ht in Inr(h, Cons17(t)) 
+    | Cons19(ht) -> let (h, t) = ht in Inr(h, Cons18(t)) 
+    | Cons20(ht) -> let (h, t) = ht in Inr(h, Cons19(t)) 
+    | Cons21(ht) -> let (h, t) = ht in Inr(h, Cons20(t)) 
+    | Cons22(ht) -> let (h, t) = ht in Inr(h, Cons21(t)) 
+    | Cons23(ht) -> let (h, t) = ht in Inr(h, Cons22(t)) 
+    | Cons24(ht) -> let (h, t) = ht in Inr(h, Cons23(t)) 
+    | Cons25(ht) -> let (h, t) = ht in Inr(h, Cons24(t)) 
+    | Cons26(ht) -> let (h, t) = ht in Inr(h, Cons25(t)) 
+    | Cons27(ht) -> let (h, t) = ht in Inr(h, Cons26(t)) 
+
+letw fix27w = fun x ->
+  case x of 
+    Inl(lx) -> 
+      let (l,x) = lx in
+        (case x of
+           Inl(bq) ->
+             let (b,q) = bq in
+               Inl(cons b l, Inr(q))
+         | Inr(a) ->
+             (case headtail l of 
+                Inl -> Inr(a)
+              | Inr(hdtl) ->
+                 let (hd, tl) = hdtl in
+                   Inl(tl, Inl(hd, a))))
+  | Inr(q) -> 
+     Inl(Nil27, Inr(q))
+
+letu fix27 = hack fix27w
+ as {list27<'b>}({'b}'a --o 'a) --o 'a
+
+type list<'a> = Nil of unit | Cons of 'a * list<'a>
+
+letw fixw = fun x ->
+  case x of 
+    Inl(lx) -> 
+      let (l,x) = lx in
+        (case x of
+           Inl(bq) ->
+             let (b,q) = bq in
+               Inl(Cons(b,l), Inr(q))
+         | Inr(a) ->
+             (delete l of 
+                Nil -> Inr(a)
+              | Cons(hdtl) ->
+                 let (hd, tl) = hdtl in
+                   Inl(tl, Inl(hd, a))))
+  | Inr(q) -> 
+     Inl(Nil, Inr(q))
+
+letu fix = hack fixw
+ as {list<'b>}({'b}'a --o 'a) --o 'a
+
+letu fib : [int] --> [int] =
+  fix (fun fib ->
+        copy fib as fib1, fib2 in
+        fun x ->
+          let [v] = x in
+            if v < 2 then [1]
+            else
+              let [f1] = fib1 [v - 1] in
+              let [f2] = fib2 [v - 2] in
+                [f1 + f2])
+
+letu main = let [x] = fib [28] in [print x]

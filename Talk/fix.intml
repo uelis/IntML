@@ -1,0 +1,96 @@
+type list<'a> = Nil of unit | Cons of 'a * list<'a>
+
+letw fixw = fun x ->
+  case x of 
+    Inl(lx) -> 
+      let (l,x) = lx in
+        (case x of
+           Inl(bq) ->
+             let (b,q) = bq in
+               Inl(Cons(b,l), Inr(q))
+         | Inr(a) ->
+             (delete l of 
+                Nil -> Inr(a)
+              | Cons(hdtl) ->
+                 let (hd, tl) = hdtl in
+                   Inl(tl, Inl(hd, a))))
+  | Inr(q) -> 
+     Inl(Nil, Inr(q))
+
+letu fix = hack fixw
+ as {list<'b>}({'b}'a --o 'a) --o 'a
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(*
+letu fib : [int] --> [int] =
+  fix (fun fib ->
+        copy fib as fib1, fib2 in
+        fun x ->
+          let [v] = x in
+            if v < 2 then [1]
+            else
+              let [f1] = fib1 [v - 1] in
+              let [f2] = fib2 [v - 2] in
+                [f1 + f2])
+
+letu main = let [x] = fib [28] in [print x]
+*)
