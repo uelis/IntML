@@ -1,0 +1,146 @@
+letw tailrecw = fun x ->
+  case x of 
+    Inr(q) ->
+     (case q of
+        Inr(u) -> Inr(Inl((), ()))
+      | Inl(ua) ->
+         let (u, a) = ua in
+            Inl(a, Inr(Inr())))
+  | Inl(a_s) ->
+    let (a, s) = a_s in
+      (case s of
+         Inr(r) -> 
+          (case r of
+              Inr(b) -> Inr(Inr(b))
+            | Inl(cu) ->
+                let (c, u) = cu in
+                  Inl(a, Inr(Inl(c, a))))
+       | Inl(dp) ->
+          let (d, p) = dp in
+            (case p of
+               Inr(u) -> Inl(a, Inl(d, Inl((), ())))
+             | Inl(ua) ->
+                let (u, a) = ua in
+                  Inl(a, Inr(Inr())))
+      )
+
+letu tailrec = hack tailrecw
+ as {'a}({'d}({unit}['a] --o ['b]) --o ({'c}['a] --o ['b])) --o {unit}['a] --o ['b]
+
+letu skip : [unit] = [()]
+letu cif = 
+  fun e -> fun ct -> fun cf ->
+    let [ev] = e in
+    if ev then ct else cf
+
+
+letu while = 
+   fun e -> fun c ->
+    (tailrec (fun f ->
+        fun x ->
+          let [ev] = e in
+          if ev then 
+            let [u] = c in f x 
+          else [()])) 
+     [()]
+
+letu newvar = hack fun x -> 
+  case x of 
+    Inl(y) ->
+     ( let (mem, yv) = y in
+        case yv of
+          Inl(z) -> 
+            ( let (zs, zv) = z in
+              case zv of
+                Inl(u) -> 
+					   ( case u of
+						  Inl(ua) -> 
+						    let (ua1, newmem) = ua in
+							  Inl(newmem, Inl(zs, Inl(Inr())))
+						| Inr(uq) ->
+							  Inl(mem, Inl(zs, Inl(Inl((), ()))))
+                  )
+              | Inr(r) ->
+					   Inl(mem, Inl(zs, Inr(mem)))
+            )
+        | Inr(a) -> Inr(a)
+     )
+  | Inr(q) -> Inl(0, Inr())
+  as ({int}({'c}(({unit}[int] --o [unit]) * [int]) --o ['a]) --o ['a])
+
+letu write = fun c -> fun v -> 
+	let (w,r) = c in w v
+letu read = fun c ->  
+	let (w,r) = c in r
+
+(* test allocates a `memory cell`, which can be written using
+ * 'write' and read using 'val'. It then writes to it and
+ * reads from it twice. *)
+letu test = newvar (fun c -> 
+   let (write, val) = c in 
+   copy write as write1, write2 in
+   copy val as val1, val2 in
+	let [c] = write1 [12] in 
+	let [v1] = val1 in
+	let [c] = write2 [134]in 
+	let [v2] = val2 in
+	[(v1,v2)])
+
+letu test1 = newvar (fun c -> 
+   let (write, val) = c in 
+   copy write as write1, write2 in
+   copy val as val1, val2 in
+	let [c] = write1 [12] in
+   while (let [i] = val1 in [0<i]) 
+     (let [i] = val2 in
+      let [u] = [print i] in
+      let [u] = [print "\n"] in
+   	let [c] = write2 [i-1] in 
+        [()]))
+
+(*
+
+(* An example for a while loop in which a memory cell (c) is
+ * being incremented starting with 2 until it reaches the
+ * maximum element.
+ * At the same time a second memory cell (c0) is counted up from 
+ * zero, so that at the end it should reach the (max-2), which
+ * it does indeed in the implementation. *)
+test2 =U 
+   memcell (fun c0 -> 
+   copy c0 as c01, c023 in
+   copy c023 as c02, c03 in
+   memcell (fun c -> 
+   copy c as c1, c234 in
+   copy c234 as c2, c34 in
+   copy c34 as c3, c4 in
+	let write c1 [succ (succ min)] be [c] in 
+	seqe (
+		while (let (read c2) be [v] in [if v = (succ v) then inl(<>) else inr(<>)]) 
+		  (
+			 let read c01 be [v1] in
+			 let write c02 [succ v1] be [d] in  
+			 let read c3 be [v2] in
+			 let write c4 [succ v2] be [c] in 
+			 [<>]
+		  )
+	) (read c03)
+	)
+	);
+
+xx =U 
+        fun f : {1*(1+1) (* any type not of the form A+B will do here *)}'a --o 'b ->
+        fun c -> 
+        copy c as c1, c2 in
+        let c1 be <x1, y1> in
+        let c2 be <x2, y2> in
+        <<x1, x2>, f y1>;
+
+yy =U 
+        fun f : {1*(1+1) (* any type not of the form A+B will do here *)}'a --o 'b ->
+        fun c -> 
+        let c be <x, y> in
+        copy x as x1, x2 in
+        <<x1, x2>, f y>;
+
+        *)
