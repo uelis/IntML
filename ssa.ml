@@ -1,5 +1,6 @@
 open Term
 open Circuit
+(* TODO: document topological block ordering *)
 
 type label = { 
   name: int; 
@@ -21,6 +22,10 @@ type func = {
   blocks : block list;
   return_type: Type.t;
 }
+
+let fresh_label = 
+  let l = ref 0 in
+    fun () -> decr l; !l
 
 let fresh_var = Vargen.mkVarGenerator "x" ~avoid:[]
 
@@ -172,6 +177,9 @@ let trace (name: string) (c: Circuit.circuit) : func =
             List.fold_right (fun w map -> IntMap.add w.src node map) 
               (wires [node]) (build_dst_map rest) 
     in build_dst_map instructions_fresh in
+  let blocks = ref [] in
+  let emit_block b =
+    blocks := !blocks @ [b] in
   let rec trace src dst lets (sigma, v) =
     let unpair t lets =
       match t.Term.desc with
@@ -201,10 +209,10 @@ let trace (name: string) (c: Circuit.circuit) : func =
       if not (IntMap.mem dst node_map_by_src) then
         begin
           if dst = c.output.dst then
-            Return(src, "z", lets, mkPairW sigma v, c.output.type_forward) 
+            emit_block (Return(src, "z", lets, mkPairW sigma v, c.output.type_forward))
           else 
             (* unreachable *)
-            Unreachable(src)
+            emit_block (Unreachable(src))
         end
       else 
         match IntMap.find dst node_map_by_src with
@@ -233,10 +241,11 @@ let trace (name: string) (c: Circuit.circuit) : func =
                       (* Printf.printf "%s\n" (Printing.string_of_termW v); *)
                       let v' = fresh_var () in 
                         (*                      assert (Type.equals src.message_type w3.type_back);*)
+                        emit_block (
                         Branch(src, "z", lets,
                                (Type.Data.sumid 2, v, 
                                 [(v', mkPairW sigma (mkVar v'), {name = w1.dst; message_type = w1.type_forward});
-                                (v', mkPairW sigma (mkVar v'), {name = w2.dst; message_type = w2.type_forward})]))
+                                (v', mkPairW sigma (mkVar v'), {name = w2.dst; message_type = w2.type_forward})])))
               end
           | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w1.src ->
               let rlets, v' = reduce (mkSndW v) in
@@ -306,17 +315,18 @@ let trace (name: string) (c: Circuit.circuit) : func =
                     | _ ->
                         let c = fresh_var () in
                           (*                      assert (Type.equals src.message_type w1.type_back); *)
+                          emit_block (
                           Branch(src, "z", lets', 
                                  (id, c', 
                                   List.map (fun w ->
                                                (c, mkPairW sigma (mkPairW (mkVar c) v'), 
-                                                {name = w.dst; message_type = w.type_forward})) ws))
+                                                {name = w.dst; message_type = w.type_forward})) ws)))
               end
            | Grab(s, w1, wt) when w1.src = dst ->
                 trace src w1.dst lets
                    (sigma, mkContW wt.dst (max_wire_src_dst + 1) sigma)
            | Grab(_, w1, wt) when wt.src = dst ->
-                InDirect(src, "z", lets, v, possible_indirect_goals)
+                emit_block (InDirect(src, "z", lets, v, possible_indirect_goals))
            | External(fn, ty, w1) when w1.src = dst ->
                 let ty' = Type.freshen ty in
                 let q, a = Type.question_answer_pair ty' in
@@ -380,33 +390,35 @@ let trace (name: string) (c: Circuit.circuit) : func =
                   trace src w1.dst ((v', (v1, v2)) :: rlets @ lets) (mkVar v1, mkVar v2)
            | Force(w1, k) when w1.src = dst ->
                let newlets, sigma', k' = make_bindings sigma k in
+                emit_block (
                 InDirect(src, "z", newlets @ lets, 
-                         mkPairW k' (mkPairW (mkContW w1.dst (max_wire_src_dst + 1) sigma') v), possible_indirect_goals)
+                         mkPairW k' (mkPairW (mkContW w1.dst (max_wire_src_dst + 1) sigma') v), possible_indirect_goals))
            | _ -> assert false
   in
   let sigma, x = "sigma", "x" in
   let entry_points = Hashtbl.create 10 in
   let rec trace_all src =
-    if Hashtbl.mem entry_points src.name then []
+    if Hashtbl.mem entry_points src.name then ()
     else 
       begin
-        let block = trace src src.name [(mkVar "z",(sigma,x))] (mkVar sigma, mkVar x) in
-  (*         Printf.printf "%s" (string_of_block block);  *)
-          Hashtbl.add entry_points src.name ();
+        trace src src.name [(mkVar "z",(sigma,x))] (mkVar sigma, mkVar x);
+        Hashtbl.add entry_points src.name ();
+        List.iter (fun block ->
           match block with
-            | Unreachable(_) | Return(_) -> [block]
+            | Unreachable(_) | Return(_) -> () 
             | Direct(_, _, _, _, dst) ->
-                block :: trace_all dst
+                trace_all dst
             | InDirect(_, _, _, _, dsts) ->
-                block :: (List.concat (List.map trace_all dsts))
+                List.iter trace_all dsts
             | Branch(_, _, _, (_, _, cases)) ->
-                block :: (List.concat (List.map (fun (_, _, dst) -> trace_all dst) cases))
+                List.iter (fun (_, _, dst) -> trace_all dst) cases)
+          !blocks (* TODO: inefficient *)
       end in
-  let blocks = trace_all {name = c.output.src; message_type = c.output.type_back} in
+    trace_all {name = c.output.src; message_type = c.output.type_back};
     { func_name = name;
       argument_type = c.output.type_back;
       entry_block = c.output.src;
-      blocks = blocks;
+      blocks = !blocks;
       return_type = c.output.type_forward }
 
 (* TODO: proper printing *)
