@@ -1,11 +1,12 @@
 all: 
-	ocamlbuild -cflags "-g -I +llvm-3.0" -lflags "-g -cc g++ -I +llvm-3.0 llvm.cmxa llvm_bitwriter.cmxa" intml.native
+	ocamlbuild -use-ocamlfind intml.native
+	#ocamlbuild -cflags "-g -I +../llvm" -lflags "-g -cc g++ -I +../llvm llvm.cmxa llvm_bitwriter.cmxa" intml.native
 
 byte:
-	ocamlbuild intml.byte
+	ocamlbuild -use-ocamlfind intml.byte
 
 opt:
-	ocamlbuild intml.native
+	ocamlbuild -use-ocamlfind intml.native
 
 tags:
 	otags *.ml *.mli
