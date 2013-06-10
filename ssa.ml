@@ -180,220 +180,230 @@ let trace (name: string) (c: Circuit.circuit) : func =
   let blocks = ref [] in
   let emit_block b =
     blocks := !blocks @ [b] in
-  let rec trace src dst lets (sigma, v) =
-    let unpair t lets =
-      match t.Term.desc with
-        | PairW(x, y) -> (x, y), lets
-        | _ -> 
-            let x = fresh_var () in
-            let y = fresh_var () in
-              (mkVar x, mkVar y), (t, (x, y)) :: lets in
-    (* TODO: do properly !! *)      
-    let rec make_bindings t (vars, f) =
-      match vars with 
-        | [] -> [], t, f
-        | x :: rest ->
-            begin
-              match t.Term.desc with
-                | PairW(t', t2) -> 
-                    let f' = Term.subst t2 x f in
-                    let lets, t'', f'' = make_bindings t' (rest, f') in
-                      lets, mkPairW t'' t2, f''
-                | _ -> 
-                    let th = fresh_var () in
-                    let tr = fresh_var () in
-                    let f' = Term.rename_vars (fun u -> if u = x then tr else u) f in
-                    let lets, t', f'' = make_bindings (mkVar th) (rest, f') in
-                      lets @ [(t, (th, tr))], mkPairW t' (mkVar tr), f'' 
-            end in
-      if not (IntMap.mem dst node_map_by_src) then
-        begin
-          if dst = c.output.dst then
-            emit_block (Return(src, "z", lets, mkPairW sigma v, c.output.type_forward))
-          else 
-            (* unreachable *)
-            emit_block (Unreachable(src))
-        end
-      else 
-        match IntMap.find dst node_map_by_src with
-          | Axiom(w1 (* [f] *), f) when dst = w1.src ->
-              let newlets, sigma', f' = make_bindings sigma f in
-              let rlets, f'' = reduce (mkAppW f' v) in
-                trace src w1.dst (rlets @ newlets @ lets) (sigma', f'')
-(*              Direct(src, "z", newlets @ lets, mkPairW sigma' (mkAppW f' v), 
-                         {name = w1.dst; message_type = w1.type_forward}) *)
-          | Tensor(w1, w2, w3) when dst = w1.src -> 
-              (* <sigma, v> @ w1       |-->  <sigma, inl(v)> @ w3 *)
-              trace src w3.dst lets (sigma, mkInlW v)
-          | Tensor(w1, w2, w3) when dst = w2.src -> 
-              (* <sigma, v> @ w2       |-->  <sigma, inr(v)> @ w3 *)
-              trace src w3.dst lets (sigma, mkInrW v)
-          | Tensor(w1, w2, w3) when dst = w3.src -> 
-              (* <sigma, inl(v)> @ w3  |-->  <sigma, v> @ w1
-               <sigma, inr(v)> @ w3  |-->  <sigma, v> @ w2 *)
+  let trace =
+    let visited = Hashtbl.create 10 in
+    let rec trace src dst lets (sigma, v) =
+      let unpair t lets =
+        match t.Term.desc with
+          | PairW(x, y) -> (x, y), lets
+          | _ -> 
+              let x = fresh_var () in
+              let y = fresh_var () in
+                (mkVar x, mkVar y), (t, (x, y)) :: lets in
+      (* TODO: do properly !! *)      
+      let rec make_bindings t (vars, f) =
+        match vars with 
+          | [] -> [], t, f
+          | x :: rest ->
               begin
-                match v.Term.desc with
-                  | InW(id, 0, v') when id = Type.Data.sumid 2 -> 
-                      trace src w1.dst lets (sigma, v')
-                  | InW(id, 1, v') when id = Type.Data.sumid 2 -> 
-                      trace src w2.dst lets (sigma, v')
+                match t.Term.desc with
+                  | PairW(t', t2) -> 
+                      let f' = Term.subst t2 x f in
+                      let lets, t'', f'' = make_bindings t' (rest, f') in
+                        lets, mkPairW t'' t2, f''
                   | _ -> 
-                      (* Printf.printf "%s\n" (Printing.string_of_termW v); *)
-                      let v' = fresh_var () in 
-                        (*                      assert (Type.equals src.message_type w3.type_back);*)
-                        emit_block (
-                        Branch(src, "z", lets,
-                               (Type.Data.sumid 2, v, 
-                                [(v', mkPairW sigma (mkVar v'), {name = w1.dst; message_type = w1.type_forward});
-                                (v', mkPairW sigma (mkVar v'), {name = w2.dst; message_type = w2.type_forward})])))
-              end
-          | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w1.src ->
-              let rlets, v' = reduce (mkSndW v) in
-              trace src w2.dst (rlets @ lets) (sigma, v')
-          | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w2.src ->
-              let newlets, sigma', f' = make_bindings sigma f in
-                trace src w1.dst (newlets @ lets) (sigma', mkPairW f' v)
-          | Door(w1 (* X *), w2 (* \Tens A X *)) when dst = w1.src ->
-              let (sigma', c), lets' = unpair sigma lets in
-                trace src w2.dst lets' (sigma', mkPairW c v)
-          | Door(w1 (* X *), w2 (* \Tens A X *)) when dst = w2.src ->
-              let (c, v'), lets' = unpair v lets in
-                trace src w1.dst lets' (mkPairW sigma c, v')
-          | ADoor(w1 (* \Tens (A x B) X *), w2 (* \Tens B X *)) when dst = w1.src ->
-              let (dc, v'), lets' = unpair v lets in
-              let (d, c), lets'' = unpair dc lets' in
-                trace src w2.dst lets'' (mkPairW sigma d, mkPairW c v')
-          | ADoor(w1 (* \Tens (A x B) X *), w2 (* \Tens B X *)) when dst = w2.src ->
-              let (sigma', d), lets' = unpair sigma lets in
-              let (c, v'), lets'' = unpair v lets' in
-                trace src w1.dst lets'' (sigma', mkPairW (mkPairW d c) v')
-          | LWeak(w1 (* \Tens A X *), 
-                  w2 (* \Tens B X *)) (* B <= A *) when dst = w1.src ->
-              let _, a_token = unTensorW w1.type_back in
-              let a, _ = unTensorW a_token in
-              let _, b_token = unTensorW w2.type_forward in
-              let b, _ = unTensorW b_token in
-              let (c, v'), lets' = unpair v lets in
-              let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Typing.project b a) c) v') in
-                trace src w2.dst (rlets @ lets') (sigma, v'')
-          | LWeak(w1 (* \Tens A X *), 
-                  w2 (* \Tens B X *)) (* B <= A *) when dst = w2.src ->
-              let _, a_token = unTensorW w1.type_forward in
-              let a, _ = unTensorW a_token in
-              let _, b_token = unTensorW w2.type_back in
-              let b, _ = unTensorW b_token in
-              let (c, v'), lets' = unpair v lets in
-              let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Typing.embed b a) c) v') in
-                trace src w1.dst (rlets @ lets') (sigma, v'')
-          | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w3.src ->
-              (*   <sigma, *> @ w3      |-->  <sigma, *> @ w1 *)
-              trace src w1.dst lets (sigma, mkUnitW)
-          | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w1.src ->
-              (* <sigma, v> @ w1      |-->  <sigma, <v,*>> @ w2 *)
-              trace src w2.dst lets (sigma, mkPairW v mkUnitW)
-          | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w2.src ->
-              (* <sigma, <v,w>> @ w2  |-->  <sigma, w> @ w3 *)
-              let rlets, v' = reduce (mkSndW v) in
-              trace src w3.dst (rlets @ lets) (sigma, v')
-          | Case(id, w1, ws) when List.mem dst (List.map (fun w -> w.src) ws) -> 
-              (*  <sigma, <v,w>> @ w2         |-->  <sigma, <inl(v),w>> @ w1 *) 
-                let n = List.length ws in
-                let wsi = List.combine 
-                            (List.map (fun w -> w.src) ws)
-                            (Listutil.init n (fun i -> i)) in
-                let i = List.assoc dst wsi in
-              let (c, v'), lets' = unpair v lets in
-                trace src w1.dst lets' (sigma, mkPairW (mkInW id i c) v')
-          | Case(id, w1, ws) when dst = w1.src -> 
-              (*   <sigma, <inl(v), w>> @ w1   |-->  <sigma, <v,w>> @ w2
-               <sigma, <inr(v), w>> @ w1   |-->  <sigma, <v,w>> @ w3 *)
-              begin
-                let (c', v'), lets' = unpair v lets in
-                  match c'.Term.desc with
-                    | InW(id, i, c) -> 
-                        trace src (List.nth ws i).dst lets' (sigma, mkPairW c v')
-                    | _ ->
-                        let c = fresh_var () in
-                          (*                      assert (Type.equals src.message_type w1.type_back); *)
-                          emit_block (
-                          Branch(src, "z", lets', 
-                                 (id, c', 
-                                  List.map (fun w ->
-                                               (c, mkPairW sigma (mkPairW (mkVar c) v'), 
-                                                {name = w.dst; message_type = w.type_forward})) ws)))
-              end
-           | Grab(s, w1, wt) when w1.src = dst ->
-                trace src w1.dst lets
-                   (sigma, mkContW wt.dst (max_wire_src_dst + 1) sigma)
-           | Grab(_, w1, wt) when wt.src = dst ->
-                emit_block (InDirect(src, "z", lets, v, possible_indirect_goals))
-           | External(fn, ty, w1) when w1.src = dst ->
-                let ty' = Type.freshen ty in
-                let q, a = Type.question_answer_pair ty' in
-                let s = Type.newty Type.Var in
-                let sigmaq = Type.newty (Type.TensorW(s, q)) in
-                let sigmaa = Type.newty (Type.TensorW(s, a)) in
-                let rec pack a x =
-                  match Type.finddesc a with
-                    | Type.Var -> 
-                        let refid, refcon = Type.Data.find_constructor "Ref" in
-                          mkInW refid refcon x
-                    | Type.NatW | Type.ZeroW | Type.OneW | Type.ContW _ -> 
-                        mkTypeAnnot x (Some a)
-                    | Type.TensorW(a1, a2) ->
-                        let x1 = fresh_var () in
-                        let x2 = fresh_var () in
-                        mkLetW x ((x1, x2),
-                                  mkPairW (pack a1 (mkVar x1)) (pack a2 (mkVar x2)))
-                    | Type.DataW(id, ps) ->
-                        if Type.Data.is_recursive id || Type.Data.is_mutable id then
-                          x
-                        else
-                          begin
-                            let cons = Type.Data.constructor_types id ps in
+                      let th = fresh_var () in
+                      let tr = fresh_var () in
+                      let f' = Term.rename_vars (fun u -> if u = x then tr else u) f in
+                      let lets, t', f'' = make_bindings (mkVar th) (rest, f') in
+                        lets @ [(t, (th, tr))], mkPairW t' (mkVar tr), f'' 
+              end in
+        if not (IntMap.mem dst node_map_by_src) then
+          begin
+            if dst = c.output.dst then
+              emit_block (Return(src, "z", lets, mkPairW sigma v, c.output.type_forward))
+            else 
+              (* unreachable *)
+              emit_block (Unreachable(src))
+          end
+        else
+          begin
+            Hashtbl.replace visited dst ();
+            match IntMap.find dst node_map_by_src with
+              | Axiom(w1 (* [f] *), f) when dst = w1.src ->
+                  let newlets, sigma', f' = make_bindings sigma f in
+                  let rlets, f'' = reduce (mkAppW f' v) in
+                   (if not (Hashtbl.mem visited w1.dst) then
+                      trace src w1.dst (rlets @ newlets @ lets) (sigma', f'')
+                    else
+                      emit_block (
+                         Direct(src, "z", newlets @ lets, mkPairW sigma' (mkAppW f' v), 
+                                {name = w1.dst; message_type = w1.type_forward}))
+                      )
+              | Tensor(w1, w2, w3) when dst = w1.src -> 
+                  (* <sigma, v> @ w1       |-->  <sigma, inl(v)> @ w3 *)
+                  trace src w3.dst lets (sigma, mkInlW v)
+              | Tensor(w1, w2, w3) when dst = w2.src -> 
+                  (* <sigma, v> @ w2       |-->  <sigma, inr(v)> @ w3 *)
+                  trace src w3.dst lets (sigma, mkInrW v)
+              | Tensor(w1, w2, w3) when dst = w3.src -> 
+                  (* <sigma, inl(v)> @ w3  |-->  <sigma, v> @ w1
+                   <sigma, inr(v)> @ w3  |-->  <sigma, v> @ w2 *)
+                  begin
+                    match v.Term.desc with
+                      | InW(id, 0, v') when id = Type.Data.sumid 2 -> 
+                          trace src w1.dst lets (sigma, v')
+                      | InW(id, 1, v') when id = Type.Data.sumid 2 -> 
+                          trace src w2.dst lets (sigma, v')
+                      | _ -> 
+                          (* Printf.printf "%s\n" (Printing.string_of_termW v); *)
+                          let v' = fresh_var () in 
+                            (*                      assert (Type.equals src.message_type w3.type_back);*)
+                            emit_block (
+                            Branch(src, "z", lets,
+                                   (Type.Data.sumid 2, v, 
+                                    [(v', mkPairW sigma (mkVar v'), {name = w1.dst; message_type = w1.type_forward});
+                                    (v', mkPairW sigma (mkVar v'), {name = w2.dst; message_type = w2.type_forward})])))
+                  end
+              | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w1.src ->
+                  let rlets, v' = reduce (mkSndW v) in
+                  trace src w2.dst (rlets @ lets) (sigma, v')
+              | Der(w1 (* \Tens A X *), w2 (* X *), f) when dst = w2.src ->
+                  let newlets, sigma', f' = make_bindings sigma f in
+                    trace src w1.dst (newlets @ lets) (sigma', mkPairW f' v)
+              | Door(w1 (* X *), w2 (* \Tens A X *)) when dst = w1.src ->
+                  let (sigma', c), lets' = unpair sigma lets in
+                    trace src w2.dst lets' (sigma', mkPairW c v)
+              | Door(w1 (* X *), w2 (* \Tens A X *)) when dst = w2.src ->
+                  let (c, v'), lets' = unpair v lets in
+                    trace src w1.dst lets' (mkPairW sigma c, v')
+              | ADoor(w1 (* \Tens (A x B) X *), w2 (* \Tens B X *)) when dst = w1.src ->
+                  let (dc, v'), lets' = unpair v lets in
+                  let (d, c), lets'' = unpair dc lets' in
+                    trace src w2.dst lets'' (mkPairW sigma d, mkPairW c v')
+              | ADoor(w1 (* \Tens (A x B) X *), w2 (* \Tens B X *)) when dst = w2.src ->
+                  let (sigma', d), lets' = unpair sigma lets in
+                  let (c, v'), lets'' = unpair v lets' in
+                    trace src w1.dst lets'' (sigma', mkPairW (mkPairW d c) v')
+              | LWeak(w1 (* \Tens A X *), 
+                      w2 (* \Tens B X *)) (* B <= A *) when dst = w1.src ->
+                  let _, a_token = unTensorW w1.type_back in
+                  let a, _ = unTensorW a_token in
+                  let _, b_token = unTensorW w2.type_forward in
+                  let b, _ = unTensorW b_token in
+                  let (c, v'), lets' = unpair v lets in
+                  let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Typing.project b a) c) v') in
+                    trace src w2.dst (rlets @ lets') (sigma, v'')
+              | LWeak(w1 (* \Tens A X *), 
+                      w2 (* \Tens B X *)) (* B <= A *) when dst = w2.src ->
+                  let _, a_token = unTensorW w1.type_forward in
+                  let a, _ = unTensorW a_token in
+                  let _, b_token = unTensorW w2.type_back in
+                  let b, _ = unTensorW b_token in
+                  let (c, v'), lets' = unpair v lets in
+                  let rlets, v'' = reduce (* (mkPairW c' v') *) (mkPairW (mkAppW (Typing.embed b a) c) v') in
+                    trace src w1.dst (rlets @ lets') (sigma, v'')
+              | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w3.src ->
+                  (*   <sigma, *> @ w3      |-->  <sigma, *> @ w1 *)
+                  trace src w1.dst lets (sigma, mkUnitW)
+              | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w1.src ->
+                  (* <sigma, v> @ w1      |-->  <sigma, <v,*>> @ w2 *)
+                  trace src w2.dst lets (sigma, mkPairW v mkUnitW)
+              | Epsilon(w1 (* [A] *), w2 (* \Tens A [B] *), w3 (* [B] *)) when dst = w2.src ->
+                  (* <sigma, <v,w>> @ w2  |-->  <sigma, w> @ w3 *)
+                  let rlets, v' = reduce (mkSndW v) in
+                  trace src w3.dst (rlets @ lets) (sigma, v')
+              | Case(id, w1, ws) when List.mem dst (List.map (fun w -> w.src) ws) -> 
+                  (*  <sigma, <v,w>> @ w2         |-->  <sigma, <inl(v),w>> @ w1 *) 
+                    let n = List.length ws in
+                    let wsi = List.combine 
+                                (List.map (fun w -> w.src) ws)
+                                (Listutil.init n (fun i -> i)) in
+                    let i = List.assoc dst wsi in
+                  let (c, v'), lets' = unpair v lets in
+                    trace src w1.dst lets' (sigma, mkPairW (mkInW id i c) v')
+              | Case(id, w1, ws) when dst = w1.src -> 
+                  (*   <sigma, <inl(v), w>> @ w1   |-->  <sigma, <v,w>> @ w2
+                   <sigma, <inr(v), w>> @ w1   |-->  <sigma, <v,w>> @ w3 *)
+                  begin
+                    let (c', v'), lets' = unpair v lets in
+                      match c'.Term.desc with
+                        | InW(id, i, c) -> 
+                            trace src (List.nth ws i).dst lets' (sigma, mkPairW c v')
+                        | _ ->
+                            let c = fresh_var () in
+                              (*                      assert (Type.equals src.message_type w1.type_back); *)
+                              emit_block (
+                              Branch(src, "z", lets', 
+                                     (id, c', 
+                                      List.map (fun w ->
+                                                   (c, mkPairW sigma (mkPairW (mkVar c) v'), 
+                                                    {name = w.dst; message_type = w.type_forward})) ws)))
+                  end
+               | Grab(s, w1, wt) when w1.src = dst ->
+                    trace src w1.dst lets
+                       (sigma, mkContW wt.dst (max_wire_src_dst + 1) sigma)
+               | Grab(_, w1, wt) when wt.src = dst ->
+                    emit_block (InDirect(src, "z", lets, v, possible_indirect_goals))
+               | External(fn, ty, w1) when w1.src = dst ->
+                    let ty' = Type.freshen ty in
+                    let q, a = Type.question_answer_pair ty' in
+                    let s = Type.newty Type.Var in
+                    let sigmaq = Type.newty (Type.TensorW(s, q)) in
+                    let sigmaa = Type.newty (Type.TensorW(s, a)) in
+                    let rec pack a x =
+                      match Type.finddesc a with
+                        | Type.Var -> 
+                            let refid, refcon = Type.Data.find_constructor "Ref" in
+                              mkInW refid refcon x
+                        | Type.NatW | Type.ZeroW | Type.OneW | Type.ContW _ -> 
+                            mkTypeAnnot x (Some a)
+                        | Type.TensorW(a1, a2) ->
+                            let x1 = fresh_var () in
+                            let x2 = fresh_var () in
+                            mkLetW x ((x1, x2),
+                                      mkPairW (pack a1 (mkVar x1)) (pack a2 (mkVar x2)))
+                        | Type.DataW(id, ps) ->
+                            if Type.Data.is_recursive id || Type.Data.is_mutable id then
+                              x
+                            else
+                              begin
+                                let cons = Type.Data.constructor_types id ps in
+                                let y = fresh_var () in
+                                mkCaseW id false x 
+                                  (Listutil.mapi (fun i t -> (y, mkInW id i (pack t (mkVar y)))) cons)
+                              end
+                        | Type.FunW _ | Type.FunU _ | Type.TensorU _ | Type.BoxU _ | Type.Link _ -> 
+                            assert false in
+                    let rec unpack a x =
+                      match Type.finddesc a with
+                        | Type.Var -> 
+                            let refid, refcon = Type.Data.find_constructor "Ref" in
                             let y = fresh_var () in
-                            mkCaseW id false x 
-                              (Listutil.mapi (fun i t -> (y, mkInW id i (pack t (mkVar y)))) cons)
-                          end
-                    | Type.FunW _ | Type.FunU _ | Type.TensorU _ | Type.BoxU _ | Type.Link _ -> 
-                        assert false in
-                let rec unpack a x =
-                  match Type.finddesc a with
-                    | Type.Var -> 
-                        let refid, refcon = Type.Data.find_constructor "Ref" in
-                        let y = fresh_var () in
-                          mkCaseW refid true x [(y, mkVar y)]
-                    | Type.NatW | Type.ZeroW | Type.OneW | Type.ContW _ -> x
-                    | Type.TensorW(a1, a2) ->
-                        let x1 = fresh_var () in
-                        let x2 = fresh_var () in
-                        mkLetW x ((x1, x2),
-                                  mkPairW (unpack a1 (mkVar x1)) (unpack a2 (mkVar x2)))
-                    | Type.DataW(id, ps) ->
-                        if Type.Data.is_recursive id || Type.Data.is_mutable id then
-                          x
-                        else
-                          begin
-                            let cons = Type.Data.constructor_types id ps in
-                            let y = fresh_var () in
-                            mkCaseW id false x 
-                              (Listutil.mapi (fun i t -> (y, mkInW id i (unpack t (mkVar y)))) cons)
-                          end
-                    | Type.FunW _ | Type.FunU _ | Type.TensorU _ | Type.BoxU _ | Type.Link _ -> 
-                        assert false in
-                  (*
-                  Printf.printf "\n\n%s\n\n" (Printing.string_of_termW 
-                                          (unpack sigmaa (mkCallW fn (pack sigmaq (mkPairW sigma v)))));
-                   *)
-                let rlets, v' = reduce (unpack sigmaa (mkCallW fn (pack sigmaq (mkPairW sigma v)))) in
-                let v1, v2 = fresh_var (), fresh_var () in
-                  trace src w1.dst ((v', (v1, v2)) :: rlets @ lets) (mkVar v1, mkVar v2)
-           | Force(w1, k) when w1.src = dst ->
-               let newlets, sigma', k' = make_bindings sigma k in
-                emit_block (
-                InDirect(src, "z", newlets @ lets, 
-                         mkPairW k' (mkPairW (mkContW w1.dst (max_wire_src_dst + 1) sigma') v), possible_indirect_goals))
-           | _ -> assert false
+                              mkCaseW refid true x [(y, mkVar y)]
+                        | Type.NatW | Type.ZeroW | Type.OneW | Type.ContW _ -> x
+                        | Type.TensorW(a1, a2) ->
+                            let x1 = fresh_var () in
+                            let x2 = fresh_var () in
+                            mkLetW x ((x1, x2),
+                                      mkPairW (unpack a1 (mkVar x1)) (unpack a2 (mkVar x2)))
+                        | Type.DataW(id, ps) ->
+                            if Type.Data.is_recursive id || Type.Data.is_mutable id then
+                              x
+                            else
+                              begin
+                                let cons = Type.Data.constructor_types id ps in
+                                let y = fresh_var () in
+                                mkCaseW id false x 
+                                  (Listutil.mapi (fun i t -> (y, mkInW id i (unpack t (mkVar y)))) cons)
+                              end
+                        | Type.FunW _ | Type.FunU _ | Type.TensorU _ | Type.BoxU _ | Type.Link _ -> 
+                            assert false in
+                      (*
+                      Printf.printf "\n\n%s\n\n" (Printing.string_of_termW 
+                                              (unpack sigmaa (mkCallW fn (pack sigmaq (mkPairW sigma v)))));
+                       *)
+                    let rlets, v' = reduce (unpack sigmaa (mkCallW fn (pack sigmaq (mkPairW sigma v)))) in
+                    let v1, v2 = fresh_var (), fresh_var () in
+                      trace src w1.dst ((v', (v1, v2)) :: rlets @ lets) (mkVar v1, mkVar v2)
+               | Force(w1, k) when w1.src = dst ->
+                   let newlets, sigma', k' = make_bindings sigma k in
+                    emit_block (
+                    InDirect(src, "z", newlets @ lets, 
+                             mkPairW k' (mkPairW (mkContW w1.dst (max_wire_src_dst + 1) sigma') v), possible_indirect_goals))
+               | _ -> assert false
+          end
+    in trace 
   in
   let sigma, x = "sigma", "x" in
   let entry_points = Hashtbl.create 10 in
