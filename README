@@ -1,3 +1,11 @@
+Installation
+============
+
+Needs ocamlfind and llvm.
+Install with opam:
+opam install ocamlfind llvm
+
+
 Basic Usage
 ===========
 

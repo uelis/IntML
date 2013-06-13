@@ -226,7 +226,7 @@ let rec payload_size (a: Type.t) : int =
             match finddesc a with
               | Link _ -> assert false
               | ZeroW | OneW -> 0
-              | Var(_) -> 1
+              | Var -> 1
               | NatW -> 1
               | ContW(_) -> 2
               | TensorW(a1, a2) -> p_s a1 + (p_s a2)

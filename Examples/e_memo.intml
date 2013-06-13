@@ -47,7 +47,7 @@ letu ft =
     let [lid] = l in
     case lid of
       Susp(thunk) -> 
-        let [v] = callc thunk in
+        let [v] = invokec thunk in
         let [u] = [ lid :=<stream> v] in
           [lid]
     | SCons(v) -> [lid]
@@ -61,7 +61,7 @@ letu head =
     | SCons(ht) ->
         case let (h,t) = ht in h of
           Inl(k) -> 
-            let [v] = callc k in
+            let [v] = invokec k in
             let [u] = [  let (h,t) = ht in
                          lid :=<stream> SCons(Inr(v), t) ] in
               [v]
@@ -118,9 +118,9 @@ letu orelse : [bool] --> [bool] --> [bool] =
 
 
 (* loop im Compiler!
+*)
 letu cycle =
   (fix (fun cycle -> fun n -> cons [1] (cycle n)))
-*)
 
 letu cycle =
   (fix (fun cycle -> cons [1] cycle))

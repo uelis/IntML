@@ -1,6 +1,5 @@
 all: 
 	ocamlbuild -use-ocamlfind intml.native
-	#ocamlbuild -cflags "-g -I +../llvm" -lflags "-g -cc g++ -I +../llvm llvm.cmxa llvm_bitwriter.cmxa" intml.native
 
 byte:
 	ocamlbuild -use-ocamlfind intml.byte
