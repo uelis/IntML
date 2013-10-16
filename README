@@ -3,6 +3,9 @@ Installation
 
 Dependencies
 
+The compilation to LLVM uses the OCaml LLVM bindings. These
+can be installed as follows:
+
 * Ubuntu:
   
   apt-get install ocaml-findlib llvm-ocaml-dev
@@ -39,20 +42,20 @@ Working Class Terms
 
  Working class terms can be evaluated directly.
 
-  # inl(<>)
-  : 1 + 'a
+  # Inl()
+  : unit + 'a
  
-  = inl(<>)
+  Inl()
 
  They can be defined using letw.
 
-  # letw pi1 = fun x -> let <x1,x2>=x in x1
+  # letw pi1 = fun x -> let (x1,x2) = x in x1
   pi1 :w 'a * 'b -> 'a
   
-  # pi1 <inl(<>),inr(<>)>
-  : 1 + 'a
+  # pi1 (Inl(), Inr())
+  : unit + 'a
   
-  = inl(<>)
+  = Inl()
   
 Upper Class Terms
 -----------------
@@ -71,10 +74,10 @@ Upper Class Terms
  * Terms f of type [A] can be evaluated using the working-class 
    construct let [x] = f in x.
 
-    # let [x] = d (fun x -> fun y -> x) [inl(<>)] in x
-    : 1 + 'a
+    # let [x] = d (fun x -> fun y -> x) [Inl()] in x
+    : unit + 'a
  
-    = inl(<>)
+    = Inl()
  
  * The toplevel gives access to the circuit corresponding to any
    working class term. This is available using the #circuit 
@@ -92,29 +95,30 @@ Upper Class Terms
    Example:
 
     # #circuit d
-    : 'a * 1 * ('b * 1 + ('c * 1 + 'd)) + (1 * 'a + 1) -> 'a * 1 * ('b
-    * 'a + ('c * 'a + 1)) + (1 * 1 + 'd)
+    : 'a * unit * ('b * unit + ('c * unit + 'd)) + (unit * 'a + unit) ->
+      'a * unit * ('b * 'a + ('c * 'a + unit)) + (unit * unit + 'd)
 
     = functional value
 
    The circuit may thus be sent messages of type 
-   'a * 1 * ('b * 1 + ('c * 1 + 'd)) + (1 * 'a + 1)
+   'a * unit * ('b * unit + ('c * unit + 'd)) + (unit * 'a + unit)
    and it may answer with messages of type
-   'a * 1 * ('b  * 'a + ('c * 'a + 1)) + (1 * 1 + 'd)
+   'a * unit * ('b  * 'a + ('c * 'a + unit)) + (unit * unit + 'd)
 
-   For example, the circuit for d answers the query inr(inr(<>)) 
-   with inr(inl(<<>, <>>)).
+   For example, the circuit for d answers the query Inr(Inr()) 
+   with Inr(Inl((), ())).
 
-    # #circuit d inr(inr(<>))
-    : 'a * 1 * ('b * 'a + ('c * 'a + 1)) + (1 * 1 + 'd)
+    # #circuit d Inr(Inr())
+    : 'a * unit * ('b * 'a + ('c * 'a + unit)) + (unit * unit + 'd)
  
-    = inr(inl(<<>, <>>))
+    = Inr(Inl((), ()))
    
    In the #circuit directive it is also possible to use 
    complex upper class terms
 
-    # #circuit (fun x->let <y,z> = x in let [v]=y in [<v,v>])
-    : 1 * 1 * ('a + 'b) + 1 -> 1 * 1 * (1 + 'c) + 'a * 'a
+    # #circuit (fun x->let (y,z) = x in let [v]=y in [(v,v(])
+    : unit * unit * ('a + 'b) + unit -> 
+      unit * unit * (unit + 'c) + 'a * 'a
  
     = functional value
 
@@ -124,11 +128,11 @@ Upper Class Terms
 
    For example 
      
-     # #sim d inr(inr(<>)) 
+     # #sim d Inr(Inr()) 
 
    generates a file circuit.sim.pdf in the current directory, which
    shows the first 10 steps of the computation of cirucit d with input
-   inr(inr(<>)). 
+   Inr(Inr()). 
 
    The number of steps can be changed as follows:
     
