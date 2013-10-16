@@ -1,9 +1,16 @@
 Installation
 ============
 
-Needs ocamlfind and llvm.
-Install with opam:
-opam install ocamlfind llvm
+Dependencies
+
+* Ubuntu:
+  
+  apt-get install ocaml-findlib llvm-ocaml-dev
+
+* Using the OCaml Package Manager (OPAM)
+  (OPAM can be obtained from http://http://opam.ocamlpro.com)
+
+  opam install ocamlfind llvm
 
 
 Basic Usage
