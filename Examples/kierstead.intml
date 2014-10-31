@@ -1,3 +1,8 @@
+(** Kierstead terms
+    
+    @author Ulrich Schoepp
+*)
+
 (* Kierstead terms *)
 letu t1 = fun f -> copy f as f1, f2 in f1 (fun x -> f2 (fun y -> y))
 letu t2 = fun f -> copy f as f1, f2 in f1 (fun x -> f2 (fun y -> x))

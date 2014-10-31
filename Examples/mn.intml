@@ -1,11 +1,13 @@
-(*****************************
- * Implementation of safe recursion by computational amnesia.
- *
- * This file implements the algorithm from 
- * Peter Moeller-Neergaards PhD thesis:
- * Complexity Aspects of Programming Language Design,
- * 2004
- *****************************)
+(** Implementation of safe recursion by computational amnesia.
+ 
+    This file implements the algorithm from 
+    Peter Moeller-Neergaards PhD thesis:
+    Complexity Aspects of Programming Language Design,
+    2004
+    
+    @author Ugo Dal Lago
+    @author Ulrich Schoepp
+*)
 
 letw return = fun x -> inl(x)
 letw continue = fun x -> inr(x)

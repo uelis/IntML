@@ -1,6 +1,8 @@
-(*****************************
- *     GRAPH ALGORITHMS      *
- *****************************)
+(** Graph Algorithms
+    
+    @author Ugo Dal Lago
+    @author Ulrich Schoepp
+*)
 
 letw return = fun x -> inl(x)
 letw continue = fun x -> inr(x)
